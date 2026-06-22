@@ -19,6 +19,7 @@ export type Team = {
   id: string
   owner_id: string
   name: string
+  code: string | null
   season: string | null
   is_favorite: boolean
   created_at: string
@@ -33,6 +34,16 @@ export type Player = {
   bats: Handedness | null
   throws: Exclude<Handedness, 'S'> | null
   created_at: string
+}
+
+export type LineupEntry = {
+  id: string
+  game_id: string
+  team_id: string
+  player_id: string
+  batting_order: number | null
+  position: string | null
+  is_starter: boolean
 }
 
 export type Game = {

@@ -48,6 +48,10 @@ export type LiveGame = {
   awayScore: number
   homeScore: number
   bases: Bases
+  // Completed plate appearances per team = index into the batting order. The UI
+  // mods by the lineup length to find the current batter / on-deck.
+  awayBatterIdx: number
+  homeBatterIdx: number
 }
 
 export const INITIAL_LIVE: LiveGame = {
@@ -60,6 +64,8 @@ export const INITIAL_LIVE: LiveGame = {
   awayScore: 0,
   homeScore: 0,
   bases: { first: false, second: false, third: false },
+  awayBatterIdx: 0,
+  homeBatterIdx: 0,
 }
 
 // Human label for the undo strip.
@@ -225,14 +231,24 @@ function recordOut(s: LiveGame) {
   s.outs += 1
 }
 
-// End the current at-bat: reset the count. If 3 outs, clear bases (the operator
-// advances the inning explicitly with an inning_change event).
+// End the current at-bat: reset the count and advance the batting order for the
+// team that was hitting. If 3 outs, clear bases (the operator advances the inning
+// explicitly with an inning_change event).
 function endAtBat(s: LiveGame) {
   s.balls = 0
   s.strikes = 0
+  if (s.half === 'top') s.awayBatterIdx += 1
+  else s.homeBatterIdx += 1
   if (s.outs >= 3) {
     s.bases = { first: false, second: false, third: false }
   }
+}
+
+// The 0-based current-batter slot for the team now at bat, given lineup length.
+export function currentBatterSlot(s: LiveGame, lineupLength: number): number | null {
+  if (lineupLength <= 0) return null
+  const idx = s.half === 'top' ? s.awayBatterIdx : s.homeBatterIdx
+  return idx % lineupLength
 }
 
 function nextHalf(s: LiveGame) {

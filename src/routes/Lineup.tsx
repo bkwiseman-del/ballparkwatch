@@ -1,0 +1,225 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
+import { HeaderWordmark } from '@/components/Logo'
+import type { Game, LineupEntry, Player, Team } from '@/lib/types'
+
+export default function Lineup() {
+  const { gameId } = useParams()
+  const navigate = useNavigate()
+  const [game, setGame] = useState<Game | null>(null)
+  const [away, setAway] = useState<Team | null>(null)
+  const [home, setHome] = useState<Team | null>(null)
+  const [rosters, setRosters] = useState<Record<string, Player[]>>({})
+  const [order, setOrder] = useState<Record<string, string[]>>({}) // teamId -> [playerId]
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (!gameId) return
+    ;(async () => {
+      const { data: g, error: gErr } = await supabase.from('games').select('*').eq('id', gameId).single()
+      if (gErr) return setError(gErr.message), setLoading(false)
+      const [a, h, existing] = await Promise.all([
+        supabase.from('teams').select('*').eq('id', g.away_team_id).single(),
+        supabase.from('teams').select('*').eq('id', g.home_team_id).single(),
+        supabase.from('lineup_entries').select('*').eq('game_id', gameId),
+      ])
+      const [ap, hp] = await Promise.all([
+        supabase.from('players').select('*').eq('team_id', g.away_team_id).order('jersey_number'),
+        supabase.from('players').select('*').eq('team_id', g.home_team_id).order('jersey_number'),
+      ])
+      setGame(g as Game)
+      setAway(a.data as Team)
+      setHome(h.data as Team)
+      setRosters({
+        [g.away_team_id]: (ap.data ?? []) as Player[],
+        [g.home_team_id]: (hp.data ?? []) as Player[],
+      })
+      const init: Record<string, string[]> = { [g.away_team_id]: [], [g.home_team_id]: [] }
+      for (const e of (existing.data ?? []) as LineupEntry[]) {
+        init[e.team_id] = init[e.team_id] ?? []
+        init[e.team_id].push(e.player_id)
+      }
+      // keep existing batting order
+      for (const tid of Object.keys(init)) {
+        const ents = ((existing.data ?? []) as LineupEntry[])
+          .filter((e) => e.team_id === tid)
+          .sort((x, y) => (x.batting_order ?? 0) - (y.batting_order ?? 0))
+        init[tid] = ents.map((e) => e.player_id)
+      }
+      setOrder(init)
+      setLoading(false)
+    })()
+  }, [gameId])
+
+  async function save() {
+    if (!gameId || !game) return
+    setError(null)
+    // Replace lineup for both teams.
+    const del = await supabase.from('lineup_entries').delete().eq('game_id', gameId)
+    if (del.error) return setError(del.error.message)
+    const rows: Omit<LineupEntry, 'id'>[] = []
+    for (const teamId of [game.away_team_id, game.home_team_id]) {
+      ;(order[teamId] ?? []).forEach((playerId, i) => {
+        const pos = rosters[teamId]?.find((p) => p.id === playerId)?.default_position ?? null
+        rows.push({
+          game_id: gameId,
+          team_id: teamId,
+          player_id: playerId,
+          batting_order: i + 1,
+          position: pos,
+          is_starter: true,
+        })
+      })
+    }
+    if (rows.length) {
+      const ins = await supabase.from('lineup_entries').insert(rows)
+      if (ins.error) return setError(ins.error.message)
+    }
+    setSaved(true)
+    setTimeout(() => navigate('/setup'), 700)
+  }
+
+  if (loading) return <Centered>Loading lineup…</Centered>
+  if (error && !game) return <Centered>{error}</Centered>
+  if (!game || !away || !home) return <Centered>Game not found</Centered>
+
+  return (
+    <div className="min-h-full bg-cream text-ink">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-gold bg-ink px-4 py-2.5 text-cream">
+        <HeaderWordmark />
+        <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
+          ← Setup
+        </Link>
+      </header>
+
+      <div className="mx-auto max-w-3xl px-4 py-5">
+        <h1 className="mb-1 font-display text-2xl">Lineups</h1>
+        <p className="mb-5 font-data text-sm text-muted-tan">
+          Tap players in batting order. Tap a numbered slot to remove it.
+        </p>
+
+        {error && (
+          <p className="mb-4 border-2 border-barn-red bg-barn-red/10 px-3 py-2 font-data text-sm text-barn-red">
+            {error}
+          </p>
+        )}
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <TeamLineup
+            team={away}
+            roster={rosters[game.away_team_id] ?? []}
+            order={order[game.away_team_id] ?? []}
+            setOrder={(o) => setOrder((prev) => ({ ...prev, [game.away_team_id]: o }))}
+          />
+          <TeamLineup
+            team={home}
+            roster={rosters[game.home_team_id] ?? []}
+            order={order[game.home_team_id] ?? []}
+            setOrder={(o) => setOrder((prev) => ({ ...prev, [game.home_team_id]: o }))}
+            accent
+          />
+        </div>
+
+        <div className="mt-6 flex gap-2">
+          <button onClick={save} className="flex-1 bg-gold py-3 font-display text-ink">
+            {saved ? 'Saved ✓' : 'Save Lineups ▸'}
+          </button>
+          <Link
+            to={`/score/${gameId}`}
+            className="border-2 border-ink px-4 py-3 font-display text-ink"
+          >
+            Go to Score
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TeamLineup({
+  team,
+  roster,
+  order,
+  setOrder,
+  accent = false,
+}: {
+  team: Team
+  roster: Player[]
+  order: string[]
+  setOrder: (o: string[]) => void
+  accent?: boolean
+}) {
+  const byId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster])
+  const available = roster.filter((p) => !order.includes(p.id))
+
+  return (
+    <section className="border-2 border-ink bg-cream-off">
+      <div className={`px-4 py-2.5 ${accent ? 'bg-ink text-gold' : 'bg-white text-ink'} border-b-2 border-ink`}>
+        <h2 className="font-display text-lg">{team.name}</h2>
+      </div>
+
+      {/* Batting order */}
+      <ol className="flex flex-col">
+        {order.map((pid, i) => {
+          const p = byId.get(pid)
+          return (
+            <li key={pid} className={`flex items-center gap-3 px-3 py-2 ${i > 0 ? 'border-t border-ink/12' : ''}`}>
+              <span className="w-5 text-right font-athletic text-base font-bold text-ink">{i + 1}</span>
+              <span className="w-7 text-right font-athletic text-lg font-bold text-barn-red">
+                {p?.jersey_number ?? '—'}
+              </span>
+              <span className="font-display text-base">{p?.name ?? '?'}</span>
+              <span className="ml-auto font-data text-xs text-muted-tan">{p?.default_position}</span>
+              <button
+                onClick={() => setOrder(order.filter((x) => x !== pid))}
+                className="px-2 font-athletic text-barn-red"
+                title="Remove"
+              >
+                ✕
+              </button>
+            </li>
+          )
+        })}
+        {order.length === 0 && (
+          <li className="px-4 py-3 font-data text-sm text-muted-tan">No batters yet.</li>
+        )}
+      </ol>
+
+      {/* Available roster */}
+      {available.length > 0 && (
+        <div className="border-t-2 border-ink p-3">
+          <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+            Add to order
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {available.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setOrder([...order, p.id])}
+                className="border-2 border-ink bg-white px-2.5 py-1.5 font-data text-sm"
+              >
+                <b className="text-barn-red">{p.jersey_number ?? '—'}</b> {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {roster.length === 0 && (
+        <p className="px-4 py-3 font-data text-sm text-muted-tan">
+          No roster — add players to this team first.
+        </p>
+      )}
+    </section>
+  )
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-full items-center justify-center bg-cream p-6 text-center font-athletic text-muted-tan">
+      {children}
+    </div>
+  )
+}

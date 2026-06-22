@@ -41,6 +41,13 @@ export function halfLabel(half: Half): string {
   return half === 'top' ? 'TOP' : 'BOT'
 }
 
+// Prefer an explicit code; otherwise derive a 3-letter abbreviation from the name.
+export function resolveCode(code: string | null | undefined, name: string | undefined): string {
+  const c = code?.trim()
+  if (c) return c.toUpperCase().slice(0, 4)
+  return teamCode(name)
+}
+
 // 3-letter code from a team name, uppercased.
 export function teamCode(name: string | undefined): string {
   if (!name) return 'TM'

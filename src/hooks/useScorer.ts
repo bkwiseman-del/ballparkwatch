@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import type { Game, Team } from '@/lib/types'
+import type { Game, LineupEntry, Player, Team } from '@/lib/types'
 import {
+  currentBatterSlot,
   INITIAL_LIVE,
   project,
   type EventType,
@@ -12,10 +13,12 @@ import {
 import { gameChannelName } from '@/lib/realtime'
 
 type Teams = { away: Team; home: Team }
+type Lineups = { away: Player[]; home: Player[] }
 
 export function useScorer(gameId: string | undefined) {
   const [game, setGame] = useState<Game | null>(null)
   const [teams, setTeams] = useState<Teams | null>(null)
+  const [lineups, setLineups] = useState<Lineups>({ away: [], home: [] })
   const [events, setEvents] = useState<GameEventRow[]>([])
   const [live, setLive] = useState<LiveGame>(INITIAL_LIVE)
   const [loading, setLoading] = useState(true)
@@ -37,14 +40,25 @@ export function useScorer(gameId: string | undefined) {
         if (!cancelled) setError(gErr.message), setLoading(false)
         return
       }
-      const [{ data: away }, { data: home }, { data: evs }] = await Promise.all([
-        supabase.from('teams').select('*').eq('id', g.away_team_id).single(),
-        supabase.from('teams').select('*').eq('id', g.home_team_id).single(),
-        supabase.from('game_events').select('seq,event_type,payload').eq('game_id', gameId).order('seq'),
-      ])
+      const [{ data: away }, { data: home }, { data: evs }, { data: le }, { data: pls }] =
+        await Promise.all([
+          supabase.from('teams').select('*').eq('id', g.away_team_id).single(),
+          supabase.from('teams').select('*').eq('id', g.home_team_id).single(),
+          supabase.from('game_events').select('seq,event_type,payload').eq('game_id', gameId).order('seq'),
+          supabase.from('lineup_entries').select('*').eq('game_id', gameId).order('batting_order'),
+          supabase.from('players').select('*').in('team_id', [g.away_team_id, g.home_team_id]),
+        ])
       if (cancelled) return
       setGame(g as Game)
       if (away && home) setTeams({ away: away as Team, home: home as Team })
+      // Build batting orders from lineup_entries, resolving player_id -> Player.
+      const byId = new Map(((pls ?? []) as Player[]).map((p) => [p.id, p]))
+      const ordered = (teamId: string) =>
+        ((le ?? []) as LineupEntry[])
+          .filter((e) => e.team_id === teamId)
+          .map((e) => byId.get(e.player_id))
+          .filter((p): p is Player => !!p)
+      setLineups({ away: ordered(g.away_team_id), home: ordered(g.home_team_id) })
       const rows = (evs ?? []) as GameEventRow[]
       setEvents(rows)
       setLive(project(rows))
@@ -88,6 +102,15 @@ export function useScorer(gameId: string | undefined) {
     [gameId],
   )
 
+  // Current batter / on-deck for the team at bat (from the saved lineup).
+  const battingLineup = live.half === 'top' ? lineups.away : lineups.home
+  const slot = currentBatterSlot(live, battingLineup.length)
+  const currentBatter = slot != null ? battingLineup[slot] ?? null : null
+  const onDeck =
+    slot != null && battingLineup.length
+      ? battingLineup[(slot + 1) % battingLineup.length] ?? null
+      : null
+
   // Append an event, re-project, persist.
   const act = useCallback(
     async (event_type: EventType, payload: Record<string, unknown> = {}) => {
@@ -105,6 +128,7 @@ export function useScorer(gameId: string | undefined) {
         payload,
         inning: nextLive.inning,
         half: nextLive.half,
+        batter_id: currentBatter?.id ?? null,
       })
       if (insErr) {
         setError(insErr.message)
@@ -115,7 +139,7 @@ export function useScorer(gameId: string | undefined) {
       }
       await persist(nextLive)
     },
-    [gameId, events, persist],
+    [gameId, events, persist, currentBatter],
   )
 
   // Undo: remove the last event, re-project, persist.
@@ -138,5 +162,5 @@ export function useScorer(gameId: string | undefined) {
     await persist(nextLive)
   }, [gameId, events, persist])
 
-  return { game, teams, events, live, loading, error, act, undo }
+  return { game, teams, lineups, events, live, loading, error, act, undo, currentBatter, onDeck }
 }

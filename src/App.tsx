@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from './auth/RequireAuth'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
+import Lineup from './routes/Lineup'
 import Score from './routes/Score'
 import Watch from './routes/Watch'
 
@@ -15,6 +16,14 @@ export default function App() {
         element={
           <RequireAuth>
             <Setup />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/lineup/:gameId"
+        element={
+          <RequireAuth>
+            <Lineup />
           </RequireAuth>
         }
       />

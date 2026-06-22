@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Scorebug } from '@/components/Scorebug'
-import { teamCode } from '@/lib/scoreboard'
+import { resolveCode } from '@/lib/scoreboard'
 import { INITIAL_LIVE, type LiveGame } from '@/lib/engine'
 import { gameChannelName } from '@/lib/realtime'
 
@@ -10,8 +10,8 @@ type PublicGame = {
   id: string
   status: 'scheduled' | 'live' | 'final'
   video_source: string
-  away: { name: string }
-  home: { name: string }
+  away: { name: string; code: string | null }
+  home: { name: string; code: string | null }
   snapshot: Partial<LiveGame>
 }
 
@@ -63,8 +63,8 @@ export default function Watch() {
   }
 
   const board = {
-    away: { code: teamCode(info.away.name), name: info.away.name, score: live.awayScore },
-    home: { code: teamCode(info.home.name), name: info.home.name, score: live.homeScore },
+    away: { code: resolveCode(info.away.code, info.away.name), name: info.away.name, score: live.awayScore },
+    home: { code: resolveCode(info.home.code, info.home.name), name: info.home.name, score: live.homeScore },
     inning: live.inning,
     half: live.half,
     balls: live.balls,

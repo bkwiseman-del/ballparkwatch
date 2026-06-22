@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
 import { Scorebug } from '@/components/Scorebug'
-import { teamCode } from '@/lib/scoreboard'
+import { resolveCode } from '@/lib/scoreboard'
 import { EVENT_LABELS, type EventType, type LiveGame } from '@/lib/engine'
-import type { Team } from '@/lib/types'
+import type { Player, Team } from '@/lib/types'
 
 export default function Score() {
   const { gameId } = useParams()
-  const { game, teams, events, live, loading, error, act, undo } = useScorer(gameId)
+  const { game, teams, events, live, loading, error, act, undo, currentBatter, onDeck } =
+    useScorer(gameId)
   const [showInPlay, setShowInPlay] = useState(false)
 
   if (loading) {
@@ -51,6 +52,11 @@ export default function Score() {
 
       {error && (
         <p className="bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>
+      )}
+
+      {/* Batter strip */}
+      {!notStarted && !isFinal && !halfOver && (
+        <BatterStrip batter={currentBatter} onDeck={onDeck} gameId={gameId} />
       )}
 
       {/* Spacer / context */}
@@ -158,6 +164,54 @@ export default function Score() {
   )
 }
 
+function BatterStrip({
+  batter,
+  onDeck,
+  gameId,
+}: {
+  batter: Player | null
+  onDeck: Player | null
+  gameId: string | undefined
+}) {
+  if (!batter) {
+    return (
+      <div className="flex items-center justify-between border-y border-gold/30 bg-field-green px-3 py-2">
+        <span className="font-athletic text-xs uppercase tracking-[.14em] text-muted-green">
+          No lineup set
+        </span>
+        <Link
+          to={`/lineup/${gameId}`}
+          className="font-athletic text-xs font-semibold uppercase tracking-wide text-gold underline"
+        >
+          Set lineup ▸
+        </Link>
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-stretch border-y border-gold/30 bg-field-green">
+      <div className="flex-1 px-3 py-2">
+        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">
+          At Bat
+        </p>
+        <p className="font-display text-lg leading-tight text-cream">
+          <span className="text-barn-red">{batter.jersey_number ?? '—'}</span> {batter.name}
+        </p>
+      </div>
+      {onDeck && (
+        <div className="border-l border-gold/30 px-3 py-2 text-right">
+          <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-green">
+            On Deck
+          </p>
+          <p className="font-data text-sm text-cream">
+            <span className="text-gold">{onDeck.jersey_number ?? '—'}</span> {onDeck.name}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function InPlaySheet({
   onPick,
   onClose,
@@ -245,8 +299,16 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function toBoard(live: LiveGame, teams: { away: Team; home: Team } | null) {
   return {
-    away: { code: teamCode(teams?.away.name), name: teams?.away.name, score: live.awayScore },
-    home: { code: teamCode(teams?.home.name), name: teams?.home.name, score: live.homeScore },
+    away: {
+      code: resolveCode(teams?.away.code, teams?.away.name),
+      name: teams?.away.name,
+      score: live.awayScore,
+    },
+    home: {
+      code: resolveCode(teams?.home.code, teams?.home.name),
+      name: teams?.home.name,
+      score: live.homeScore,
+    },
     inning: live.inning,
     half: live.half,
     balls: live.balls,

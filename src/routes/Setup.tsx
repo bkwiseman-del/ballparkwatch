@@ -140,6 +140,12 @@ function GamesView({
                 </div>
                 <div className="flex gap-2">
                   <Link
+                    to={`/lineup/${game.id}`}
+                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                  >
+                    Lineup
+                  </Link>
+                  <Link
                     to={`/score/${game.id}`}
                     className="bg-board-green px-4 py-2 font-display text-sm text-cream"
                   >
@@ -559,7 +565,7 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
 
   return (
     <div className="border-2 border-ink bg-cream-off">
-      <div className="flex items-center justify-between border-b-2 border-ink bg-white px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b-2 border-ink bg-white px-4 py-3">
         <div>
           <h3 className="font-display text-xl">{team.name}</h3>
           <p className="font-athletic text-xs uppercase tracking-wide text-muted-tan">
@@ -567,6 +573,7 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
             {players.length} player{players.length === 1 ? '' : 's'}
           </p>
         </div>
+        <CodeEditor team={team} onError={onError} />
       </div>
 
       <ul className="flex flex-col">
@@ -626,6 +633,31 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
         </p>
       </div>
     </div>
+  )
+}
+
+function CodeEditor({ team, onError }: { team: Team; onError: (m: string) => void }) {
+  const [code, setCode] = useState(team.code ?? '')
+  useEffect(() => setCode(team.code ?? ''), [team.code, team.id])
+  async function save() {
+    const next = code.trim().toUpperCase().slice(0, 4) || null
+    if (next === (team.code ?? null)) return
+    const { error } = await supabase.from('teams').update({ code: next }).eq('id', team.id)
+    if (error) onError(error.message)
+  }
+  return (
+    <label className="flex flex-col items-end">
+      <span className="font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+        Code
+      </span>
+      <input
+        value={code}
+        onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 4))}
+        onBlur={save}
+        placeholder="—"
+        className="w-16 border-2 border-ink bg-cream px-2 py-1 text-center font-athletic text-lg font-bold uppercase tracking-wide outline-none focus:border-board-green"
+      />
+    </label>
   )
 }
 
