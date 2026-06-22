@@ -10,6 +10,7 @@ import {
   computeBattingLines,
   computeBoxScore,
   formatAvg,
+  pitchCounts,
   type BattingLine,
   type PlayKind,
 } from '@/lib/stats'
@@ -22,7 +23,10 @@ type PublicGame = {
   away: { name: string; code: string | null }
   home: { name: string; code: string | null }
   snapshot: Partial<LiveGame>
+  lineups?: { away: LineupSlot[]; home: LineupSlot[] }
 }
+
+type LineupSlot = { name: string; jersey: string | null; pos: string | null }
 
 type ViewerEvent = GameEventRow & { batter_name: string | null }
 
@@ -106,9 +110,12 @@ export default function Watch() {
       </div>
 
       {/* score panel */}
-      <div className="flex justify-center px-4 pb-4">
+      <div className="flex justify-center px-4 pb-3">
         <Scorebug state={board} variant="dark" className="w-full max-w-md justify-center" />
       </div>
+
+      {/* batter / pitcher strip */}
+      {info.status === 'live' && <BatterPitcherStrip info={info} live={live} events={events} />}
 
       {/* tab bar */}
       <div className="flex border-y-2 border-gold bg-[#122019]">
@@ -132,6 +139,65 @@ export default function Watch() {
         {tab === 'plays' && <PlaysTab events={events} />}
         {tab === 'box' && <BoxTab board={board} events={events} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
+      </div>
+    </div>
+  )
+}
+
+function BatterPitcherStrip({
+  info,
+  live,
+  events,
+}: {
+  info: PublicGame
+  live: LiveGame
+  events: ViewerEvent[]
+}) {
+  const lineups = info.lineups
+  if (!lineups) return null
+  const battingKey = live.half === 'top' ? 'away' : 'home'
+  const fieldingKey = live.half === 'top' ? 'home' : 'away'
+  const order = lineups[battingKey]
+  const idx = battingKey === 'away' ? live.awayBatterIdx : live.homeBatterIdx
+  const batter = order.length ? order[idx % order.length] : null
+  const onDeck = order.length ? order[(idx + 1) % order.length] : null
+  const pitcher = lineups[fieldingKey].find((p) => p.pos === 'P') ?? null
+  const pc = pitchCounts(events)
+  const pitches = fieldingKey === 'home' ? pc.home : pc.away
+  if (!batter && !pitcher) return null
+
+  return (
+    <div className="flex border-y border-gold/30 bg-field-green">
+      <div className="flex-1 border-r border-gold/20 px-3 py-2">
+        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">At Bat</p>
+        {batter ? (
+          <>
+            <p className="font-display text-base leading-tight text-cream">
+              <span className="text-gold">{batter.jersey ?? '—'}</span> {batter.name}
+            </p>
+            {onDeck && (
+              <p className="font-data text-[11px] text-muted-green">
+                On deck: {onDeck.jersey ? `${onDeck.jersey} ` : ''}
+                {onDeck.name}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="font-data text-sm text-muted-green">—</p>
+        )}
+      </div>
+      <div className="flex-1 px-3 py-2 text-right">
+        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-green">Pitching</p>
+        {pitcher ? (
+          <>
+            <p className="font-display text-base leading-tight text-cream">
+              <span className="text-gold">{pitcher.jersey ?? '—'}</span> {pitcher.name}
+            </p>
+            <p className="font-data text-[11px] text-muted-green">{pitches} pitches</p>
+          </>
+        ) : (
+          <p className="font-data text-sm text-muted-green">—</p>
+        )}
       </div>
     </div>
   )

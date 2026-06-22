@@ -127,6 +127,29 @@ export function computeBattingLines(
   return { away, home }
 }
 
+// Pitch count per team's pitcher. The home pitcher throws in the top halves,
+// the away pitcher in the bottom halves. Each of these events is one pitch.
+const PITCH_COUNTED = new Set<EventType>([
+  'pitch_ball', 'pitch_strike', 'pitch_foul',
+  'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch', 'strikeout',
+  'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+])
+
+export function pitchCounts(events: GameEventRow[]): { home: number; away: number } {
+  let state: LiveGame = INITIAL_LIVE
+  let home = 0
+  let away = 0
+  for (const ev of events.slice().sort((a, b) => a.seq - b.seq)) {
+    const before = state
+    state = applyEvent(before, ev)
+    if (PITCH_COUNTED.has(ev.event_type)) {
+      if (before.half === 'top') home += 1 // home team is pitching
+      else away += 1
+    }
+  }
+  return { home, away }
+}
+
 // ".333" style, no leading zero
 export function formatAvg(avg: number): string {
   if (avg <= 0) return '.000'

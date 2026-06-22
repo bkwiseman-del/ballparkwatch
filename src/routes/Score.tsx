@@ -24,13 +24,11 @@ export default function Score() {
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
-  const [simple, setSimple] = useState(() => localStorage.getItem('bpw_simple') === '1')
-
-  const toggleSimple = () => {
-    setSimple((v) => {
-      localStorage.setItem('bpw_simple', v ? '0' : '1')
-      return !v
-    })
+  // Scoring mode is chosen at game start and locked for the game (Full default).
+  const [simple, setSimple] = useState(() => localStorage.getItem(`bpw_mode_${gameId}`) === 'quick')
+  const setMode = (quick: boolean) => {
+    setSimple(quick)
+    localStorage.setItem(`bpw_mode_${gameId}`, quick ? 'quick' : 'full')
   }
 
   if (loading) return <Centered>Loading game…</Centered>
@@ -125,8 +123,32 @@ export default function Score() {
 
       {/* non-playing states */}
       {notStarted && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-8 text-center">
           <p className="font-display text-2xl">Ready to start</p>
+          <div>
+            <p className="mb-2 font-athletic text-[11px] uppercase tracking-[.14em] text-muted-green">
+              Scoring mode
+            </p>
+            <div className="inline-flex border-2 border-gold">
+              <button
+                onClick={() => setMode(false)}
+                className={`px-6 py-2 font-display ${!simple ? 'bg-gold text-ink' : 'text-cream'}`}
+              >
+                Full
+              </button>
+              <button
+                onClick={() => setMode(true)}
+                className={`px-6 py-2 font-display ${simple ? 'bg-gold text-ink' : 'text-cream'}`}
+              >
+                Quick
+              </button>
+            </div>
+            <p className="mt-2 font-data text-[11px] text-muted-green">
+              {simple
+                ? 'Quick: BALL / STRIKE / HIT / OUT. Stats incomplete.'
+                : 'Full play-by-play, baserunners, and stats.'}
+            </p>
+          </div>
           <button onClick={() => act('game_start')} className="bg-gold px-8 py-4 font-display text-xl text-ink">
             START GAME ▸
           </button>
@@ -162,42 +184,28 @@ export default function Score() {
         </div>
       )}
 
-      {/* action zone */}
-      {playing && (
-        <>
-          <button
-            onClick={toggleSimple}
-            className="flex items-center justify-between border-t-2 border-ink bg-gold px-3 py-1.5 text-left"
-          >
-            <span className="font-athletic text-[11px] font-semibold uppercase tracking-wide text-ink">
-              {simple ? 'Quick scoring · stats incomplete' : 'Full scoring'}
-            </span>
-            <span className="font-athletic text-[11px] uppercase tracking-wide text-ink/70">
-              {simple ? 'switch to full ▸' : 'switch to quick ▸'}
-            </span>
-          </button>
-          {simple ? (
-            <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-0.5 bg-ink">
-              <ActionBtn className="bg-board-green text-[28px]" onClick={onBall}>BALL</ActionBtn>
-              <ActionBtn className="bg-barn-red text-[28px]" onClick={onStrikeSimple}>STRIKE</ActionBtn>
-              <ActionBtn className="bg-cream !text-ink text-[28px]" onClick={onSimpleHit}>HIT</ActionBtn>
-              <ActionBtn className="border-2 border-gold text-[28px]" onClick={onSimpleOut}>OUT</ActionBtn>
+      {/* action zone — mode chosen at game start */}
+      {playing &&
+        (simple ? (
+          <div className="grid h-[42vh] flex-none grid-cols-2 grid-rows-2 gap-0.5 bg-ink">
+            <ActionBtn className="bg-board-green text-[28px]" onClick={onBall}>BALL</ActionBtn>
+            <ActionBtn className="bg-barn-red text-[28px]" onClick={onStrikeSimple}>STRIKE</ActionBtn>
+            <ActionBtn className="bg-cream !text-ink text-[28px]" onClick={onSimpleHit}>HIT</ActionBtn>
+            <ActionBtn className="border-2 border-gold text-[28px]" onClick={onSimpleOut}>OUT</ActionBtn>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5 bg-ink p-3.5">
+            <div className="grid grid-cols-2 gap-2.5">
+              <ActionBtn className="h-[68px] bg-board-green" onClick={onBall}>BALL</ActionBtn>
+              <ActionBtn className="h-[68px] bg-barn-red" onClick={() => setStrikePopup(true)}>STRIKE</ActionBtn>
             </div>
-          ) : (
-            <div className="flex flex-col gap-2.5 bg-ink p-3.5">
-              <div className="grid grid-cols-2 gap-2.5">
-                <ActionBtn className="h-[68px] bg-board-green" onClick={onBall}>BALL</ActionBtn>
-                <ActionBtn className="h-[68px] bg-barn-red" onClick={() => setStrikePopup(true)}>STRIKE</ActionBtn>
-              </div>
-              <div className="grid grid-cols-[1fr_1fr_1.4fr] gap-2.5">
-                <ActionBtn className="h-[54px] border-2 border-gold text-gold" onClick={() => act('pitch_foul')}>FOUL</ActionBtn>
-                <ActionBtn className="h-[54px] border-2 border-cream text-cream" onClick={() => act('hit_by_pitch')}>HBP</ActionBtn>
-                <ActionBtn className="h-[54px] bg-gold text-ink" onClick={() => setInPlay(true)}>IN PLAY ▸</ActionBtn>
-              </div>
+            <div className="grid grid-cols-[1fr_1fr_1.4fr] gap-2.5">
+              <ActionBtn className="h-[54px] border-2 border-gold text-gold" onClick={() => act('pitch_foul')}>FOUL</ActionBtn>
+              <ActionBtn className="h-[54px] border-2 border-cream text-cream" onClick={() => act('hit_by_pitch')}>HBP</ActionBtn>
+              <ActionBtn className="h-[54px] bg-gold text-ink" onClick={() => setInPlay(true)}>IN PLAY ▸</ActionBtn>
             </div>
-          )}
-        </>
-      )}
+          </div>
+        ))}
 
       {strikePopup && <StrikePopup live={live} onPick={onStrikeKind} onClose={() => setStrikePopup(false)} />}
       {endPopup && (
