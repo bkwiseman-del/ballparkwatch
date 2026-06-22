@@ -15,7 +15,7 @@ export type Fielder = { pos: string | null; name: string }
 // where each defensive position stands on the field (kept off the bags so
 // runner chips don't collide)
 const FIELDER_POS: Record<string, { x: number; y: number }> = {
-  P: { x: 170, y: 290 },
+  P: { x: 170, y: 272 },
   C: { x: 170, y: 356 },
   '1B': { x: 298, y: 240 },
   '2B': { x: 214, y: 196 },
