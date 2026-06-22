@@ -45,6 +45,8 @@ export function FieldDiamond({
   batterLabel,
   fielders,
   spray,
+  onFieldTap,
+  marker,
   className = '',
 }: {
   bases: Bases
@@ -53,11 +55,28 @@ export function FieldDiamond({
   batterLabel?: string | null
   fielders?: Fielder[]
   spray?: SprayViz | null
+  onFieldTap?: (p: { x: number; y: number }) => void
+  marker?: { x: number; y: number } | null
   className?: string
 }) {
   const label = (id: string | null) => (id && nameOf ? nameOf(id) : null)
+  const handleTap = onFieldTap
+    ? (e: React.MouseEvent<SVGSVGElement>) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        const x = 18 + ((e.clientX - r.left) / r.width) * 304
+        const y = 16 + ((e.clientY - r.top) / r.height) * 348
+        onFieldTap({ x: Math.round(x), y: Math.round(y) })
+      }
+    : undefined
   return (
-    <svg viewBox="18 16 304 348" className={className} role="img" aria-label="Field">
+    <svg
+      viewBox="18 16 304 348"
+      className={className}
+      role="img"
+      aria-label="Field"
+      onClick={handleTap}
+      style={onFieldTap ? { cursor: 'crosshair' } : undefined}
+    >
       <rect x="0" y="0" width="340" height="410" fill="#2C5234" />
 
       {/* outfield (fair territory fan) */}
@@ -103,6 +122,14 @@ export function FieldDiamond({
         <g>
           <circle cx={HOME.x} cy={HOME.y + 1} r="10" fill="#A6342E" stroke="#F4ECD8" strokeWidth="1.5" />
           {batterLabel && <Pill x={HOME.x + 52} y={HOME.y + 1} text={batterLabel} bg="#A6342E" fg="#F4ECD8" />}
+        </g>
+      )}
+
+      {/* static landing marker (scorer pick) */}
+      {marker && (
+        <g>
+          <line x1={HOME.x} y1={HOME.y} x2={marker.x} y2={marker.y} stroke="#C9A14A" strokeWidth="2.5" strokeDasharray="6 5" />
+          <circle cx={marker.x} cy={marker.y} r="6.5" fill="#F4ECD8" stroke="#C9A14A" strokeWidth="2.5" />
         </g>
       )}
 

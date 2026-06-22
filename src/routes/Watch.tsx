@@ -29,34 +29,17 @@ type PublicGame = {
 
 type LineupSlot = { name: string; jersey: string | null; pos: string | null }
 
-// Spray was captured in the in-play screen's space (home 150,200). Map it onto
-// the viewer field's space (home 170,330) via the diamond's orthogonal basis.
-function sprayToField(p: { x: number; y: number }): { x: number; y: number } {
-  const a = ((p.x - 150) * 68 + (p.y - 200) * -68) / (68 * 68 + 68 * 68)
-  const b = ((p.x - 150) * -68 + (p.y - 200) * -68) / (68 * 68 + 68 * 68)
-  return { x: 170 + a * 74 + b * -74, y: 330 + a * -74 + b * -74 }
-}
-
-// Centroids of the in-play screen's zones (same space as sprayToField input).
-const ZONE_CENTROID: Record<string, { x: number; y: number }> = {
-  LF: { x: 80, y: 92 }, CF: { x: 150, y: 52 }, RF: { x: 220, y: 92 },
-  '3B': { x: 100, y: 150 }, SS: { x: 124, y: 112 }, P: { x: 150, y: 150 },
-  '2B': { x: 176, y: 112 }, '1B': { x: 200, y: 150 }, C: { x: 150, y: 192 },
-}
-
-// Build the animated spray for a play: hits use the free landing point; outs use
-// the fielder sequence (contact = first fielder, throws = the rest of the putout).
+// Build the animated spray for a play. Hits carry a free landing point captured
+// on the same field geometry the viewer uses, so it's drawn as-is. Outs use the
+// fielder putout sequence (contact = first fielder, throws = the rest).
 function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null {
   if (!payload) return null
-  if (payload.spray) return { contact: sprayToField(payload.spray), nonce: seq }
+  if (payload.spray) return { contact: payload.spray, nonce: seq }
   if (Array.isArray(payload.fielders) && payload.fielders.length) {
     const pts = payload.fielders
       .map((n) => FIELDER_POS[POS_BY_NUM[n]])
       .filter((p): p is { x: number; y: number } => !!p)
     if (pts.length) return { contact: pts[0], throws: pts.slice(1), nonce: seq }
-  }
-  if (typeof payload.location === 'string' && ZONE_CENTROID[payload.location]) {
-    return { contact: sprayToField(ZONE_CENTROID[payload.location]), nonce: seq }
   }
   return null
 }
@@ -73,6 +56,7 @@ export default function Watch() {
   const [tab, setTab] = useState<Tab>('field')
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<SprayViz | null>(null)
+  const [showStandby, setShowStandby] = useState(false)
   const loadingEvents = useRef(false)
   const prevMaxSeq = useRef<number | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
@@ -123,7 +107,7 @@ export default function Watch() {
       const baseline = prevMaxSeq.current
       prevMaxSeq.current = maxSeq
       const fresh = events
-        .filter((e) => e.seq > baseline && (e.payload?.spray || e.payload?.location))
+        .filter((e) => e.seq > baseline && (e.payload?.spray || e.payload?.fielders))
         .sort((a, b) => a.seq - b.seq)
       const last = fresh[fresh.length - 1]
       if (last) {
@@ -136,6 +120,17 @@ export default function Watch() {
       }
     }
   }, [events])
+
+  // When a half ends (3 outs), show the final play for a beat before the standby.
+  const halfEnded = info?.status === 'live' && (live.outs ?? 0) >= 3
+  useEffect(() => {
+    if (!halfEnded) {
+      setShowStandby(false)
+      return
+    }
+    const t = window.setTimeout(() => setShowStandby(true), 5000)
+    return () => window.clearTimeout(t)
+  }, [halfEnded])
 
   if (error) return <Center>{error}</Center>
   if (!info) return <Center>Loading…</Center>
@@ -152,7 +147,7 @@ export default function Watch() {
   }
 
   // Between half-innings: the scorer is at its between-innings screen (3 outs).
-  const between = info.status === 'live' && (live.outs ?? 0) >= 3
+  const between = info!.status === 'live' && (live.outs ?? 0) >= 3
 
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream">
@@ -195,7 +190,12 @@ export default function Watch() {
 
       {/* content */}
       <div className="flex-1 p-4">
-        {tab === 'field' && (between ? <Standby info={info} live={live} /> : <FieldTab info={info} live={live} events={events} spray={flash} />)}
+        {tab === 'field' &&
+          (between && showStandby ? (
+            <Standby info={info} live={live} />
+          ) : (
+            <FieldTab info={info} live={live} events={events} spray={flash} />
+          ))}
         {tab === 'plays' && <PlaysTab events={events} />}
         {tab === 'box' && <BoxTab board={board} events={events} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}

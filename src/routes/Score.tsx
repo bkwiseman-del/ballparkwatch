@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
-import { FieldDiamond, type BaseName } from '@/components/FieldDiamond'
+import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
 import { computeBattingLines, pitchCounts } from '@/lib/stats'
 import {
@@ -231,6 +231,10 @@ export default function Score() {
         <InPlayFlow
           batter={s.currentBatter}
           runners={s.runnersOnBase}
+          defense={(live.half === 'top' ? s.lineups.home : s.lineups.away).map((p) => ({
+            pos: p.default_position,
+            name: p.name,
+          }))}
           onCancel={() => setInPlay(false)}
           onConfirm={(result, payload) => {
             act(result, payload)
@@ -550,25 +554,21 @@ const POSITIONS: { n: number; label: string }[] = [
   { n: 9, label: 'RF' },
 ]
 
-// spray zone id -> fielding position number (who fielded it)
-const ZONE_POS: Record<string, number> = {
-  P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9,
-}
-
 function InPlayFlow({
   batter,
   runners,
+  defense,
   onCancel,
   onConfirm,
 }: {
   batter: Player | null
   runners: { first: Player | null; second: Player | null; third: Player | null }
+  defense: Fielder[]
   onCancel: () => void
   onConfirm: (result: EventType, payload: EventPayload) => void
 }) {
   const [result, setResult] = useState<EventType>('single')
-  const [zone, setZone] = useState<string | null>(null) // fielder/position (outs)
-  const [landing, setLanding] = useState<{ x: number; y: number } | null>(null) // free point (hits)
+  const [landing, setLanding] = useState<{ x: number; y: number } | null>(null) // field coords (hits)
   const [fielders, setFielders] = useState<number[]>([])
 
   const onBase: OnBase[] = [
@@ -582,7 +582,18 @@ function InPlayFlow({
   const isError = result === 'error'
   const isHit = ['single', 'double', 'triple', 'home_run'].includes(result)
   const showCredit = isOut || isError
-  const sprayLabel = isHit ? 'Where did it land? · tap anywhere' : 'Where did it go?'
+
+  // current runners as id-based bases + a name resolver, for the tap field
+  const baseIds = {
+    first: runners.first?.id ?? null,
+    second: runners.second?.id ?? null,
+    third: runners.third?.id ?? null,
+  }
+  const runnerName = (id: string) => {
+    for (const r of [runners.first, runners.second, runners.third])
+      if (r && r.id === id) return (r.name.split(' ').pop() ?? r.name).toUpperCase()
+    return null
+  }
 
   const pickResult = (t: EventType) => {
     setResult(t)
@@ -618,21 +629,23 @@ function InPlayFlow({
           ))}
         </div>
 
-        {/* where did it go */}
-        <SectionLabel>{sprayLabel}</SectionLabel>
-        <div className="mx-auto w-full max-w-[320px] border-2 border-gold/40">
-          <SprayField
-            mode={isHit ? 'landing' : 'fielder'}
-            zone={zone}
-            onZone={(id) => {
-              setZone(id)
-              // seed the putout sequence with whoever fielded it (out/error only)
-              setFielders(showCredit && ZONE_POS[id] ? [ZONE_POS[id]] : [])
-            }}
-            point={landing}
-            onPoint={setLanding}
-          />
-        </div>
+        {/* where did it land — hits tap the same field the viewer shows */}
+        {isHit && (
+          <>
+            <SectionLabel>Where did it land? · tap the field</SectionLabel>
+            <div className="mx-auto w-full max-w-[300px] border-2 border-gold/40">
+              <FieldDiamond
+                bases={baseIds}
+                nameOf={runnerName}
+                fielders={defense}
+                batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
+                onFieldTap={setLanding}
+                marker={landing}
+                className="block w-full"
+              />
+            </div>
+          </>
+        )}
 
         {/* who made the out / error — only when relevant */}
         {showCredit && (
@@ -661,7 +674,7 @@ function InPlayFlow({
               resolution,
               rbi: runs,
               advances,
-              ...(isHit ? (landing ? { spray: landing } : {}) : zone ? { location: zone } : {}),
+              ...(isHit && landing ? { spray: landing } : {}),
               ...(fielders.length ? { fielders } : {}),
             })
           }
@@ -787,107 +800,6 @@ function Resolver({
   )
 }
 
-/* zone-tap spray field — geometry from the design spec (State 2) */
-const SPRAY_WEDGES: { id: string; d: string; cx: number; cy: number }[] = [
-  { id: 'LF', d: 'M150 200 L82 132 L52 80 A140 44 0 0 1 104 48 L150 64 Z', cx: 80, cy: 92 },
-  { id: 'CF', d: 'M150 64 L104 48 A140 44 0 0 1 196 48 L150 64 Z', cx: 150, cy: 52 },
-  { id: 'RF', d: 'M150 200 L218 132 L248 80 A140 44 0 0 0 196 48 L150 64 Z', cx: 220, cy: 92 },
-]
-const SPRAY_INFIELD: { id: string; x: number; y: number }[] = [
-  { id: '3B', x: 100, y: 150 },
-  { id: 'SS', x: 124, y: 112 },
-  { id: 'P', x: 150, y: 150 },
-  { id: '2B', x: 176, y: 112 },
-  { id: '1B', x: 200, y: 150 },
-  { id: 'C', x: 150, y: 192 },
-]
-
-function SprayField({
-  mode,
-  zone,
-  onZone,
-  point,
-  onPoint,
-}: {
-  mode: 'fielder' | 'landing'
-  zone: string | null
-  onZone: (id: string) => void
-  point: { x: number; y: number } | null
-  onPoint: (p: { x: number; y: number }) => void
-}) {
-  const landing = mode === 'landing'
-  const wedge = SPRAY_WEDGES.find((w) => w.id === zone)
-  const infield = SPRAY_INFIELD.find((z) => z.id === zone)
-  const marker = landing
-    ? point
-    : wedge
-      ? { x: wedge.cx, y: wedge.cy }
-      : infield
-        ? { x: infield.x, y: infield.y }
-        : null
-
-  // In landing mode, tapping anywhere drops a marker at that field point.
-  const onSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!landing) return
-    const r = e.currentTarget.getBoundingClientRect()
-    const x = Math.round(((e.clientX - r.left) / r.width) * 300)
-    const y = Math.round(((e.clientY - r.top) / r.height) * 215)
-    onPoint({ x, y })
-  }
-
-  const ignore = landing ? ({ pointerEvents: 'none' } as const) : undefined
-
-  return (
-    <svg
-      viewBox="0 0 300 215"
-      className="block w-full"
-      role="img"
-      aria-label="Spray field"
-      onClick={onSvgClick}
-      style={landing ? { cursor: 'crosshair' } : undefined}
-    >
-      <rect width="300" height="215" fill="#2C5234" />
-      {SPRAY_WEDGES.map((w) => (
-        <path
-          key={w.id}
-          d={w.d}
-          onClick={landing ? undefined : () => onZone(w.id)}
-          fill={!landing && zone === w.id ? 'rgba(201,161,74,.4)' : 'rgba(244,236,216,.06)'}
-          stroke={!landing && zone === w.id ? '#C9A14A' : 'rgba(244,236,216,.22)'}
-          strokeWidth={!landing && zone === w.id ? 2 : 1.5}
-          style={landing ? ignore : { cursor: 'pointer' }}
-        />
-      ))}
-      {!landing &&
-        SPRAY_WEDGES.map((w) => (
-          <text key={w.id + 't'} x={w.cx} y={w.cy} textAnchor="middle" fontSize="11" fontWeight="700"
-            fill={zone === w.id ? '#C9A14A' : 'rgba(244,236,216,.7)'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
-            {w.id}
-          </text>
-        ))}
-      {/* diamond outline */}
-      <polygon points="150,200 218,132 150,64 82,132" fill="none" stroke="#e9ddc2" strokeWidth="2" style={ignore} />
-      {/* infield position hotspots — fielder mode only */}
-      {!landing &&
-        SPRAY_INFIELD.map((z) => (
-          <g key={z.id} onClick={() => onZone(z.id)} style={{ cursor: 'pointer' }}>
-            <circle cx={z.x} cy={z.y} r="14" fill={zone === z.id ? '#C9A14A' : 'rgba(26,42,74,.35)'} />
-            <text x={z.x} y={z.y + 4} textAnchor="middle" fontSize="10" fontWeight="700"
-              fill={zone === z.id ? '#1A2A4A' : '#F4ECD8'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
-              {z.id}
-            </text>
-          </g>
-        ))}
-      {/* spray line + landing marker */}
-      {marker && (
-        <g style={ignore}>
-          <line x1="150" y1="198" x2={marker.x} y2={marker.y} stroke="#C9A14A" strokeWidth="2" strokeDasharray="5 4" />
-          <circle cx={marker.x} cy={marker.y} r="6" fill="#F4ECD8" stroke="#C9A14A" strokeWidth="2.5" />
-        </g>
-      )}
-    </svg>
-  )
-}
 
 const DESTS: { d: Dest; label: string }[] = [
   { d: 0, label: 'OUT' },
