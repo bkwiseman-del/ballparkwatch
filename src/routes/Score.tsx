@@ -579,6 +579,7 @@ function InPlayFlow({
           result={result}
           batter={batter}
           onBase={onBase}
+          hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
           onResolve={(resolution, runs) =>
             onConfirm(result, {
               resolution,
@@ -640,11 +641,13 @@ function Resolver({
   result,
   batter,
   onBase,
+  hideBatter = false,
   onResolve,
 }: {
   result: EventType
   batter: Player | null
   onBase: OnBase[]
+  hideBatter?: boolean
   onResolve: (resolution: Resolution, runs: number) => void
 }) {
   const adv = RUNNER_ADVANCE[result]
@@ -667,13 +670,20 @@ function Resolver({
     onResolve(resolution, runs)
   }
 
+  const nothingToResolve = hideBatter && onBase.length === 0
   return (
     <div className="mt-4 border-t-2 border-gold/30 pt-3">
       <p className="mb-2 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-green">
-        Where did each runner end up?
+        {nothingToResolve
+          ? 'Batter is out'
+          : hideBatter
+            ? 'Where did each runner end up?'
+            : 'Where did the batter & runners end up?'}
       </p>
       <div className="flex flex-col gap-3">
-        <Ladder label="BATTER" name={batter?.name ?? 'Batter'} value={dest['batter'] ?? 0} onPick={(d) => set('batter', d)} />
+        {!hideBatter && (
+          <Ladder label="BATTER" name={batter?.name ?? 'Batter'} value={dest['batter'] ?? 0} onPick={(d) => set('batter', d)} />
+        )}
         {onBase.map((r) => (
           <Ladder
             key={r.player.id}
