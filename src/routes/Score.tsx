@@ -477,6 +477,11 @@ const POSITIONS: { n: number; label: string }[] = [
   { n: 9, label: 'RF' },
 ]
 
+// spray zone id -> fielding position number (who fielded it)
+const ZONE_POS: Record<string, number> = {
+  P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9,
+}
+
 function InPlayFlow({
   batter,
   runners,
@@ -528,7 +533,14 @@ function InPlayFlow({
         {/* where did it go */}
         <SectionLabel>Where did it go?</SectionLabel>
         <div className="mx-auto w-full max-w-[320px] border-2 border-gold/40">
-          <SprayField selected={location} onSelect={setLocation} />
+          <SprayField
+            selected={location}
+            onSelect={(id) => {
+              setLocation(id)
+              // seed the putout sequence with whoever fielded it
+              setFielders(ZONE_POS[id] ? [ZONE_POS[id]] : [])
+            }}
+          />
         </div>
 
         {/* who made the play */}
