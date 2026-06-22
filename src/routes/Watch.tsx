@@ -74,7 +74,7 @@ export default function Watch() {
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<SprayViz | null>(null)
   const loadingEvents = useRef(false)
-  const lastFlashSeq = useRef<number | null>(null)
+  const prevMaxSeq = useRef<number | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
 
   const loadEvents = useCallback(async () => {
@@ -111,22 +111,28 @@ export default function Watch() {
     }
   }, [gameId, loadEvents])
 
-  // Briefly flash the spray (dashed line + ball) when a new located play arrives.
+  // Briefly animate the spray when a *new* located play arrives (not on load).
   useEffect(() => {
-    const located = events.filter((e) => e.payload?.spray || e.payload?.location)
-    const last = located[located.length - 1]
-    if (!last) return
-    if (lastFlashSeq.current === null) {
-      lastFlashSeq.current = last.seq // don't flash history on first load
+    if (events.length === 0) return
+    const maxSeq = Math.max(...events.map((e) => e.seq))
+    if (prevMaxSeq.current === null) {
+      prevMaxSeq.current = maxSeq // baseline the first load — don't replay history
       return
     }
-    if (last.seq > lastFlashSeq.current) {
-      lastFlashSeq.current = last.seq
-      const viz = buildViz(last.payload, last.seq)
-      if (viz) {
-        setFlash(viz)
-        window.clearTimeout(flashTimer.current)
-        flashTimer.current = window.setTimeout(() => setFlash(null), 4500)
+    if (maxSeq > prevMaxSeq.current) {
+      const baseline = prevMaxSeq.current
+      prevMaxSeq.current = maxSeq
+      const fresh = events
+        .filter((e) => e.seq > baseline && (e.payload?.spray || e.payload?.location))
+        .sort((a, b) => a.seq - b.seq)
+      const last = fresh[fresh.length - 1]
+      if (last) {
+        const viz = buildViz(last.payload, last.seq)
+        if (viz) {
+          setFlash(viz)
+          window.clearTimeout(flashTimer.current)
+          flashTimer.current = window.setTimeout(() => setFlash(null), 4500)
+        }
       }
     }
   }, [events])
