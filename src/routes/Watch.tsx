@@ -90,6 +90,9 @@ export default function Watch() {
     runners: occupancy(live.bases),
   }
 
+  // Between half-innings: the scorer is at its between-innings screen (3 outs).
+  const between = info.status === 'live' && (live.outs ?? 0) >= 3
+
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream">
       {/* branded header */}
@@ -110,8 +113,8 @@ export default function Watch() {
       {/* score panel — full width */}
       <ScorePanel state={board} />
 
-      {/* batter / pitcher strip */}
-      {info.status === 'live' && <BatterPitcherStrip info={info} live={live} events={events} />}
+      {/* batter / pitcher strip (hidden between innings) */}
+      {info.status === 'live' && !between && <BatterPitcherStrip info={info} live={live} events={events} />}
 
       {/* tab bar */}
       <div className="flex border-y-2 border-gold bg-[#122019]">
@@ -131,7 +134,7 @@ export default function Watch() {
 
       {/* content */}
       <div className="flex-1 p-4">
-        {tab === 'field' && <FieldTab info={info} live={live} events={events} />}
+        {tab === 'field' && (between ? <Standby info={info} live={live} /> : <FieldTab info={info} live={live} events={events} />)}
         {tab === 'plays' && <PlaysTab events={events} />}
         {tab === 'box' && <BoxTab board={board} events={events} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
@@ -197,6 +200,51 @@ function BatterPitcherStrip({
       </div>
     </div>
   )
+}
+
+function Standby({ info, live }: { info: PublicGame; live: LiveGame }) {
+  const nextTop = live.half === 'bottom'
+  const order = info.lineups?.[nextTop ? 'away' : 'home'] ?? []
+  const idx = (nextTop ? live.awayBatterIdx : live.homeBatterIdx) % (order.length || 1)
+  const due = order.length ? [0, 1, 2].map((i) => order[(idx + i) % order.length]) : []
+  const label = live.half === 'top' ? 'Middle' : 'End'
+  return (
+    <div className="flex flex-col items-center gap-5 py-12 text-center">
+      <StitchedBall />
+      <p className="font-display text-3xl leading-tight text-cream">
+        {label}
+        <br />
+        of the {ordinalNum(live.inning)}
+      </p>
+      <p className="font-athletic text-sm uppercase tracking-[.12em] text-muted-green">
+        {info.away.code ?? 'AWY'} {live.awayScore} · {info.home.code ?? 'HOM'} {live.homeScore}
+      </p>
+      {due.length > 0 && (
+        <div className="w-full max-w-xs border-t border-gold/30 pt-4">
+          <p className="mb-1 font-athletic text-[10px] uppercase tracking-[.16em] text-muted-green">Due up</p>
+          <p className="font-data text-sm text-cream">
+            {due.map((p) => `${p.jersey ?? ''} ${p.name.split(' ').pop()}`).join(' · ')}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StitchedBall() {
+  return (
+    <svg width="56" height="56" viewBox="0 0 100 100" aria-hidden>
+      <circle cx="50" cy="50" r="36" fill="none" stroke="#C9A14A" strokeWidth="5" />
+      <path d="M34 26 q12 24 0 48" fill="none" stroke="#A6342E" strokeWidth="4" strokeDasharray="2.5 5" strokeLinecap="round" />
+      <path d="M66 26 q-12 24 0 48" fill="none" stroke="#A6342E" strokeWidth="4" strokeDasharray="2.5 5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function ordinalNum(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
 /* ---------------------------------------------------------------- tabs */
