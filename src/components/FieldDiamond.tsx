@@ -23,6 +23,9 @@ export type SprayViz = {
 export const POS_BY_NUM: Record<number, string> = {
   1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
 }
+export const NUM_BY_POS: Record<string, number> = {
+  P: 1, C: 2, '1B': 3, '2B': 4, '3B': 5, SS: 6, LF: 7, CF: 8, RF: 9,
+}
 
 // where each defensive position stands on the field (kept off the bags so
 // runner chips don't collide)
@@ -47,6 +50,8 @@ export function FieldDiamond({
   spray,
   onFieldTap,
   marker,
+  onFielderTap,
+  sequence,
   className = '',
 }: {
   bases: Bases
@@ -57,6 +62,8 @@ export function FieldDiamond({
   spray?: SprayViz | null
   onFieldTap?: (p: { x: number; y: number }) => void
   marker?: { x: number; y: number } | null
+  onFielderTap?: (num: number) => void
+  sequence?: number[]
   className?: string
 }) {
   const label = (id: string | null) => (id && nameOf ? nameOf(id) : null)
@@ -95,11 +102,22 @@ export function FieldDiamond({
       <circle cx="170" cy="256" r="13" fill="#b07a3e" />
       <rect x="166" y="253" width="8" height="4" fill="#F4ECD8" />
 
-      {/* fielders (defense) — compact chips */}
+      {/* fielders (defense) — compact chips, tappable to build the putout */}
       {fielders?.map((f) => {
         const p = f.pos ? FIELDER_POS[f.pos] : undefined
         if (!p) return null
-        return <FielderDot key={f.pos} p={p} pos={f.pos!} name={f.name} />
+        const num = f.pos ? NUM_BY_POS[f.pos] : undefined
+        const order = num != null && sequence ? sequence.indexOf(num) : -1
+        return (
+          <FielderDot
+            key={f.pos}
+            p={p}
+            pos={f.pos!}
+            name={f.name}
+            order={order}
+            onTap={onFielderTap && num != null ? () => onFielderTap(num) : undefined}
+          />
+        )
       })}
 
       {/* bases */}
@@ -139,26 +157,52 @@ export function FieldDiamond({
   )
 }
 
-// Compact single chip per fielder: "POS Name" (e.g. "SS Webb").
-function FielderDot({ p, pos, name }: { p: { x: number; y: number }; pos: string; name: string }) {
+// Compact single chip per fielder: "POS Name" (e.g. "SS Webb"). Tappable to
+// build a putout sequence; shows an order badge when selected.
+function FielderDot({
+  p,
+  pos,
+  name,
+  order = -1,
+  onTap,
+}: {
+  p: { x: number; y: number }
+  pos: string
+  name: string
+  order?: number
+  onTap?: () => void
+}) {
   const last = name.trim().split(/\s+/).pop() ?? name
   const text = `${pos} ${last}`
   const w = text.length * 5.6 + 10
   const h = 16
+  const selected = order >= 0
   return (
-    <g>
-      <rect x={p.x - w / 2} y={p.y - h / 2} width={w} height={h} fill="#1A2A4A" opacity="0.92" />
+    <g
+      onClick={onTap ? (e) => { e.stopPropagation(); onTap() } : undefined}
+      style={onTap ? { cursor: 'pointer' } : undefined}
+    >
+      <rect x={p.x - w / 2} y={p.y - h / 2} width={w} height={h} fill={selected ? '#C9A14A' : '#1A2A4A'} opacity="0.95" />
       <text
         x={p.x}
         y={p.y + 4}
         textAnchor="middle"
         fontSize="10.5"
         fontWeight="600"
-        style={{ fontFamily: "'Saira Condensed', sans-serif" }}
+        style={{ fontFamily: "'Saira Condensed', sans-serif", pointerEvents: 'none' }}
       >
-        <tspan fill="#C9A14A">{pos} </tspan>
-        <tspan fill="#F4ECD8">{last}</tspan>
+        <tspan fill={selected ? '#1A2A4A' : '#C9A14A'}>{pos} </tspan>
+        <tspan fill={selected ? '#1A2A4A' : '#F4ECD8'}>{last}</tspan>
       </text>
+      {selected && (
+        <g style={{ pointerEvents: 'none' }}>
+          <circle cx={p.x + w / 2} cy={p.y - h / 2} r="7" fill="#A6342E" />
+          <text x={p.x + w / 2} y={p.y - h / 2 + 3} textAnchor="middle" fontSize="9" fontWeight="700" fill="#F4ECD8"
+            style={{ fontFamily: "'Saira Condensed', sans-serif" }}>
+            {order + 1}
+          </text>
+        </g>
+      )}
     </g>
   )
 }

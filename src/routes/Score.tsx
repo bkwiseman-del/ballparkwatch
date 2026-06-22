@@ -629,8 +629,10 @@ function InPlayFlow({
           ))}
         </div>
 
-        {/* where did the ball go — tap the same field the viewer shows */}
-        <SectionLabel>{isHit ? 'Where did it land?' : 'Where did it go?'} · tap the field</SectionLabel>
+        {/* where did the ball go — tap the field; on outs tap fielders for the putout */}
+        <SectionLabel>
+          {isHit ? 'Where did it land? · tap the field' : 'Tap where it went · then tap fielders for the out'}
+        </SectionLabel>
         <div className="mx-auto w-full max-w-[300px] border-2 border-gold/40">
           <FieldDiamond
             bases={baseIds}
@@ -639,6 +641,8 @@ function InPlayFlow({
             batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
             onFieldTap={setLanding}
             marker={landing}
+            onFielderTap={showCredit ? (num) => setFielders((s) => [...s, num]) : undefined}
+            sequence={showCredit ? fielders : undefined}
             className="block w-full"
           />
         </div>
