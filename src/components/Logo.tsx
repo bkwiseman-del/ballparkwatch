@@ -13,8 +13,8 @@ export function HeaderWordmark({ className = '' }: { className?: string }) {
   return (
     <span className={`flex items-center gap-2 ${className}`}>
       <BallMark className="h-8 w-8" />
-      <span className="font-display text-lg leading-none tracking-tight">
-        Ballpark <span className="text-gold">Watch</span>
+      <span className="font-display text-lg leading-none tracking-tight text-cream">
+        Ballpark <span className="text-barn-red">Watch</span>
       </span>
     </span>
   )

@@ -35,7 +35,7 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-night-green p-6">
+    <div className="flex min-h-full flex-col items-center justify-center bg-cream p-6">
       <BrandLogo className="mb-6 w-56 max-w-[70vw]" />
       <div className="w-full max-w-sm border-2 border-gold bg-field-green p-6">
         <p className="mb-6 text-center font-athletic uppercase tracking-[0.14em] text-muted-green">

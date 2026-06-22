@@ -33,7 +33,7 @@ export default function Setup() {
 
   return (
     <div className="min-h-full bg-cream text-ink">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-ink bg-field-green px-4 py-2.5 text-cream">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-gold bg-ink px-4 py-2.5 text-cream">
         <HeaderWordmark />
         <button
           onClick={signOut}
