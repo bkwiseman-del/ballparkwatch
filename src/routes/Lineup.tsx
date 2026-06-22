@@ -96,7 +96,7 @@ export default function Lineup() {
       if (ins.error) return setError(ins.error.message)
     }
     setSaved(true)
-    setTimeout(() => navigate('/setup'), 700)
+    setTimeout(() => navigate(`/score/${gameId}`), 700)
   }
 
   if (loading) return <Centered>Loading lineup…</Centered>
