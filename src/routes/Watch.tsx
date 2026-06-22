@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { ScorePanel } from '@/components/ScorePanel'
-import { FieldDiamond } from '@/components/FieldDiamond'
+import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type SprayViz } from '@/components/FieldDiamond'
 import { HeaderWordmark } from '@/components/Logo'
 import { resolveCode } from '@/lib/scoreboard'
 import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
@@ -29,6 +29,38 @@ type PublicGame = {
 
 type LineupSlot = { name: string; jersey: string | null; pos: string | null }
 
+// Spray was captured in the in-play screen's space (home 150,200). Map it onto
+// the viewer field's space (home 170,330) via the diamond's orthogonal basis.
+function sprayToField(p: { x: number; y: number }): { x: number; y: number } {
+  const a = ((p.x - 150) * 68 + (p.y - 200) * -68) / (68 * 68 + 68 * 68)
+  const b = ((p.x - 150) * -68 + (p.y - 200) * -68) / (68 * 68 + 68 * 68)
+  return { x: 170 + a * 74 + b * -74, y: 330 + a * -74 + b * -74 }
+}
+
+// Centroids of the in-play screen's zones (same space as sprayToField input).
+const ZONE_CENTROID: Record<string, { x: number; y: number }> = {
+  LF: { x: 80, y: 92 }, CF: { x: 150, y: 52 }, RF: { x: 220, y: 92 },
+  '3B': { x: 100, y: 150 }, SS: { x: 124, y: 112 }, P: { x: 150, y: 150 },
+  '2B': { x: 176, y: 112 }, '1B': { x: 200, y: 150 }, C: { x: 150, y: 192 },
+}
+
+// Build the animated spray for a play: hits use the free landing point; outs use
+// the fielder sequence (contact = first fielder, throws = the rest of the putout).
+function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null {
+  if (!payload) return null
+  if (payload.spray) return { contact: sprayToField(payload.spray), nonce: seq }
+  if (Array.isArray(payload.fielders) && payload.fielders.length) {
+    const pts = payload.fielders
+      .map((n) => FIELDER_POS[POS_BY_NUM[n]])
+      .filter((p): p is { x: number; y: number } => !!p)
+    if (pts.length) return { contact: pts[0], throws: pts.slice(1), nonce: seq }
+  }
+  if (typeof payload.location === 'string' && ZONE_CENTROID[payload.location]) {
+    return { contact: sprayToField(ZONE_CENTROID[payload.location]), nonce: seq }
+  }
+  return null
+}
+
 type ViewerEvent = GameEventRow & { batter_name: string | null }
 
 type Tab = 'field' | 'plays' | 'box' | 'stats'
@@ -40,7 +72,10 @@ export default function Watch() {
   const [events, setEvents] = useState<ViewerEvent[]>([])
   const [tab, setTab] = useState<Tab>('field')
   const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState<SprayViz | null>(null)
   const loadingEvents = useRef(false)
+  const lastFlashSeq = useRef<number | null>(null)
+  const flashTimer = useRef<number | undefined>(undefined)
 
   const loadEvents = useCallback(async () => {
     if (!gameId || loadingEvents.current) return
@@ -75,6 +110,26 @@ export default function Watch() {
       supabase.removeChannel(ch)
     }
   }, [gameId, loadEvents])
+
+  // Briefly flash the spray (dashed line + ball) when a new located play arrives.
+  useEffect(() => {
+    const located = events.filter((e) => e.payload?.spray || e.payload?.location)
+    const last = located[located.length - 1]
+    if (!last) return
+    if (lastFlashSeq.current === null) {
+      lastFlashSeq.current = last.seq // don't flash history on first load
+      return
+    }
+    if (last.seq > lastFlashSeq.current) {
+      lastFlashSeq.current = last.seq
+      const viz = buildViz(last.payload, last.seq)
+      if (viz) {
+        setFlash(viz)
+        window.clearTimeout(flashTimer.current)
+        flashTimer.current = window.setTimeout(() => setFlash(null), 4500)
+      }
+    }
+  }, [events])
 
   if (error) return <Center>{error}</Center>
   if (!info) return <Center>Loading…</Center>
@@ -134,7 +189,7 @@ export default function Watch() {
 
       {/* content */}
       <div className="flex-1 p-4">
-        {tab === 'field' && (between ? <Standby info={info} live={live} /> : <FieldTab info={info} live={live} events={events} />)}
+        {tab === 'field' && (between ? <Standby info={info} live={live} /> : <FieldTab info={info} live={live} events={events} spray={flash} />)}
         {tab === 'plays' && <PlaysTab events={events} />}
         {tab === 'box' && <BoxTab board={board} events={events} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
@@ -255,7 +310,17 @@ function nameMap(events: ViewerEvent[]) {
   return m
 }
 
-function FieldTab({ info, live, events }: { info: PublicGame; live: LiveGame; events: ViewerEvent[] }) {
+function FieldTab({
+  info,
+  live,
+  events,
+  spray,
+}: {
+  info: PublicGame
+  live: LiveGame
+  events: ViewerEvent[]
+  spray?: SprayViz | null
+}) {
   const map = nameMap(events)
   const plays = buildPlayByPlay(events, (id) => (id ? map.get(id) ?? null : null))
   const latest = plays[0]
@@ -288,6 +353,7 @@ function FieldTab({ info, live, events }: { info: PublicGame; live: LiveGame; ev
           nameOf={runnerName}
           fielders={fielders}
           batterLabel={batterLabel}
+          spray={spray}
           className="block w-full"
         />
       </div>

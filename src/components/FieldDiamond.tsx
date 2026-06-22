@@ -12,10 +12,21 @@ const THIRD = { x: 96, y: 256 }
 
 export type BaseName = 'first' | 'second' | 'third'
 export type Fielder = { pos: string | null; name: string }
+// Spray viz: ball contact point + optional throw path (fielder positions).
+// `nonce` keys the animation so it replays for each new play.
+export type SprayViz = {
+  contact: { x: number; y: number }
+  throws?: { x: number; y: number }[]
+  nonce: number
+}
+
+export const POS_BY_NUM: Record<number, string> = {
+  1: 'P', 2: 'C', 3: '1B', 4: '2B', 5: '3B', 6: 'SS', 7: 'LF', 8: 'CF', 9: 'RF',
+}
 
 // where each defensive position stands on the field (kept off the bags so
 // runner chips don't collide)
-const FIELDER_POS: Record<string, { x: number; y: number }> = {
+export const FIELDER_POS: Record<string, { x: number; y: number }> = {
   P: { x: 170, y: 272 },
   C: { x: 170, y: 356 },
   '1B': { x: 298, y: 240 },
@@ -33,6 +44,7 @@ export function FieldDiamond({
   onRunnerTap,
   batterLabel,
   fielders,
+  spray,
   className = '',
 }: {
   bases: Bases
@@ -40,6 +52,7 @@ export function FieldDiamond({
   onRunnerTap?: (base: BaseName, id: string) => void
   batterLabel?: string | null
   fielders?: Fielder[]
+  spray?: SprayViz | null
   className?: string
 }) {
   const label = (id: string | null) => (id && nameOf ? nameOf(id) : null)
@@ -92,6 +105,9 @@ export function FieldDiamond({
           {batterLabel && <Pill x={HOME.x + 52} y={HOME.y + 1} text={batterLabel} bg="#A6342E" fg="#F4ECD8" />}
         </g>
       )}
+
+      {/* transient spray — ball travels home → contact, then each throw in order */}
+      {spray && <AnimatedSpray key={spray.nonce} viz={spray} home={HOME} />}
     </svg>
   )
 }
@@ -116,6 +132,27 @@ function FielderDot({ p, pos, name }: { p: { x: number; y: number }; pos: string
         <tspan fill="#C9A14A">{pos} </tspan>
         <tspan fill="#F4ECD8">{last}</tspan>
       </text>
+    </g>
+  )
+}
+
+function AnimatedSpray({ viz, home }: { viz: SprayViz; home: { x: number; y: number } }) {
+  const pts = [home, viz.contact, ...(viz.throws ?? [])]
+  let len = 0
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+  const d = `M ${pts[0].x} ${pts[0].y} ` + pts.slice(1).map((p) => `L ${p.x} ${p.y}`).join(' ')
+  const dur = `${(0.45 * (pts.length - 1) + 0.25).toFixed(2)}s`
+  return (
+    <g>
+      <path d={d} fill="none" stroke="#C9A14A" strokeWidth="2.5" strokeDasharray={len} strokeDashoffset={len}>
+        <animate attributeName="stroke-dashoffset" from={len} to="0" dur={dur} fill="freeze" />
+      </path>
+      {pts.slice(1).map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#C9A14A" />
+      ))}
+      <circle r="6.5" fill="#F4ECD8" stroke="#C9A14A" strokeWidth="2.5">
+        <animateMotion dur={dur} fill="freeze" path={d} />
+      </circle>
     </g>
   )
 }
