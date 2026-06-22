@@ -14,7 +14,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'ball.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Ballpark Watch',
         short_name: 'Ballpark',
@@ -24,8 +24,8 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         icons: [
-          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          // TODO: add raster pwa-192.png / pwa-512.png (incl. maskable) before launch.
+          { src: 'ball.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
     }),

@@ -20,6 +20,7 @@ export type Team = {
   owner_id: string
   name: string
   season: string | null
+  is_favorite: boolean
   created_at: string
 }
 

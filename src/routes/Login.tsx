@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthProvider'
+import { BrandLogo } from '@/components/Logo'
 
 export default function Login() {
   const { session, signIn, signUp } = useAuth()
@@ -34,10 +35,10 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-night-green p-6">
+    <div className="flex min-h-full flex-col items-center justify-center bg-night-green p-6">
+      <BrandLogo className="mb-6 w-56 max-w-[70vw]" />
       <div className="w-full max-w-sm border-2 border-gold bg-field-green p-6">
-        <h1 className="mb-1 font-display text-3xl text-cream">Ballpark Watch</h1>
-        <p className="mb-6 font-athletic uppercase tracking-[0.14em] text-muted-green">
+        <p className="mb-6 text-center font-athletic uppercase tracking-[0.14em] text-muted-green">
           {mode === 'in' ? 'Operator sign in' : 'Create operator account'}
         </p>
 
