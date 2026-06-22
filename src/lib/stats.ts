@@ -146,17 +146,17 @@ export type PlayLine = {
   kind: PlayKind
 }
 
+type NameOf = (id: string | null | undefined) => string | null
+
 // Events that belong in the play feed (pitches are excluded).
 const FEED_TYPES = new Set<EventType>([
   'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch', 'strikeout',
-  'groundout', 'flyout', 'lineout', 'error', 'fielders_choice', 'inning_change',
-  'game_start', 'game_end',
+  'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+  'runner_advance', 'stolen_base', 'caught_stealing', 'picked_off',
+  'inning_change', 'game_start', 'game_end',
 ])
 
-export function buildPlayByPlay(
-  events: GameEventRow[],
-  batterName: (batterId: string | null | undefined) => string | null,
-): PlayLine[] {
+export function buildPlayByPlay(events: GameEventRow[], nameOf: NameOf): PlayLine[] {
   const lines: PlayLine[] = []
   let state: LiveGame = INITIAL_LIVE
   const sorted = events.slice().sort((a, b) => a.seq - b.seq)
@@ -170,7 +170,7 @@ export function buildPlayByPlay(
         seq: ev.seq,
         inning: before.inning,
         half: before.half,
-        text: describe(ev, before, after, batterName(ev.batter_id)),
+        text: describe(ev, before, after, nameOf),
         kind: playKind(ev.event_type, scored),
       })
     }
@@ -181,23 +181,42 @@ export function buildPlayByPlay(
 
 function playKind(type: EventType, scored: boolean): PlayKind {
   if (scored || type === 'home_run') return 'scoring'
-  if (type === 'strikeout') return 'out'
-  if (type === 'groundout' || type === 'flyout' || type === 'lineout' || type === 'fielders_choice')
+  if (['strikeout', 'groundout', 'flyout', 'lineout', 'fielders_choice', 'caught_stealing', 'picked_off'].includes(type))
     return 'out'
-  if (HIT_TYPES.includes(type) || type === 'walk' || type === 'hit_by_pitch' || type === 'error')
+  if (HIT_TYPES.includes(type) || ['walk', 'hit_by_pitch', 'error', 'stolen_base'].includes(type))
     return 'hit'
   return 'neutral'
 }
 
-function describe(
-  ev: GameEventRow,
-  before: LiveGame,
-  after: LiveGame,
-  name: string | null,
-): string {
-  const who = name ?? 'Batter'
-  const runs = after.awayScore + after.homeScore - (before.awayScore + before.homeScore)
-  const rbi = runs > 0 ? ` (${runs} run${runs === 1 ? '' : 's'})` : ''
+const POS_LABEL: Record<number, string> = {
+  1: 'pitcher', 2: 'catcher', 3: 'first', 4: 'second', 5: 'third',
+  6: 'short', 7: 'left', 8: 'center', 9: 'right',
+}
+function baseWord(b: number): string {
+  return b === 1 ? 'first' : b === 2 ? 'second' : b === 3 ? 'third' : 'home'
+}
+
+// Secondary outcomes (runners scoring/advancing/out) from the per-runner advances.
+function detailFrom(advances: { id: string; from: number; to: number }[] | undefined, nameOf: NameOf): string {
+  if (!advances) return ''
+  const parts: string[] = []
+  for (const a of advances) {
+    if (a.to === a.from) continue // held
+    const nm = nameOf(a.id) ?? 'Runner'
+    if (a.to === 4) parts.push(`${nm} scores`)
+    else if (a.to === 0) parts.push(`${nm} out`)
+    else parts.push(`${nm} to ${baseWord(a.to)}`)
+  }
+  return parts.join(', ')
+}
+
+function describe(ev: GameEventRow, before: LiveGame, after: LiveGame, nameOf: NameOf): string {
+  const who = nameOf(ev.batter_id) ?? 'Batter'
+  const f = ev.payload?.fielders
+  const seq = f && f.length ? f.join('–') : ''
+  const detail = detailFrom(ev.payload?.advances, nameOf)
+  const withDetail = (base: string) => (detail ? `${base}; ${detail}.` : `${base}.`)
+
   switch (ev.event_type) {
     case 'game_start':
       return 'Play ball!'
@@ -205,32 +224,45 @@ function describe(
       return 'Final.'
     case 'inning_change':
       return after.half === 'top'
-        ? `End of the ${ordinal(before.inning)} — middle break.`
+        ? `End of the ${ordinal(before.inning)}.`
         : `Middle of the ${ordinal(before.inning)}.`
     case 'single':
-      return `${who} singles${rbi}.`
+      return withDetail(`${who} singles`)
     case 'double':
-      return `${who} doubles${rbi}.`
+      return withDetail(`${who} doubles`)
     case 'triple':
-      return `${who} triples${rbi}.`
+      return withDetail(`${who} triples`)
     case 'home_run':
-      return `${who} homers${rbi}.`
+      return withDetail(`${who} homers`)
     case 'walk':
-      return `${who} walks.`
+      return withDetail(`${who} walks`)
     case 'hit_by_pitch':
-      return `${who} hit by pitch.`
+      return withDetail(`${who} hit by pitch`)
     case 'strikeout':
       return `${who} strikes out.`
     case 'groundout':
-      return `${who} grounds out.`
+      return withDetail(
+        f && f.length > 1 ? `${who} grounds into ${seq}` : f && f.length === 1 ? `${who} grounds out to ${POS_LABEL[f[0]]}` : `${who} grounds out`,
+      )
     case 'flyout':
-      return `${who} flies out.`
+      return withDetail(f && f.length ? `${who} flies out to ${POS_LABEL[f[0]]}` : `${who} flies out`)
     case 'lineout':
-      return `${who} lines out.`
+      return withDetail(f && f.length ? `${who} lines out to ${POS_LABEL[f[0]]}` : `${who} lines out`)
     case 'error':
-      return `${who} reaches on an error${rbi}.`
+      return withDetail(`${who} reaches on an error${f && f.length ? ` by ${POS_LABEL[f[0]]}` : ''}`)
     case 'fielders_choice':
-      return `${who} reaches on a fielder's choice.`
+      return withDetail(`${who} reaches on a fielder's choice${seq ? ` (${seq})` : ''}`)
+    // baserunning
+    case 'stolen_base':
+      return `${nameOf(ev.payload?.runner) ?? 'Runner'} steals ${baseWord(Number(ev.payload?.to))}.`
+    case 'runner_advance':
+      return Number(ev.payload?.to) === 4
+        ? `${nameOf(ev.payload?.runner) ?? 'Runner'} scores.`
+        : `${nameOf(ev.payload?.runner) ?? 'Runner'} to ${baseWord(Number(ev.payload?.to))}.`
+    case 'caught_stealing':
+      return `${nameOf(ev.payload?.runner) ?? 'Runner'} caught stealing.`
+    case 'picked_off':
+      return `${nameOf(ev.payload?.runner) ?? 'Runner'} picked off.`
     default:
       return who
   }

@@ -29,6 +29,7 @@ export type EventType =
   | 'runner_advance'
   | 'stolen_base'
   | 'caught_stealing'
+  | 'picked_off'
 
 // Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
 export type Dest = 0 | 1 | 2 | 3 | 4
@@ -41,6 +42,8 @@ export type Resolution = {
 
 export type EventPayload = {
   resolution?: Resolution
+  // per-runner movement for play-by-play detail (from/to bases; 0=out, 4=home)
+  advances?: { id: string; from: number; to: Dest }[]
   // mid-AB baserunning
   runner?: string
   to?: Dest
@@ -49,6 +52,9 @@ export type EventPayload = {
   // fielders involved (e.g. [6,4,3]) and rbi credited — for stats/PBP
   fielders?: number[]
   rbi?: number
+  // free-form landing point for hits, or zone label for outs
+  spray?: { x: number; y: number }
+  location?: string
   [k: string]: unknown
 }
 
@@ -115,6 +121,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   runner_advance: 'Runner advance',
   stolen_base: 'Stolen base',
   caught_stealing: 'Caught stealing',
+  picked_off: 'Picked off',
 }
 
 // Event-type groupings used across the app.
@@ -215,7 +222,8 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
       if (pid && to != null) moveRunner(s, pid, to)
       break
     }
-    case 'caught_stealing': {
+    case 'caught_stealing':
+    case 'picked_off': {
       const pid = e.payload?.runner
       if (pid) {
         removeRunner(s, pid)

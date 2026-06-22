@@ -23,6 +23,7 @@ export default function Score() {
   const [strikePopup, setStrikePopup] = useState(false)
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
+  const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
   const [simple, setSimple] = useState(() => localStorage.getItem('bpw_simple') === '1')
 
   const toggleSimple = () => {
@@ -50,11 +51,6 @@ export default function Score() {
     setStrikePopup(false)
     if (live.strikes >= 2) act('strikeout', { kind })
     else act('pitch_strike', { kind })
-  }
-
-  const advanceRunner = (base: BaseName, id: string) => {
-    const from = base === 'first' ? 1 : base === 'second' ? 2 : 3
-    act('runner_advance', { runner: id, to: (from + 1) as Dest })
   }
 
   // Simple mode: one-tap HIT (single, everyone up a base) / OUT (batter out).
@@ -97,14 +93,14 @@ export default function Score() {
               {runnersLabel(live)}
             </span>
             <span className="font-athletic text-[10px] uppercase tracking-wide text-gold">
-              tap runner ▸ advance
+              tap runner ▸ steal · out
             </span>
           </div>
           <div className="mx-auto max-w-[300px]">
             <FieldDiamond
               bases={live.bases}
               nameOf={nameOf}
-              onRunnerTap={advanceRunner}
+              onRunnerTap={(base, id) => setRunnerAction({ base, id })}
               batterLabel={s.currentBatter ? shortName(s.currentBatter) : null}
               className="block w-full"
             />
@@ -211,6 +207,18 @@ export default function Score() {
             act('game_end', { reason })
             setEndPopup(false)
           }}
+        />
+      )}
+      {runnerAction && (
+        <RunnerActionPopup
+          base={runnerAction.base}
+          name={shortName(s.playersById.get(runnerAction.id)) ?? 'Runner'}
+          onAct={(type, payload) => {
+            act(type, payload)
+            setRunnerAction(null)
+          }}
+          runnerId={runnerAction.id}
+          onClose={() => setRunnerAction(null)}
         />
       )}
       {inPlay && (
@@ -440,6 +448,59 @@ function EndGamePopup({
   )
 }
 
+/* --------------------------------------------------------- runner actions */
+
+function RunnerActionPopup({
+  base,
+  name,
+  runnerId,
+  onAct,
+  onClose,
+}: {
+  base: BaseName
+  name: string
+  runnerId: string
+  onAct: (type: EventType, payload: EventPayload) => void
+  onClose: () => void
+}) {
+  const from = base === 'first' ? 1 : base === 'second' ? 2 : 3
+  const next = (from + 1) as Dest
+  const lbl = (d: number) => (d === 2 ? '2nd' : d === 3 ? '3rd' : 'home')
+
+  const options: { label: string; type: EventType; payload: EventPayload; danger?: boolean }[] = []
+  if (from < 3) {
+    options.push({ label: `Steal ${lbl(next)}`, type: 'stolen_base', payload: { runner: runnerId, to: next } })
+    options.push({ label: `Advance to ${lbl(next)}`, type: 'runner_advance', payload: { runner: runnerId, to: next } })
+  } else {
+    options.push({ label: 'Score', type: 'runner_advance', payload: { runner: runnerId, to: 4 } })
+    options.push({ label: 'Steal home', type: 'stolen_base', payload: { runner: runnerId, to: 4 } })
+  }
+  options.push({ label: 'Caught stealing', type: 'caught_stealing', payload: { runner: runnerId }, danger: true })
+  options.push({ label: 'Picked off', type: 'picked_off', payload: { runner: runnerId }, danger: true })
+
+  return (
+    <Overlay onClose={onClose}>
+      <div className="w-[300px] border-[3px] border-gold bg-cream text-ink shadow-hard">
+        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
+          <span className="font-display text-base text-cream">{name}</span>
+          <button onClick={onClose} className="font-athletic text-cream">✕</button>
+        </div>
+        <div className="flex flex-col gap-2 p-3">
+          {options.map((o) => (
+            <button
+              key={o.label}
+              onClick={() => onAct(o.type, o.payload)}
+              className={`py-3 font-display ${o.danger ? 'border-2 border-barn-red text-barn-red' : 'bg-board-green text-cream'}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Overlay>
+  )
+}
+
 /* --------------------------------------------------------- in-play resolve */
 
 const RESULTS: { type: EventType; label: string; group: 'hit' | 'out' | 'other' }[] = [
@@ -583,10 +644,11 @@ function InPlayFlow({
           batter={batter}
           onBase={onBase}
           hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
-          onResolve={(resolution, runs) =>
+          onResolve={(resolution, runs, advances) =>
             onConfirm(result, {
               resolution,
               rbi: runs,
+              advances,
               ...(isHit ? (landing ? { spray: landing } : {}) : zone ? { location: zone } : {}),
               ...(fielders.length ? { fielders } : {}),
             })
@@ -651,7 +713,7 @@ function Resolver({
   batter: Player | null
   onBase: OnBase[]
   hideBatter?: boolean
-  onResolve: (resolution: Resolution, runs: number) => void
+  onResolve: (resolution: Resolution, runs: number, advances: { id: string; from: number; to: Dest }[]) => void
 }) {
   const adv = RUNNER_ADVANCE[result]
   const initial: Record<string, Dest> = {}
@@ -670,7 +732,8 @@ function Resolver({
       batter: dest['batter'] ?? 0,
       runners: Object.fromEntries(onBase.map((r) => [r.player.id, dest[r.player.id] ?? r.from])),
     }
-    onResolve(resolution, runs)
+    const advances = onBase.map((r) => ({ id: r.player.id, from: r.from, to: (dest[r.player.id] ?? r.from) as Dest }))
+    onResolve(resolution, runs, advances)
   }
 
   const nothingToResolve = hideBatter && onBase.length === 0
