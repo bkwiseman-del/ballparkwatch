@@ -339,8 +339,17 @@ function forcedAdvance(s: LiveGame, batterId: string | null) {
 
 function moveRunner(s: LiveGame, pid: string, to: Dest) {
   removeRunner(s, pid)
-  if (to === 4) addRuns(s, 1)
-  else if (to >= 1 && to <= 3) setBase(s.bases, to, pid)
+  if (to === 4) {
+    addRuns(s, 1)
+    return
+  }
+  if (to >= 1 && to <= 3) {
+    // If the target base is occupied by the lead runner, push them up first —
+    // the only legal outcome (e.g. a double steal), so tap order doesn't matter.
+    const occupant = getBase(s.bases, to)
+    if (occupant && occupant !== pid) moveRunner(s, occupant, (to + 1) as Dest)
+    setBase(s.bases, to, pid)
+  }
 }
 
 function removeRunner(s: LiveGame, pid: string) {
