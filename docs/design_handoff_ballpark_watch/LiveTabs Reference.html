@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="display:flex;flex-direction:column;height:100%;min-height:0;background:#15281b;font-family:Archivo,sans-serif">
+
+  <!-- TAB BAR -->
+  <div style="display:flex;background:#122019;border-bottom:1px solid rgba(244,236,216,.15);flex:none">
+    <button onClick="{{ setField }}" style="flex:1;background:transparent;border:none;cursor:pointer;padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px">
+      <span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.08em;color:{{ fieldColor }}">FIELD</span>
+      <sc-if value="{{ showField }}" hint-placeholder-val="{{ true }}"><span style="display:block;width:30px;height:3px;background:#C9A14A"></span></sc-if>
+    </button>
+    <button onClick="{{ setPlays }}" style="flex:1;background:transparent;border:none;cursor:pointer;padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px">
+      <span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.08em;color:{{ playsColor }}">PLAYS</span>
+      <sc-if value="{{ showPlays }}"><span style="display:block;width:30px;height:3px;background:#C9A14A"></span></sc-if>
+    </button>
+    <button onClick="{{ setBox }}" style="flex:1;background:transparent;border:none;cursor:pointer;padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px">
+      <span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.08em;color:{{ boxColor }}">BOX</span>
+      <sc-if value="{{ showBox }}"><span style="display:block;width:30px;height:3px;background:#C9A14A"></span></sc-if>
+    </button>
+    <button onClick="{{ setStats }}" style="flex:1;background:transparent;border:none;cursor:pointer;padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px">
+      <span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.08em;color:{{ statsColor }}">STATS</span>
+      <sc-if value="{{ showStats }}"><span style="display:block;width:30px;height:3px;background:#C9A14A"></span></sc-if>
+    </button>
+  </div>
+
+  <!-- SCROLLABLE CONTENT -->
+  <div style="flex:1;overflow-y:auto;min-height:0">
+
+    <!-- PANEL: FIELD -->
+    <sc-if value="{{ showField }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;flex-direction:column;height:100%;background:#15281b">
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;background:#A6342E;color:#F4ECD8;flex:none">
+        <span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:.04em">▸ LINE DRIVE · LF</span>
+        <span style="font-family:Archivo,sans-serif;font-size:12px;opacity:.92">Reyes — runners going</span>
+      </div>
+      <div style="flex:1;min-height:0;position:relative;background:#2C5234">
+        <svg width="100%" height="100%" viewBox="0 0 340 410" preserveAspectRatio="xMidYMid meet" style="display:block;font-family:'Saira Condensed',sans-serif">
+          <rect x="0" y="0" width="340" height="420" fill="#2C5234"/>
+          <path d="M170 330 L40 200 A176 176 0 0 1 300 200 Z" fill="#326139"/>
+          <line x1="170" y1="330" x2="44" y2="204" stroke="#F4ECD8" stroke-width="2.5"/>
+          <line x1="170" y1="330" x2="296" y2="204" stroke="#F4ECD8" stroke-width="2.5"/>
+          <polygon points="170,330 256,256 170,182 84,256" fill="#b07a3e"/>
+          <polygon points="170,318 242,256 170,194 98,256" fill="#2C5234"/>
+          <polygon points="170,330 256,256 170,182 84,256" fill="none" stroke="#e9ddc2" stroke-width="3"/>
+          <circle cx="170" cy="256" r="13" fill="#b07a3e"/><rect x="166" y="253" width="8" height="4" fill="#F4ECD8"/>
+          <rect x="248" y="248" width="16" height="16" transform="rotate(45 256 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/>
+          <rect x="162" y="162" width="16" height="16" transform="rotate(45 170 170)" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/>
+          <rect x="76" y="248" width="16" height="16" transform="rotate(45 84 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/>
+          <polygon points="170,338 178,342 175,350 165,350 162,342" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/>
+          <path d="M170 338 Q150 230 110 118" fill="none" stroke="#F4ECD8" stroke-width="2.5" stroke-dasharray="6 5" marker-end="url(#bp)"/>
+          <defs><marker id="bp" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><circle cx="4" cy="4" r="3.4" fill="#F4ECD8"/></marker></defs>
+          <text x="14" y="18" font-size="12" font-weight="600" letter-spacing="1.5" fill="#a9c0ad">GREENFIELD · DEFENSE</text>
+          <g font-size="13" font-weight="600" fill="#F4ECD8" text-anchor="middle">
+            <g><circle cx="170" cy="276" r="11" fill="#1A2A4A"/><text x="170" y="280" font-size="10">P</text><text x="170" y="296" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Alvarez</text></g>
+            <g><circle cx="170" cy="352" r="11" fill="#1A2A4A"/><text x="170" y="356" font-size="10">C</text><text x="170" y="370" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Boone</text></g>
+            <g><circle cx="270" cy="238" r="11" fill="#1A2A4A"/><text x="270" y="242" font-size="10">1B</text><text x="270" y="222" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Tran</text></g>
+            <g><circle cx="206" cy="214" r="11" fill="#1A2A4A"/><text x="206" y="218" font-size="10">2B</text><text x="206" y="198" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Ramos</text></g>
+            <g><circle cx="132" cy="214" r="11" fill="#1A2A4A"/><text x="132" y="218" font-size="10">SS</text><text x="132" y="198" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Webb</text></g>
+            <g><circle cx="68" cy="238" r="11" fill="#1A2A4A"/><text x="68" y="242" font-size="10">3B</text><text x="68" y="222" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Foley</text></g>
+            <g><circle cx="96" cy="104" r="11" fill="#1A2A4A"/><text x="96" y="108" font-size="10">LF</text><text x="96" y="88" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Nash</text></g>
+            <g><circle cx="170" cy="62" r="11" fill="#1A2A4A"/><text x="170" y="66" font-size="10">CF</text><text x="170" y="46" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Pope</text></g>
+            <g><circle cx="244" cy="104" r="11" fill="#1A2A4A"/><text x="244" y="108" font-size="10">RF</text><text x="244" y="88" paint-order="stroke" stroke="#2C5234" stroke-width="3.4" stroke-linejoin="round">Diaz</text></g>
+          </g>
+          <g font-size="13" font-weight="700" text-anchor="middle">
+            <circle cx="256" cy="256" r="11" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2"/>
+            <rect x="222" y="270" width="70" height="17" rx="2" fill="#C9A14A"/><text x="257" y="282" fill="#1A2A4A">SHAW · 1B</text>
+            <circle cx="84" cy="256" r="11" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2"/>
+            <rect x="48" y="270" width="84" height="17" rx="2" fill="#C9A14A"/><text x="90" y="282" fill="#1A2A4A">OKAFOR · 3B</text>
+          </g>
+          <g text-anchor="middle">
+            <circle cx="150" cy="328" r="10" fill="#A6342E" stroke="#F4ECD8" stroke-width="1.5"/>
+            <rect x="186" y="318" width="118" height="22" rx="2" fill="#A6342E"/>
+            <text x="245" y="333" font-size="13" font-weight="700" fill="#F4ECD8">▸ REYES · AT BAT</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- PANEL: PLAYS -->
+    <sc-if value="{{ showPlays }}">
+    <div style="background:#FAF4E6">
+      <div style="font-family:'Saira Condensed',sans-serif;font-size:10px;letter-spacing:.16em;color:#A6342E;font-weight:600;padding:11px 18px 6px;border-bottom:1px solid rgba(26,42,74,.18)">PLAY-BY-PLAY · BOTTOM 6TH</div>
+      <div style="display:flex;gap:12px;padding:10px 18px;border-bottom:1px solid rgba(26,42,74,.12)"><span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:11px;color:#A6342E;min-width:40px">●●○</span><span style="font-size:13px;color:#1A2A4A;line-height:1.4"><b>Reyes, A.</b> lines a single to left, scoring Okafor. <b>OAK 4–3</b>.</span></div>
+      <div style="display:flex;gap:12px;padding:10px 18px;border-bottom:1px solid rgba(26,42,74,.12)"><span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:11px;color:#7a6f54;min-width:40px">●●○</span><span style="font-size:13px;color:#1A2A4A;line-height:1.4"><b>Shaw, M.</b> singles to right. Okafor to third.</span></div>
+      <div style="display:flex;gap:12px;padding:10px 18px;border-bottom:1px solid rgba(26,42,74,.12)"><span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:11px;color:#7a6f54;min-width:40px">●○○</span><span style="font-size:13px;color:#1A2A4A;line-height:1.4"><b>Okafor, J.</b> walks on four pitches.</span></div>
+      <div style="display:flex;gap:12px;padding:10px 18px;border-bottom:1px solid rgba(26,42,74,.12)"><span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:11px;color:#2C5234;min-width:40px">OUT</span><span style="font-size:13px;color:#1A2A4A;line-height:1.4"><b>Cole, R.</b> strikes out swinging. <b>1 out</b>.</span></div>
+      <div style="display:flex;gap:12px;padding:10px 18px"><span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:11px;color:#7a6f54;min-width:40px">T6 ·</span><span style="font-size:13px;color:#1A2A4A;line-height:1.4">Greenfield retired in order.</span></div>
+    </div>
+    </sc-if>
+
+    <!-- PANEL: BOX -->
+    <sc-if value="{{ showBox }}">
+    <div style="background:#FAF4E6;font-family:Archivo,sans-serif">
+      <!-- line score -->
+      <div style="padding:11px 14px;border-bottom:2px solid #1A2A4A;font-family:'Saira Condensed',sans-serif">
+        <div style="display:grid;grid-template-columns:1fr repeat(7,1fr) 8px 22px 22px 22px;font-size:11px;color:#1A2A4A;align-items:center">
+          <div></div><div style="text-align:center;color:#7a6f54">1</div><div style="text-align:center;color:#7a6f54">2</div><div style="text-align:center;color:#7a6f54">3</div><div style="text-align:center;color:#7a6f54">4</div><div style="text-align:center;color:#7a6f54">5</div><div style="text-align:center;color:#7a6f54">6</div><div style="text-align:center;color:#7a6f54">7</div><div></div><div style="text-align:center;font-weight:700">R</div><div style="text-align:center;color:#7a6f54">H</div><div style="text-align:center;color:#7a6f54">E</div>
+          <div style="font-family:'Alfa Slab One',serif;font-size:12px;padding:4px 0">GFS</div><div style="text-align:center">0</div><div style="text-align:center">1</div><div style="text-align:center">0</div><div style="text-align:center">2</div><div style="text-align:center">0</div><div style="text-align:center">0</div><div style="text-align:center;color:#7a6f54">–</div><div></div><div style="text-align:center;font-weight:700">3</div><div style="text-align:center;color:#7a6f54">6</div><div style="text-align:center;color:#7a6f54">1</div>
+          <div style="font-family:'Alfa Slab One',serif;font-size:12px;padding:4px 0;color:#A6342E">OAK</div><div style="text-align:center">1</div><div style="text-align:center">0</div><div style="text-align:center">0</div><div style="text-align:center">1</div><div style="text-align:center">2</div><div style="text-align:center;color:#A6342E">●</div><div style="text-align:center;color:#7a6f54">–</div><div></div><div style="text-align:center;font-weight:700;color:#A6342E">4</div><div style="text-align:center;color:#7a6f54">7</div><div style="text-align:center;color:#7a6f54">0</div>
+        </div>
+      </div>
+      <!-- batting table -->
+      <div style="padding:10px 14px 4px;font-family:'Saira Condensed',sans-serif;font-size:11px;letter-spacing:.12em;color:#A6342E;font-weight:600">OAKDALE OWLS 11U · BATTING</div>
+      <div style="padding:0 14px 8px;font-family:'Saira Condensed',sans-serif">
+        <div style="display:grid;grid-template-columns:1.7fr repeat(6,1fr);font-size:10px;letter-spacing:.06em;color:#7a6f54;padding:4px 0;border-bottom:1.5px solid #1A2A4A"><div>LINEUP</div><div style="text-align:center">AB</div><div style="text-align:center">R</div><div style="text-align:center">H</div><div style="text-align:center">RBI</div><div style="text-align:center">BB</div><div style="text-align:center">SO</div></div>
+        <sc-for list="{{ oakBatters }}" as="b" hint-placeholder-count="9">
+          <div style="display:grid;grid-template-columns:1.7fr repeat(6,1fr);font-size:12px;color:#1A2A4A;align-items:center;padding:5px 0;border-bottom:1px solid rgba(26,42,74,.1)"><div style="font-family:Archivo,sans-serif">{{ b.name }}</div><div style="text-align:center">{{ b.ab }}</div><div style="text-align:center">{{ b.r }}</div><div style="text-align:center;font-weight:700">{{ b.h }}</div><div style="text-align:center">{{ b.rbi }}</div><div style="text-align:center">{{ b.bb }}</div><div style="text-align:center">{{ b.so }}</div></div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:1.7fr repeat(6,1fr);font-size:12px;color:#1A2A4A;align-items:center;padding:6px 0;border-top:1.5px solid #1A2A4A;font-weight:700"><div>TEAM</div><div style="text-align:center">25</div><div style="text-align:center">4</div><div style="text-align:center">7</div><div style="text-align:center">4</div><div style="text-align:center">3</div><div style="text-align:center">7</div></div>
+        <div style="font-size:11px;color:#6b6149;padding:7px 0 0"><b style="font-family:'Saira Condensed',sans-serif;color:#1A2A4A">2B:</b> Reyes &nbsp; <b style="font-family:'Saira Condensed',sans-serif;color:#1A2A4A">SB:</b> Shaw, Vasquez &nbsp; <b style="font-family:'Saira Condensed',sans-serif;color:#1A2A4A">LOB:</b> 5</div>
+      </div>
+      <!-- pitching table -->
+      <div style="padding:10px 14px 4px;border-top:2px solid #1A2A4A;font-family:'Saira Condensed',sans-serif;font-size:11px;letter-spacing:.12em;color:#A6342E;font-weight:600">GREENFIELD SHOWCASE 11U · PITCHING</div>
+      <div style="padding:0 14px 16px;font-family:'Saira Condensed',sans-serif">
+        <div style="display:grid;grid-template-columns:1.7fr repeat(6,1fr);font-size:10px;letter-spacing:.06em;color:#7a6f54;padding:4px 0;border-bottom:1.5px solid #1A2A4A"><div>PITCHER</div><div style="text-align:center">IP</div><div style="text-align:center">H</div><div style="text-align:center">R</div><div style="text-align:center">ER</div><div style="text-align:center">BB</div><div style="text-align:center">SO</div></div>
+        <div style="display:grid;grid-template-columns:1.7fr repeat(6,1fr);font-size:12px;color:#1A2A4A;align-items:center;padding:5px 0;border-bottom:1px solid rgba(26,42,74,.1)"><div style="font-family:Archivo,sans-serif">Alvarez, J. <span style="color:#7a6f54">(L)</span></div><div style="text-align:center">5.2</div><div style="text-align:center">7</div><div style="text-align:center">4</div><div style="text-align:center">3</div><div style="text-align:center">3</div><div style="text-align:center">5</div></div>
+        <div style="display:grid;grid-template-columns:1.7fr repeat(6,1fr);font-size:12px;color:#1A2A4A;align-items:center;padding:5px 0"><div style="font-family:Archivo,sans-serif">Webb, C.</div><div style="text-align:center">0.1</div><div style="text-align:center">0</div><div style="text-align:center">0</div><div style="text-align:center">0</div><div style="text-align:center">0</div><div style="text-align:center">1</div></div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- PANEL: STATS -->
+    <sc-if value="{{ showStats }}">
+    <div style="background:#FAF4E6;font-family:Archivo,sans-serif">
+      <div style="font-family:'Saira Condensed',sans-serif;font-size:10px;letter-spacing:.16em;color:#A6342E;font-weight:600;padding:11px 16px 7px;border-bottom:2px solid #1A2A4A">TEAM TOTALS</div>
+      <div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;align-items:center;font-family:'Saira Condensed',sans-serif">
+        <div style="text-align:center;padding:6px 0;font-size:11px;letter-spacing:.06em;color:#7a6f54;border-bottom:1px solid rgba(26,42,74,.16)">GFS</div>
+        <div style="text-align:center;padding:6px 0;font-size:10px;letter-spacing:.1em;color:#A6342E;border-bottom:1px solid rgba(26,42,74,.16)">STAT</div>
+        <div style="text-align:center;padding:6px 0;font-size:11px;letter-spacing:.06em;color:#7a6f54;border-bottom:1px solid rgba(26,42,74,.16)">OAK</div>
+        <div style="text-align:center;padding:7px 0;font-size:16px;font-weight:600;color:#1A2A4A">.241</div><div style="text-align:center;font-size:11px;color:#6b6149;letter-spacing:.04em">TEAM AVG</div><div style="text-align:center;padding:7px 0;font-size:16px;font-weight:700;color:#A6342E">.298</div>
+        <div style="text-align:center;padding:7px 0;font-size:16px;font-weight:600;color:#1A2A4A">6</div><div style="text-align:center;font-size:11px;color:#6b6149;letter-spacing:.04em">HITS</div><div style="text-align:center;padding:7px 0;font-size:16px;font-weight:700;color:#A6342E">7</div>
+        <div style="text-align:center;padding:7px 0;font-size:16px;font-weight:700;color:#A6342E">5</div><div style="text-align:center;font-size:11px;color:#6b6149;letter-spacing:.04em">RUNNERS LOB</div><div style="text-align:center;padding:7px 0;font-size:16px;font-weight:600;color:#1A2A4A">4</div>
+        <div style="text-align:center;padding:7px 0;font-size:16px;font-weight:700;color:#A6342E">1</div><div style="text-align:center;font-size:11px;color:#6b6149;letter-spacing:.04em">ERRORS</div><div style="text-align:center;padding:7px 0;font-size:16px;font-weight:600;color:#1A2A4A">0</div>
+      </div>
+      <div style="font-family:'Saira Condensed',sans-serif;font-size:10px;letter-spacing:.16em;color:#A6342E;font-weight:600;padding:13px 16px 5px;border-top:2px solid #1A2A4A">TOP PERFORMERS</div>
+      <div style="padding:0 16px">
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(26,42,74,.12)"><span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:13px;color:#1A2A4A;background:#C9A14A;padding:2px 6px">OAK</span><span style="font-family:'Alfa Slab One',serif;font-size:14px;color:#1A2A4A">Reyes, A.</span><span style="margin-left:auto;font-family:'Saira Condensed',sans-serif;font-size:12px;color:#6b6149">2-3 · 2B · 2 RBI</span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(26,42,74,.12)"><span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:13px;color:#F4ECD8;background:#1A2A4A;padding:2px 6px">GFS</span><span style="font-family:'Alfa Slab One',serif;font-size:14px;color:#1A2A4A">Ellis, T.</span><span style="margin-left:auto;font-family:'Saira Condensed',sans-serif;font-size:12px;color:#6b6149">2-3 · RBI</span></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:13px;color:#1A2A4A;background:#C9A14A;padding:2px 6px">OAK</span><span style="font-family:'Alfa Slab One',serif;font-size:14px;color:#1A2A4A">Shaw, M.</span><span style="margin-left:auto;font-family:'Saira Condensed',sans-serif;font-size:12px;color:#6b6149">2-4 · R · SB</span></div>
+      </div>
+      <div style="font-family:'Saira Condensed',sans-serif;font-size:10px;letter-spacing:.16em;color:#A6342E;font-weight:600;padding:13px 16px 5px;border-top:2px solid #1A2A4A">PITCHING</div>
+      <div style="padding:0 16px 16px">
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0"><span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:13px;color:#F4ECD8;background:#1A2A4A;padding:2px 6px">GFS</span><span style="font-family:'Alfa Slab One',serif;font-size:14px;color:#1A2A4A">Alvarez, J.</span><span style="margin-left:auto;font-family:'Saira Condensed',sans-serif;font-size:12px;color:#6b6149">5.2 IP · 5 K · 3 ER</span></div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:382,&quot;height&quot;:560}}">
+class Component extends DCLogic {
+  state = { vtab: 'field' };
+  renderVals() {
+    const t = this.state.vtab;
+    const c = (on) => on ? '#F4ECD8' : '#a9c0ad';
+    return {
+      showField: t === 'field', showPlays: t === 'plays', showBox: t === 'box', showStats: t === 'stats',
+      fieldColor: c(t==='field'), playsColor: c(t==='plays'), boxColor: c(t==='box'), statsColor: c(t==='stats'),
+      setField: () => this.setState({ vtab: 'field' }),
+      setPlays: () => this.setState({ vtab: 'plays' }),
+      setBox: () => this.setState({ vtab: 'box' }),
+      setStats: () => this.setState({ vtab: 'stats' }),
+      oakBatters: [
+        { name: 'Shaw, M. (CF)', ab:4, r:1, h:2, rbi:0, bb:0, so:0 },
+        { name: 'Reyes, A. (SS)', ab:3, r:1, h:2, rbi:2, bb:1, so:0 },
+        { name: 'Okafor, J. (1B)', ab:3, r:1, h:1, rbi:1, bb:0, so:1 },
+        { name: 'Bellinger, S. (C)', ab:3, r:0, h:1, rbi:1, bb:0, so:1 },
+        { name: 'Park, D. (P)', ab:2, r:0, h:1, rbi:0, bb:1, so:0 },
+        { name: 'Cole, R. (3B)', ab:3, r:0, h:0, rbi:0, bb:0, so:2 },
+        { name: 'Vasquez, L. (LF)', ab:3, r:1, h:0, rbi:0, bb:0, so:1 },
+        { name: 'Ramsey, T. (2B)', ab:2, r:0, h:0, rbi:0, bb:1, so:1 },
+        { name: 'Diaz, M. (RF)', ab:2, r:0, h:0, rbi:0, bb:0, so:1 },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

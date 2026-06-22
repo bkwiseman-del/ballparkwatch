@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/auth/authprovider.tsx","./src/auth/requireauth.tsx","./src/lib/supabase.ts","./src/lib/types.ts","./src/routes/login.tsx","./src/routes/score.tsx","./src/routes/setup.tsx","./src/routes/watch.tsx"],"version":"5.9.3"}
