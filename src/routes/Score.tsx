@@ -4,7 +4,7 @@ import { useScorer } from '@/hooks/useScorer'
 import { Scorebug } from '@/components/Scorebug'
 import { FieldDiamond, type BaseName } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
-import { computeBattingLines } from '@/lib/stats'
+import { computeBattingLines, pitchCounts } from '@/lib/stats'
 import {
   EVENT_LABELS,
   occupancy,
@@ -253,7 +253,7 @@ function BatterPitcherStrip({
   scorer: ReturnType<typeof useScorer>
   gameId: string | undefined
 }) {
-  const { currentBatter, currentPitcher, events, playersById } = scorer
+  const { currentBatter, onDeck, currentPitcher, events, playersById, live } = scorer
   if (!currentBatter) {
     return (
       <div className="flex items-center justify-between bg-cream px-3 py-2 text-ink">
@@ -267,6 +267,8 @@ function BatterPitcherStrip({
   const lines = computeBattingLines(events, (id) => playersById.get(id)?.name ?? null)
   const line = [...lines.away, ...lines.home].find((l) => l.playerId === currentBatter.id)
   const lineText = line && line.ab > 0 ? `${line.h}-for-${line.ab}` : 'first AB'
+  const pc = pitchCounts(events)
+  const pitches = live.half === 'top' ? pc.home : pc.away
   return (
     <div className="flex border-b-2 border-ink bg-cream text-ink">
       <div className="flex-1 border-r border-ink/20 px-3 py-2">
@@ -274,7 +276,10 @@ function BatterPitcherStrip({
         <p className="font-display text-base leading-tight">
           <span className="text-barn-red">{currentBatter.jersey_number ?? '—'}</span> {currentBatter.name}
         </p>
-        <p className="font-data text-[11px] text-muted-tan">{lineText}</p>
+        <p className="font-data text-[11px] text-muted-tan">
+          {lineText}
+          {onDeck ? ` · on deck: ${onDeck.jersey_number ? `${onDeck.jersey_number} ` : ''}${onDeck.name}` : ''}
+        </p>
       </div>
       <div className="flex-1 px-3 py-2">
         <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">Pitching</p>
@@ -287,6 +292,7 @@ function BatterPitcherStrip({
             <span className="text-muted-tan">—</span>
           )}
         </p>
+        {currentPitcher && <p className="font-data text-[11px] text-muted-tan">{pitches} pitches</p>}
       </div>
     </div>
   )
