@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { Scorebug } from '@/components/Scorebug'
+import { ScorePanel } from '@/components/ScorePanel'
 import { FieldDiamond } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
 import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
@@ -109,10 +109,8 @@ export default function Watch() {
         </span>
       </div>
 
-      {/* score panel */}
-      <div className="flex justify-center px-4 pb-3">
-        <Scorebug state={board} variant="dark" className="w-full max-w-md justify-center" />
-      </div>
+      {/* score panel — full width */}
+      <ScorePanel state={board} />
 
       {/* batter / pitcher strip */}
       {info.status === 'live' && <BatterPitcherStrip info={info} live={live} events={events} />}
@@ -167,36 +165,36 @@ function BatterPitcherStrip({
   if (!batter && !pitcher) return null
 
   return (
-    <div className="flex border-y border-gold/30 bg-field-green">
-      <div className="flex-1 border-r border-gold/20 px-3 py-2">
+    <div className="flex border-b-2 border-ink bg-cream text-ink">
+      <div className="flex-1 border-r border-ink/20 px-3 py-2">
         <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">At Bat</p>
         {batter ? (
           <>
-            <p className="font-display text-base leading-tight text-cream">
-              <span className="text-gold">{batter.jersey ?? '—'}</span> {batter.name}
+            <p className="font-display text-base leading-tight">
+              <span className="text-barn-red">{batter.jersey ?? '—'}</span> {batter.name}
             </p>
             {onDeck && (
-              <p className="font-data text-[11px] text-muted-green">
+              <p className="font-data text-[11px] text-muted-tan">
                 On deck: {onDeck.jersey ? `${onDeck.jersey} ` : ''}
                 {onDeck.name}
               </p>
             )}
           </>
         ) : (
-          <p className="font-data text-sm text-muted-green">—</p>
+          <p className="font-data text-sm text-muted-tan">—</p>
         )}
       </div>
       <div className="flex-1 px-3 py-2 text-right">
-        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-green">Pitching</p>
+        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">Pitching</p>
         {pitcher ? (
           <>
-            <p className="font-display text-base leading-tight text-cream">
-              <span className="text-gold">{pitcher.jersey ?? '—'}</span> {pitcher.name}
+            <p className="font-display text-base leading-tight">
+              <span className="text-barn-red">{pitcher.jersey ?? '—'}</span> {pitcher.name}
             </p>
-            <p className="font-data text-[11px] text-muted-green">{pitches} pitches</p>
+            <p className="font-data text-[11px] text-muted-tan">{pitches} pitches</p>
           </>
         ) : (
-          <p className="font-data text-sm text-muted-green">—</p>
+          <p className="font-data text-sm text-muted-tan">—</p>
         )}
       </div>
     </div>

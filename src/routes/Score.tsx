@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
-import { Scorebug } from '@/components/Scorebug'
+import { ScorePanel } from '@/components/ScorePanel'
 import { FieldDiamond, type BaseName } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
 import { computeBattingLines, pitchCounts } from '@/lib/stats'
@@ -74,9 +74,7 @@ export default function Score() {
         </Link>
       </header>
 
-      <div className="flex justify-center bg-night-green px-3 py-3">
-        <Scorebug state={board} variant="dark" />
-      </div>
+      <ScorePanel state={board} />
 
       {error && <p className="bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>}
 
