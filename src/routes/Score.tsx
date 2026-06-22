@@ -85,10 +85,10 @@ export default function Score() {
       {/* batter / pitcher strip */}
       {playing && <BatterPitcherStrip scorer={s} gameId={gameId} />}
 
-      {/* live field */}
+      {/* live field — grows to fill the available space */}
       {playing && (
-        <div className="bg-board-green">
-          <div className="flex items-center justify-between bg-field-green px-3 py-1.5">
+        <div className="flex min-h-0 flex-1 flex-col bg-board-green">
+          <div className="flex flex-none items-center justify-between bg-field-green px-3 py-1.5">
             <span className="font-athletic text-[10px] uppercase tracking-[.14em] text-muted-green">
               {runnersLabel(live)}
             </span>
@@ -96,17 +96,17 @@ export default function Score() {
               tap runner ▸ steal · out
             </span>
           </div>
-          <div className="mx-auto max-w-[300px]">
+          <div className="flex min-h-0 flex-1 items-center justify-center p-1">
             <FieldDiamond
               bases={live.bases}
               nameOf={nameOf}
               onRunnerTap={(base, id) => setRunnerAction({ base, id })}
               batterLabel={s.currentBatter ? shortName(s.currentBatter) : null}
-              className="block w-full"
+              className="h-full max-h-full w-full max-w-[340px]"
             />
           </div>
           {/* AB pitch log */}
-          <div className="flex items-center gap-1.5 bg-cream-off px-3 py-1.5">
+          <div className="flex flex-none items-center gap-1.5 bg-cream-off px-3 py-1.5">
             <span className="font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
               AB
             </span>
