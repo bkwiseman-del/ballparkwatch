@@ -9,6 +9,7 @@ import {
   EVENT_LABELS,
   occupancy,
   type Dest,
+  type EventPayload,
   type EventType,
   type LiveGame,
   type Resolution,
@@ -217,8 +218,8 @@ export default function Score() {
           batter={s.currentBatter}
           runners={s.runnersOnBase}
           onCancel={() => setInPlay(false)}
-          onConfirm={(result, resolution, rbi) => {
-            act(result, { resolution, rbi })
+          onConfirm={(result, payload) => {
+            act(result, payload)
             setInPlay(false)
           }}
         />
@@ -463,6 +464,19 @@ const RUNNER_ADVANCE: Partial<Record<EventType, number>> = {
 
 type OnBase = { key: BaseName; from: number; player: Player }
 
+// position number -> label (scorekeeping numbering)
+const POSITIONS: { n: number; label: string }[] = [
+  { n: 1, label: 'P' },
+  { n: 2, label: 'C' },
+  { n: 3, label: '1B' },
+  { n: 4, label: '2B' },
+  { n: 5, label: '3B' },
+  { n: 6, label: 'SS' },
+  { n: 7, label: 'LF' },
+  { n: 8, label: 'CF' },
+  { n: 9, label: 'RF' },
+]
+
 function InPlayFlow({
   batter,
   runners,
@@ -472,9 +486,11 @@ function InPlayFlow({
   batter: Player | null
   runners: { first: Player | null; second: Player | null; third: Player | null }
   onCancel: () => void
-  onConfirm: (result: EventType, resolution: Resolution, rbi: number) => void
+  onConfirm: (result: EventType, payload: EventPayload) => void
 }) {
   const [result, setResult] = useState<EventType | null>(null)
+  const [location, setLocation] = useState<string | null>(null)
+  const [fielders, setFielders] = useState<number[]>([])
 
   const onBase: OnBase[] = [
     runners.first && { key: 'first' as const, from: 1, player: runners.first },
@@ -484,16 +500,16 @@ function InPlayFlow({
 
   return (
     <Overlay onClose={onCancel} align="end">
-      <div className="w-full max-w-[430px] border-t-2 border-gold bg-field-green p-4">
+      <div className="flex max-h-[90vh] w-full max-w-[430px] flex-col overflow-y-auto border-t-2 border-gold bg-field-green p-4">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-athletic text-sm font-semibold uppercase tracking-[.12em] text-cream">
-            Ball in play — result
+            Ball in play
           </span>
           <button onClick={onCancel} className="font-athletic text-cream">✕</button>
         </div>
 
         {/* step 1: result */}
-        <div className="mb-3 grid grid-cols-4 gap-2">
+        <div className="mb-2 grid grid-cols-4 gap-2">
           {RESULTS.filter((r) => r.group === 'hit').map((r) => (
             <ResultBtn key={r.type} active={result === r.type} onClick={() => setResult(r.type)} gold>
               {r.label}
@@ -508,12 +524,85 @@ function InPlayFlow({
           ))}
         </div>
 
-        {/* step 2: resolve each runner */}
         {result && (
-          <Resolver result={result} batter={batter} onBase={onBase} onConfirm={onConfirm} />
+          <>
+            {/* step 2: where did it go */}
+            <SectionLabel>Where did it go?</SectionLabel>
+            <div className="mx-auto w-full max-w-[300px]">
+              <SprayField selected={location} onSelect={setLocation} />
+            </div>
+
+            {/* step 3: who made the play (putout sequence) */}
+            <SectionLabel>
+              Who made the play{fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
+            </SectionLabel>
+            <FielderGrid
+              sequence={fielders}
+              onAppend={(n) => setFielders((s) => [...s, n])}
+              onClear={() => setFielders([])}
+            />
+
+            {/* step 4: resolve each runner */}
+            <Resolver
+              result={result}
+              batter={batter}
+              onBase={onBase}
+              onResolve={(resolution, runs) =>
+                onConfirm(result, {
+                  resolution,
+                  rbi: runs,
+                  ...(location ? { location } : {}),
+                  ...(fielders.length ? { fielders } : {}),
+                })
+              }
+            />
+          </>
         )}
       </div>
     </Overlay>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-2 mt-4 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-gold">
+      {children}
+    </p>
+  )
+}
+
+function FielderGrid({
+  sequence,
+  onAppend,
+  onClear,
+}: {
+  sequence: number[]
+  onAppend: (n: number) => void
+  onClear: () => void
+}) {
+  return (
+    <div className="grid grid-cols-5 gap-1.5">
+      {POSITIONS.map((p) => {
+        const order = sequence.indexOf(p.n)
+        const active = order !== -1
+        return (
+          <button
+            key={p.n}
+            onClick={() => onAppend(p.n)}
+            className={`flex h-11 flex-col items-center justify-center ${active ? 'bg-gold text-ink' : 'border border-cream/30 text-cream'}`}
+          >
+            <span className="font-display text-sm leading-none">{p.n}</span>
+            <span className="font-athletic text-[8px] uppercase">{p.label}</span>
+          </button>
+        )
+      })}
+      <button
+        onClick={onClear}
+        className="flex h-11 items-center justify-center border-2 border-dashed border-cream/25 font-athletic text-xs uppercase text-cream/60"
+      >
+        Clear
+      </button>
+    </div>
   )
 }
 
@@ -521,14 +610,13 @@ function Resolver({
   result,
   batter,
   onBase,
-  onConfirm,
+  onResolve,
 }: {
   result: EventType
   batter: Player | null
   onBase: OnBase[]
-  onConfirm: (result: EventType, resolution: Resolution, rbi: number) => void
+  onResolve: (resolution: Resolution, runs: number) => void
 }) {
-  // default destinations
   const adv = RUNNER_ADVANCE[result]
   const initial: Record<string, Dest> = {}
   initial['batter'] = BATTER_DEST[result] ?? 0
@@ -546,7 +634,7 @@ function Resolver({
       batter: dest['batter'] ?? 0,
       runners: Object.fromEntries(onBase.map((r) => [r.player.id, dest[r.player.id] ?? r.from])),
     }
-    onConfirm(result, resolution, runs)
+    onResolve(resolution, runs)
   }
 
   return (
@@ -578,6 +666,68 @@ function Resolver({
         </button>
       </div>
     </div>
+  )
+}
+
+/* zone-tap spray field — geometry from the design spec (State 2) */
+const SPRAY_WEDGES: { id: string; d: string; cx: number; cy: number }[] = [
+  { id: 'LF', d: 'M150 200 L82 132 L52 80 A140 44 0 0 1 104 48 L150 64 Z', cx: 80, cy: 92 },
+  { id: 'CF', d: 'M150 64 L104 48 A140 44 0 0 1 196 48 L150 64 Z', cx: 150, cy: 52 },
+  { id: 'RF', d: 'M150 200 L218 132 L248 80 A140 44 0 0 0 196 48 L150 64 Z', cx: 220, cy: 92 },
+]
+const SPRAY_INFIELD: { id: string; x: number; y: number }[] = [
+  { id: '3B', x: 100, y: 150 },
+  { id: 'SS', x: 124, y: 112 },
+  { id: 'P', x: 150, y: 150 },
+  { id: '2B', x: 176, y: 112 },
+  { id: '1B', x: 200, y: 150 },
+  { id: 'C', x: 150, y: 192 },
+]
+
+function SprayField({ selected, onSelect }: { selected: string | null; onSelect: (id: string) => void }) {
+  const wedge = SPRAY_WEDGES.find((w) => w.id === selected)
+  const infield = SPRAY_INFIELD.find((z) => z.id === selected)
+  const marker = wedge ? { x: wedge.cx, y: wedge.cy } : infield ? { x: infield.x, y: infield.y } : null
+  return (
+    <svg viewBox="0 0 300 215" className="block w-full" role="img" aria-label="Spray field">
+      <rect width="300" height="215" fill="#2C5234" />
+      {SPRAY_WEDGES.map((w) => (
+        <path
+          key={w.id}
+          d={w.d}
+          onClick={() => onSelect(w.id)}
+          fill={selected === w.id ? 'rgba(201,161,74,.4)' : 'rgba(244,236,216,.06)'}
+          stroke={selected === w.id ? '#C9A14A' : 'rgba(244,236,216,.25)'}
+          strokeWidth={selected === w.id ? 2 : 1.5}
+          style={{ cursor: 'pointer' }}
+        />
+      ))}
+      {SPRAY_WEDGES.map((w) => (
+        <text key={w.id + 't'} x={w.cx} y={w.cy} textAnchor="middle" fontSize="11" fontWeight="700"
+          fill={selected === w.id ? '#C9A14A' : 'rgba(244,236,216,.7)'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
+          {w.id}
+        </text>
+      ))}
+      {/* diamond outline */}
+      <polygon points="150,200 218,132 150,64 82,132" fill="none" stroke="#e9ddc2" strokeWidth="2" />
+      {/* infield hotspots */}
+      {SPRAY_INFIELD.map((z) => (
+        <g key={z.id} onClick={() => onSelect(z.id)} style={{ cursor: 'pointer' }}>
+          <circle cx={z.x} cy={z.y} r="14" fill={selected === z.id ? '#C9A14A' : 'rgba(26,42,74,.35)'} />
+          <text x={z.x} y={z.y + 4} textAnchor="middle" fontSize="10" fontWeight="700"
+            fill={selected === z.id ? '#1A2A4A' : '#F4ECD8'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
+            {z.id}
+          </text>
+        </g>
+      ))}
+      {/* spray line + landing marker */}
+      {marker && (
+        <>
+          <line x1="150" y1="198" x2={marker.x} y2={marker.y} stroke="#C9A14A" strokeWidth="2" strokeDasharray="5 4" />
+          <circle cx={marker.x} cy={marker.y} r="6" fill="#F4ECD8" stroke="#C9A14A" strokeWidth="2.5" />
+        </>
+      )}
+    </svg>
   )
 }
 
