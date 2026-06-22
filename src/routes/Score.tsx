@@ -494,7 +494,8 @@ function InPlayFlow({
   onConfirm: (result: EventType, payload: EventPayload) => void
 }) {
   const [result, setResult] = useState<EventType>('single')
-  const [location, setLocation] = useState<string | null>(null)
+  const [zone, setZone] = useState<string | null>(null) // fielder/position (outs)
+  const [landing, setLanding] = useState<{ x: number; y: number } | null>(null) // free point (hits)
   const [fielders, setFielders] = useState<number[]>([])
 
   const onBase: OnBase[] = [
@@ -506,10 +507,9 @@ function InPlayFlow({
   // Fielder credit only matters when someone's out (or an error was made).
   const isOut = ['groundout', 'flyout', 'lineout', 'fielders_choice'].includes(result)
   const isError = result === 'error'
+  const isHit = ['single', 'double', 'triple', 'home_run'].includes(result)
   const showCredit = isOut || isError
-  const sprayLabel = ['single', 'double', 'triple', 'home_run'].includes(result)
-    ? 'Where was it hit?'
-    : 'Where did it go?'
+  const sprayLabel = isHit ? 'Where did it land? · tap anywhere' : 'Where did it go?'
 
   const pickResult = (t: EventType) => {
     setResult(t)
@@ -549,12 +549,15 @@ function InPlayFlow({
         <SectionLabel>{sprayLabel}</SectionLabel>
         <div className="mx-auto w-full max-w-[320px] border-2 border-gold/40">
           <SprayField
-            selected={location}
-            onSelect={(id) => {
-              setLocation(id)
+            mode={isHit ? 'landing' : 'fielder'}
+            zone={zone}
+            onZone={(id) => {
+              setZone(id)
               // seed the putout sequence with whoever fielded it (out/error only)
               setFielders(showCredit && ZONE_POS[id] ? [ZONE_POS[id]] : [])
             }}
+            point={landing}
+            onPoint={setLanding}
           />
         </div>
 
@@ -584,7 +587,7 @@ function InPlayFlow({
             onConfirm(result, {
               resolution,
               rbi: runs,
-              ...(location ? { location } : {}),
+              ...(isHit ? (landing ? { spray: landing } : {}) : zone ? { location: zone } : {}),
               ...(fielders.length ? { fielders } : {}),
             })
           }
@@ -724,48 +727,88 @@ const SPRAY_INFIELD: { id: string; x: number; y: number }[] = [
   { id: 'C', x: 150, y: 192 },
 ]
 
-function SprayField({ selected, onSelect }: { selected: string | null; onSelect: (id: string) => void }) {
-  const wedge = SPRAY_WEDGES.find((w) => w.id === selected)
-  const infield = SPRAY_INFIELD.find((z) => z.id === selected)
-  const marker = wedge ? { x: wedge.cx, y: wedge.cy } : infield ? { x: infield.x, y: infield.y } : null
+function SprayField({
+  mode,
+  zone,
+  onZone,
+  point,
+  onPoint,
+}: {
+  mode: 'fielder' | 'landing'
+  zone: string | null
+  onZone: (id: string) => void
+  point: { x: number; y: number } | null
+  onPoint: (p: { x: number; y: number }) => void
+}) {
+  const landing = mode === 'landing'
+  const wedge = SPRAY_WEDGES.find((w) => w.id === zone)
+  const infield = SPRAY_INFIELD.find((z) => z.id === zone)
+  const marker = landing
+    ? point
+    : wedge
+      ? { x: wedge.cx, y: wedge.cy }
+      : infield
+        ? { x: infield.x, y: infield.y }
+        : null
+
+  // In landing mode, tapping anywhere drops a marker at that field point.
+  const onSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!landing) return
+    const r = e.currentTarget.getBoundingClientRect()
+    const x = Math.round(((e.clientX - r.left) / r.width) * 300)
+    const y = Math.round(((e.clientY - r.top) / r.height) * 215)
+    onPoint({ x, y })
+  }
+
+  const ignore = landing ? ({ pointerEvents: 'none' } as const) : undefined
+
   return (
-    <svg viewBox="0 0 300 215" className="block w-full" role="img" aria-label="Spray field">
+    <svg
+      viewBox="0 0 300 215"
+      className="block w-full"
+      role="img"
+      aria-label="Spray field"
+      onClick={onSvgClick}
+      style={landing ? { cursor: 'crosshair' } : undefined}
+    >
       <rect width="300" height="215" fill="#2C5234" />
       {SPRAY_WEDGES.map((w) => (
         <path
           key={w.id}
           d={w.d}
-          onClick={() => onSelect(w.id)}
-          fill={selected === w.id ? 'rgba(201,161,74,.4)' : 'rgba(244,236,216,.06)'}
-          stroke={selected === w.id ? '#C9A14A' : 'rgba(244,236,216,.25)'}
-          strokeWidth={selected === w.id ? 2 : 1.5}
-          style={{ cursor: 'pointer' }}
+          onClick={landing ? undefined : () => onZone(w.id)}
+          fill={!landing && zone === w.id ? 'rgba(201,161,74,.4)' : 'rgba(244,236,216,.06)'}
+          stroke={!landing && zone === w.id ? '#C9A14A' : 'rgba(244,236,216,.22)'}
+          strokeWidth={!landing && zone === w.id ? 2 : 1.5}
+          style={landing ? ignore : { cursor: 'pointer' }}
         />
       ))}
-      {SPRAY_WEDGES.map((w) => (
-        <text key={w.id + 't'} x={w.cx} y={w.cy} textAnchor="middle" fontSize="11" fontWeight="700"
-          fill={selected === w.id ? '#C9A14A' : 'rgba(244,236,216,.7)'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
-          {w.id}
-        </text>
-      ))}
-      {/* diamond outline */}
-      <polygon points="150,200 218,132 150,64 82,132" fill="none" stroke="#e9ddc2" strokeWidth="2" />
-      {/* infield hotspots */}
-      {SPRAY_INFIELD.map((z) => (
-        <g key={z.id} onClick={() => onSelect(z.id)} style={{ cursor: 'pointer' }}>
-          <circle cx={z.x} cy={z.y} r="14" fill={selected === z.id ? '#C9A14A' : 'rgba(26,42,74,.35)'} />
-          <text x={z.x} y={z.y + 4} textAnchor="middle" fontSize="10" fontWeight="700"
-            fill={selected === z.id ? '#1A2A4A' : '#F4ECD8'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
-            {z.id}
+      {!landing &&
+        SPRAY_WEDGES.map((w) => (
+          <text key={w.id + 't'} x={w.cx} y={w.cy} textAnchor="middle" fontSize="11" fontWeight="700"
+            fill={zone === w.id ? '#C9A14A' : 'rgba(244,236,216,.7)'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
+            {w.id}
           </text>
-        </g>
-      ))}
+        ))}
+      {/* diamond outline */}
+      <polygon points="150,200 218,132 150,64 82,132" fill="none" stroke="#e9ddc2" strokeWidth="2" style={ignore} />
+      {/* infield position hotspots — fielder mode only */}
+      {!landing &&
+        SPRAY_INFIELD.map((z) => (
+          <g key={z.id} onClick={() => onZone(z.id)} style={{ cursor: 'pointer' }}>
+            <circle cx={z.x} cy={z.y} r="14" fill={zone === z.id ? '#C9A14A' : 'rgba(26,42,74,.35)'} />
+            <text x={z.x} y={z.y + 4} textAnchor="middle" fontSize="10" fontWeight="700"
+              fill={zone === z.id ? '#1A2A4A' : '#F4ECD8'} style={{ pointerEvents: 'none', fontFamily: "'Saira Condensed',sans-serif" }}>
+              {z.id}
+            </text>
+          </g>
+        ))}
       {/* spray line + landing marker */}
       {marker && (
-        <>
+        <g style={ignore}>
           <line x1="150" y1="198" x2={marker.x} y2={marker.y} stroke="#C9A14A" strokeWidth="2" strokeDasharray="5 4" />
           <circle cx={marker.x} cy={marker.y} r="6" fill="#F4ECD8" stroke="#C9A14A" strokeWidth="2.5" />
-        </>
+        </g>
       )}
     </svg>
   )
