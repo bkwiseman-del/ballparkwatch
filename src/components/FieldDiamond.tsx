@@ -4,10 +4,11 @@ import type { Bases } from '@/lib/engine'
 // (home → outfield arc) with foul lines, dirt infield diamond, grass, bases, and
 // gold runner chips. Bases hold player ids; pass `nameOf` to label chips and
 // `onRunnerTap` to make them interactive.
+// Perfect square rotated 45° (equal half-diagonal h=74 in x and y).
 const HOME = { x: 170, y: 330 }
-const FIRST = { x: 256, y: 256 }
+const FIRST = { x: 244, y: 256 }
 const SECOND = { x: 170, y: 182 }
-const THIRD = { x: 84, y: 256 }
+const THIRD = { x: 96, y: 256 }
 
 export type BaseName = 'first' | 'second' | 'third'
 export type Fielder = { pos: string | null; name: string }
@@ -53,10 +54,10 @@ export function FieldDiamond({
       <line x1="170" y1="330" x2="296" y2="204" stroke="#e9ddc2" strokeWidth="2.5" />
 
       {/* infield dirt + grass */}
-      <polygon points="170,330 256,256 170,182 84,256" fill="#b07a3e" />
-      <polygon points="170,318 242,256 170,194 98,256" fill="#2C5234" />
+      <polygon points="170,330 244,256 170,182 96,256" fill="#b07a3e" />
+      <polygon points="170,318 232,256 170,194 108,256" fill="#2C5234" />
       {/* base paths */}
-      <polygon points="170,330 256,256 170,182 84,256" fill="none" stroke="#e9ddc2" strokeWidth="3" />
+      <polygon points="170,330 244,256 170,182 96,256" fill="none" stroke="#e9ddc2" strokeWidth="3" />
 
       {/* mound */}
       <circle cx="170" cy="256" r="13" fill="#b07a3e" />
