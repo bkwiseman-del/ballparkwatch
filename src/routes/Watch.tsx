@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { ScorePanel } from '@/components/ScorePanel'
 import { FieldDiamond } from '@/components/FieldDiamond'
+import { HeaderWordmark } from '@/components/Logo'
 import { resolveCode } from '@/lib/scoreboard'
 import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
 import {
@@ -39,7 +40,6 @@ export default function Watch() {
   const [events, setEvents] = useState<ViewerEvent[]>([])
   const [tab, setTab] = useState<Tab>('field')
   const [error, setError] = useState<string | null>(null)
-  const [connected, setConnected] = useState(false)
   const loadingEvents = useRef(false)
 
   const loadEvents = useCallback(async () => {
@@ -68,7 +68,7 @@ export default function Watch() {
     ch.on('broadcast', { event: 'state' }, ({ payload }) => {
       setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
       loadEvents() // refresh plays/box when the operator scores
-    }).subscribe((status) => setConnected(status === 'SUBSCRIBED'))
+    }).subscribe()
 
     return () => {
       cancelled = true
@@ -92,8 +92,9 @@ export default function Watch() {
 
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream">
-      {/* status bar */}
-      <div className="flex items-center justify-between px-4 py-3">
+      {/* branded header */}
+      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
+        <HeaderWordmark />
         {info.status === 'live' ? (
           <span className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
@@ -104,10 +105,7 @@ export default function Watch() {
             {info.status === 'final' ? 'FINAL' : 'STARTING SOON'}
           </span>
         )}
-        <span className="font-athletic text-[11px] tracking-[.12em] text-muted-green">
-          {connected ? '● synced' : '○ connecting'}
-        </span>
-      </div>
+      </header>
 
       {/* score panel — full width */}
       <ScorePanel state={board} />
