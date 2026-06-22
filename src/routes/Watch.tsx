@@ -5,7 +5,14 @@ import { Scorebug } from '@/components/Scorebug'
 import { FieldDiamond } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
 import { INITIAL_LIVE, type GameEventRow, type LiveGame } from '@/lib/engine'
-import { buildPlayByPlay, computeBoxScore, type PlayKind } from '@/lib/stats'
+import {
+  buildPlayByPlay,
+  computeBattingLines,
+  computeBoxScore,
+  formatAvg,
+  type BattingLine,
+  type PlayKind,
+} from '@/lib/stats'
 import { gameChannelName } from '@/lib/realtime'
 
 type PublicGame = {
@@ -186,10 +193,12 @@ function BoxTab({
   board,
   events,
 }: {
-  board: { away: { code: string }; home: { code: string } }
+  board: { away: { code: string; name?: string }; home: { code: string; name?: string } }
   events: ViewerEvent[]
 }) {
   const box = computeBoxScore(events)
+  const map = nameMap(events)
+  const bats = computeBattingLines(events, (id) => map.get(id) ?? null)
   const innings = Array.from({ length: box.innings }, (_, i) => i + 1)
   const Row = ({ code, t, accent }: { code: string; t: typeof box.away; accent?: boolean }) => (
     <tr>
@@ -205,25 +214,85 @@ function BoxTab({
     </tr>
   )
   return (
-    <table className="w-full border-collapse">
-      <thead>
-        <tr className="border-b border-cream/20 font-athletic text-xs text-muted-green">
-          <th className="py-2 text-left"></th>
-          {innings.map((n) => (
-            <th key={n} className="px-1 py-2 text-center font-normal">
-              {n}
-            </th>
+    <div className="flex flex-col gap-5">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-cream/20 font-athletic text-xs text-muted-green">
+            <th className="py-2 text-left"></th>
+            {innings.map((n) => (
+              <th key={n} className="px-1 py-2 text-center font-normal">
+                {n}
+              </th>
+            ))}
+            <th className="px-2 py-2 text-center">R</th>
+            <th className="px-2 py-2 text-center">H</th>
+            <th className="px-2 py-2 text-center">E</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-cream/10">
+          <Row code={board.away.code} t={box.away} />
+          <Row code={board.home.code} t={box.home} accent />
+        </tbody>
+      </table>
+
+      <BattingTable title={board.away.name ?? board.away.code} lines={bats.away} />
+      <BattingTable title={board.home.name ?? board.home.code} lines={bats.home} accent />
+    </div>
+  )
+}
+
+function BattingTable({
+  title,
+  lines,
+  accent = false,
+}: {
+  title: string
+  lines: BattingLine[]
+  accent?: boolean
+}) {
+  if (lines.length === 0) return null
+  // Keep batters in first-appearance order isn't available here; sort by AB desc
+  // then hits desc as a reasonable batting summary.
+  const sorted = lines.slice().sort((a, b) => b.ab - a.ab || b.h - a.h)
+  return (
+    <div>
+      <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title}</h3>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-cream/20 font-athletic text-[11px] text-muted-green">
+            <th className="py-1.5 text-left font-normal">Batter</th>
+            {['AB', 'H', '2B', '3B', 'HR', 'BB', 'K', 'AVG'].map((h) => (
+              <th key={h} className="px-1.5 py-1.5 text-center font-normal">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-cream/10">
+          {sorted.map((l) => (
+            <tr key={l.playerId} className="font-data text-[13px]">
+              <td className="py-1.5 pr-2 text-cream">{l.name}</td>
+              <Num n={l.ab} />
+              <Num n={l.h} bold />
+              <Num n={l.doubles} />
+              <Num n={l.triples} />
+              <Num n={l.hr} />
+              <Num n={l.bb} />
+              <Num n={l.k} />
+              <td className="px-1.5 py-1.5 text-center tabular text-muted-green">{formatAvg(l.avg)}</td>
+            </tr>
           ))}
-          <th className="px-2 py-2 text-center">R</th>
-          <th className="px-2 py-2 text-center">H</th>
-          <th className="px-2 py-2 text-center">E</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-cream/10">
-        <Row code={board.away.code} t={box.away} />
-        <Row code={board.home.code} t={box.home} accent />
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function Num({ n, bold = false }: { n: number; bold?: boolean }) {
+  return (
+    <td className={`px-1.5 py-1.5 text-center tabular ${bold ? 'font-bold text-cream' : 'text-cream/85'}`}>
+      {n}
+    </td>
   )
 }
 

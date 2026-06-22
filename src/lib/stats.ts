@@ -63,6 +63,77 @@ function ensure(arr: number[], idx: number) {
 }
 
 // ---------------------------------------------------------------------------
+// Per-player batting lines — grouped by batter, attributed to the team that was
+// batting (derived by replay). AB excludes walks/HBP.
+// ---------------------------------------------------------------------------
+export type BattingLine = {
+  playerId: string
+  name: string
+  ab: number
+  h: number
+  doubles: number
+  triples: number
+  hr: number
+  bb: number
+  k: number
+  avg: number // H / AB
+}
+
+export type BattingLines = { away: BattingLine[]; home: BattingLine[] }
+
+const AB_TYPES: EventType[] = [
+  'single', 'double', 'triple', 'home_run',
+  'strikeout', 'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+]
+
+export function computeBattingLines(
+  events: GameEventRow[],
+  batterName: (batterId: string) => string | null,
+): BattingLines {
+  // playerId -> { team, line }
+  const acc = new Map<string, { top: boolean; line: BattingLine }>()
+  let state: LiveGame = INITIAL_LIVE
+
+  const sorted = events.slice().sort((a, b) => a.seq - b.seq)
+  for (const ev of sorted) {
+    const before = state
+    state = applyEvent(before, ev)
+    const id = ev.batter_id
+    if (!id) continue
+    let entry = acc.get(id)
+    if (!entry) {
+      entry = {
+        top: before.half === 'top',
+        line: { playerId: id, name: batterName(id) ?? '—', ab: 0, h: 0, doubles: 0, triples: 0, hr: 0, bb: 0, k: 0, avg: 0 },
+      }
+      acc.set(id, entry)
+    }
+    const l = entry.line
+    if (AB_TYPES.includes(ev.event_type)) l.ab += 1
+    if (HIT_TYPES.includes(ev.event_type)) l.h += 1
+    if (ev.event_type === 'double') l.doubles += 1
+    if (ev.event_type === 'triple') l.triples += 1
+    if (ev.event_type === 'home_run') l.hr += 1
+    if (ev.event_type === 'walk') l.bb += 1
+    if (ev.event_type === 'strikeout') l.k += 1
+  }
+
+  const away: BattingLine[] = []
+  const home: BattingLine[] = []
+  for (const { top, line } of acc.values()) {
+    line.avg = line.ab > 0 ? line.h / line.ab : 0
+    ;(top ? away : home).push(line)
+  }
+  return { away, home }
+}
+
+// ".333" style, no leading zero
+export function formatAvg(avg: number): string {
+  if (avg <= 0) return '.000'
+  return avg.toFixed(3).replace(/^0/, '')
+}
+
+// ---------------------------------------------------------------------------
 // Play-by-play — human descriptions of the notable (non-pitch) events.
 // ---------------------------------------------------------------------------
 export type PlayKind = 'scoring' | 'out' | 'hit' | 'neutral'
