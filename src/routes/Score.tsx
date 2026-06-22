@@ -629,23 +629,19 @@ function InPlayFlow({
           ))}
         </div>
 
-        {/* where did it land — hits tap the same field the viewer shows */}
-        {isHit && (
-          <>
-            <SectionLabel>Where did it land? · tap the field</SectionLabel>
-            <div className="mx-auto w-full max-w-[300px] border-2 border-gold/40">
-              <FieldDiamond
-                bases={baseIds}
-                nameOf={runnerName}
-                fielders={defense}
-                batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
-                onFieldTap={setLanding}
-                marker={landing}
-                className="block w-full"
-              />
-            </div>
-          </>
-        )}
+        {/* where did the ball go — tap the same field the viewer shows */}
+        <SectionLabel>{isHit ? 'Where did it land?' : 'Where did it go?'} · tap the field</SectionLabel>
+        <div className="mx-auto w-full max-w-[300px] border-2 border-gold/40">
+          <FieldDiamond
+            bases={baseIds}
+            nameOf={runnerName}
+            fielders={defense}
+            batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
+            onFieldTap={setLanding}
+            marker={landing}
+            className="block w-full"
+          />
+        </div>
 
         {/* who made the out / error — only when relevant */}
         {showCredit && (
@@ -674,7 +670,7 @@ function InPlayFlow({
               resolution,
               rbi: runs,
               advances,
-              ...(isHit && landing ? { spray: landing } : {}),
+              ...(landing ? { spray: landing } : {}),
               ...(fielders.length ? { fielders } : {}),
             })
           }

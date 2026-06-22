@@ -34,13 +34,14 @@ type LineupSlot = { name: string; jersey: string | null; pos: string | null }
 // fielder putout sequence (contact = first fielder, throws = the rest).
 function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null {
   if (!payload) return null
+  const pts = (Array.isArray(payload.fielders) ? payload.fielders : [])
+    .map((n) => FIELDER_POS[POS_BY_NUM[n]])
+    .filter((p): p is { x: number; y: number } => !!p)
+  // Tapped contact point + throw sequence: ball goes to where it was hit, then
+  // the throws (skip the first fielder since that's ~where it was fielded).
+  if (payload.spray && pts.length) return { contact: payload.spray, throws: pts.slice(1), nonce: seq }
   if (payload.spray) return { contact: payload.spray, nonce: seq }
-  if (Array.isArray(payload.fielders) && payload.fielders.length) {
-    const pts = payload.fielders
-      .map((n) => FIELDER_POS[POS_BY_NUM[n]])
-      .filter((p): p is { x: number; y: number } => !!p)
-    if (pts.length) return { contact: pts[0], throws: pts.slice(1), nonce: seq }
-  }
+  if (pts.length) return { contact: pts[0], throws: pts.slice(1), nonce: seq }
   return null
 }
 
