@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { Scorebug } from '@/components/Scorebug'
 import { FieldDiamond } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
-import { INITIAL_LIVE, type GameEventRow, type LiveGame } from '@/lib/engine'
+import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
 import {
   buildPlayByPlay,
   computeBattingLines,
@@ -83,7 +83,7 @@ export default function Watch() {
     balls: live.balls,
     strikes: live.strikes,
     outs: live.outs,
-    runners: live.bases,
+    runners: occupancy(live.bases),
   }
 
   return (
@@ -157,7 +157,7 @@ function FieldTab({ live, events }: { live: LiveGame; events: ViewerEvent[] }) {
         </div>
       )}
       <div className="mx-auto max-w-sm border-2 border-gold">
-        <FieldDiamond runners={live.bases} batter className="block w-full" />
+        <FieldDiamond bases={live.bases} batterLabel={null} className="block w-full" />
       </div>
     </div>
   )

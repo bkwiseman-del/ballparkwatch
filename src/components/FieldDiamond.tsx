@@ -1,8 +1,8 @@
 import type { Bases } from '@/lib/engine'
 
 // Shared baseball field. 300x300 SVG space, diamond is a 45°-rotated square.
-// Geometry per the design spec. No explicit foul lines (the base-path edges
-// already read as them). Occupied bases show a gold runner chip.
+// Bases hold player ids; pass `nameOf` to label runner chips and `onRunnerTap`
+// to make them interactive (scorer advancement / steals).
 const cx = 150
 const cy = 162
 const h = 92
@@ -12,7 +12,6 @@ const FIRST = { x: cx + h, y: cy }
 const SECOND = { x: cx, y: cy - h }
 const THIRD = { x: cx - h, y: cy }
 
-// inner (grass) diamond — pull each vertex ~14px toward center
 function toward(p: { x: number; y: number }, by = 14) {
   const dx = cx - p.x
   const dy = cy - p.y
@@ -22,53 +21,59 @@ function toward(p: { x: number; y: number }, by = 14) {
 
 const poly = (pts: { x: number; y: number }[]) => pts.map((p) => `${p.x},${p.y}`).join(' ')
 
+export type BaseName = 'first' | 'second' | 'third'
+
 export function FieldDiamond({
-  runners,
+  bases,
+  nameOf,
+  onRunnerTap,
+  batterLabel,
   className = '',
-  batter = false,
 }: {
-  runners: Bases
+  bases: Bases
+  nameOf?: (id: string) => string | null
+  onRunnerTap?: (base: BaseName, id: string) => void
+  batterLabel?: string | null
   className?: string
-  batter?: boolean
 }) {
   const outer = [HOME, FIRST, SECOND, THIRD]
   const inner = outer.map((p) => toward(p))
+  const label = (id: string | null) => (id && nameOf ? nameOf(id) : null)
 
   return (
     <svg viewBox="0 0 300 300" className={className} role="img" aria-label="Field">
-      {/* background */}
       <rect width="300" height="300" fill="#2C5234" />
-      {/* outfield band (lighter green) */}
       <path d="M 30 168 A 120 120 0 0 1 270 168 L 270 150 A 120 120 0 0 0 30 150 Z" fill="#326139" />
-      <ellipse cx={cx} cy={cy - 12} rx="118" ry="92" fill="#326139" opacity="0.0" />
 
-      {/* infield dirt */}
       <polygon points={poly(outer)} fill="#b07a3e" />
-      {/* infield grass */}
       <polygon points={poly(inner)} fill="#2C5234" />
-      {/* base paths */}
       <polygon points={poly(outer)} fill="none" stroke="#e9ddc2" strokeWidth="2.5" />
 
-      {/* pitcher's mound */}
       <circle cx={cx} cy={cy} r="12" fill="#b07a3e" />
       <rect x={cx - 4} y={cy - 2} width="8" height="4" fill="#F4ECD8" />
 
-      {/* bases (14x14 rotated 45°) */}
-      <Base p={SECOND} occupied={runners.second} />
-      <Base p={FIRST} occupied={runners.first} />
-      <Base p={THIRD} occupied={runners.third} />
+      <BaseSquare p={SECOND} occupied={!!bases.second} />
+      <BaseSquare p={FIRST} occupied={!!bases.first} />
+      <BaseSquare p={THIRD} occupied={!!bases.third} />
       <HomePlate />
 
-      {/* runner chips */}
-      {runners.first && <Runner p={FIRST} />}
-      {runners.second && <Runner p={SECOND} />}
-      {runners.third && <Runner p={THIRD} />}
-      {batter && <circle cx={HOME.x} cy={HOME.y - 2} r="9" fill="#A6342E" stroke="#F4ECD8" strokeWidth="1.5" />}
+      <Runner base="third" p={THIRD} id={bases.third} label={label(bases.third)} onTap={onRunnerTap} />
+      <Runner base="second" p={SECOND} id={bases.second} label={label(bases.second)} onTap={onRunnerTap} />
+      <Runner base="first" p={FIRST} id={bases.first} label={label(bases.first)} onTap={onRunnerTap} />
+
+      {batterLabel !== undefined && (
+        <g>
+          <circle cx={HOME.x} cy={HOME.y - 2} r="9" fill="#A6342E" stroke="#F4ECD8" strokeWidth="1.5" />
+          {batterLabel && (
+            <RunnerLabel x={HOME.x} y={HOME.y + 16} text={batterLabel} bg="#A6342E" fg="#F4ECD8" />
+          )}
+        </g>
+      )}
     </svg>
   )
 }
 
-function Base({ p, occupied }: { p: { x: number; y: number }; occupied: boolean }) {
+function BaseSquare({ p, occupied }: { p: { x: number; y: number }; occupied: boolean }) {
   return (
     <rect
       x={p.x - 7}
@@ -91,6 +96,48 @@ function HomePlate() {
   )
 }
 
-function Runner({ p }: { p: { x: number; y: number } }) {
-  return <circle cx={p.x} cy={p.y} r="9" fill="#C9A14A" stroke="#1A2A4A" strokeWidth="1.5" />
+function Runner({
+  base,
+  p,
+  id,
+  label,
+  onTap,
+}: {
+  base: BaseName
+  p: { x: number; y: number }
+  id: string | null
+  label: string | null
+  onTap?: (base: BaseName, id: string) => void
+}) {
+  if (!id) return null
+  const interactive = !!onTap
+  return (
+    <g
+      onClick={interactive ? () => onTap!(base, id) : undefined}
+      style={interactive ? { cursor: 'pointer' } : undefined}
+    >
+      <circle cx={p.x} cy={p.y} r="11" fill="#C9A14A" stroke="#1A2A4A" strokeWidth="2" />
+      {label && <RunnerLabel x={p.x} y={p.y - 16} text={label} bg="#C9A14A" fg="#1A2A4A" />}
+    </g>
+  )
+}
+
+function RunnerLabel({ x, y, text, bg, fg }: { x: number; y: number; text: string; bg: string; fg: string }) {
+  const w = Math.max(28, text.length * 7 + 10)
+  return (
+    <g>
+      <rect x={x - w / 2} y={y - 11} width={w} height="16" fill={bg} />
+      <text
+        x={x}
+        y={y + 1}
+        textAnchor="middle"
+        fontSize="10"
+        fontWeight="700"
+        fill={fg}
+        style={{ fontFamily: "'Saira Condensed', sans-serif" }}
+      >
+        {text}
+      </text>
+    </g>
+  )
 }

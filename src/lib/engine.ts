@@ -2,7 +2,8 @@ import type { Half } from './types'
 
 // ---------------------------------------------------------------------------
 // Event taxonomy. game_events.event_type stores one of these; payload holds
-// detail (fielders, RBIs, runner overrides) for later phases.
+// detail. PA-completing in-play results carry a `resolution` payload describing
+// exactly where the batter and every runner ended up.
 // ---------------------------------------------------------------------------
 export type EventType =
   | 'game_start'
@@ -24,19 +25,44 @@ export type EventType =
   | 'lineout'
   | 'error'
   | 'fielders_choice'
+  // mid-at-bat baserunning (do not end the at-bat)
+  | 'runner_advance'
+  | 'stolen_base'
+  | 'caught_stealing'
+
+// Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
+export type Dest = 0 | 1 | 2 | 3 | 4
+
+// Where the batter and each existing runner (by player id) ended up on a play.
+export type Resolution = {
+  batter: Dest
+  runners: Record<string, Dest>
+}
+
+export type EventPayload = {
+  resolution?: Resolution
+  // mid-AB baserunning
+  runner?: string
+  to?: Dest
+  // strike classification: 'swinging' | 'looking' | 'foul_tip'
+  kind?: string
+  // fielders involved (e.g. [6,4,3]) and rbi credited — for stats/PBP
+  fielders?: number[]
+  rbi?: number
+  [k: string]: unknown
+}
 
 export type GameEventInput = {
   event_type: EventType
-  payload?: Record<string, unknown>
+  payload?: EventPayload
 }
 
-// A stored event row (subset we need to replay).
 export type GameEventRow = GameEventInput & { seq: number; batter_id?: string | null }
 
 // ---------------------------------------------------------------------------
-// Live projected state. game_state.snapshot holds this so viewers read one row.
+// Live projected state. Bases hold the *player id* on each base (or null).
 // ---------------------------------------------------------------------------
-export type Bases = { first: boolean; second: boolean; third: boolean }
+export type Bases = { first: string | null; second: string | null; third: string | null }
 
 export type LiveGame = {
   status: 'scheduled' | 'live' | 'final'
@@ -48,8 +74,6 @@ export type LiveGame = {
   awayScore: number
   homeScore: number
   bases: Bases
-  // Completed plate appearances per team = index into the batting order. The UI
-  // mods by the lineup length to find the current batter / on-deck.
   awayBatterIdx: number
   homeBatterIdx: number
 }
@@ -63,12 +87,11 @@ export const INITIAL_LIVE: LiveGame = {
   strikes: 0,
   awayScore: 0,
   homeScore: 0,
-  bases: { first: false, second: false, third: false },
+  bases: { first: null, second: null, third: null },
   awayBatterIdx: 0,
   homeBatterIdx: 0,
 }
 
-// Human label for the undo strip.
 export const EVENT_LABELS: Record<EventType, string> = {
   game_start: 'Game start',
   game_end: 'Game end',
@@ -89,11 +112,35 @@ export const EVENT_LABELS: Record<EventType, string> = {
   lineout: 'Lineout',
   error: 'Error',
   fielders_choice: "Fielder's choice",
+  runner_advance: 'Runner advance',
+  stolen_base: 'Stolen base',
+  caught_stealing: 'Caught stealing',
+}
+
+// Event-type groupings used across the app.
+export const PITCH_TYPES: EventType[] = ['pitch_ball', 'pitch_strike', 'pitch_foul', 'pitch_in_play']
+export const HIT_TYPES: EventType[] = ['single', 'double', 'triple', 'home_run']
+export const IN_PLAY_RESULTS: EventType[] = [
+  'single', 'double', 'triple', 'home_run', 'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+]
+// Events that end a plate appearance (advance the batting order).
+export const PA_ENDING: EventType[] = [...IN_PLAY_RESULTS, 'walk', 'hit_by_pitch', 'strikeout']
+
+// Default bases reached for the batter on a clean in-play result.
+const RESULT_BATTER_DEST: Partial<Record<EventType, Dest>> = {
+  single: 1,
+  double: 2,
+  triple: 3,
+  home_run: 4,
+  error: 1,
+  fielders_choice: 1,
+  groundout: 0,
+  flyout: 0,
+  lineout: 0,
 }
 
 // ---------------------------------------------------------------------------
-// Reducer. Replaying the whole log is cheap (a game is hundreds of events) and
-// makes undo trivial: drop the last event and re-project.
+// Reducer. Replaying the whole log is cheap and makes undo trivial.
 // ---------------------------------------------------------------------------
 export function project(events: GameEventRow[]): LiveGame {
   return events
@@ -102,8 +149,9 @@ export function project(events: GameEventRow[]): LiveGame {
     .reduce(applyEvent, clone(INITIAL_LIVE))
 }
 
-export function applyEvent(prev: LiveGame, e: GameEventInput): LiveGame {
+export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
   const s = clone(prev)
+  const batterId = e.batter_id ?? null
   switch (e.event_type) {
     case 'game_start':
       s.status = 'live'
@@ -118,7 +166,7 @@ export function applyEvent(prev: LiveGame, e: GameEventInput): LiveGame {
     case 'pitch_ball':
       s.balls += 1
       if (s.balls >= 4) {
-        walkAdvance(s)
+        forcedAdvance(s, batterId)
         endAtBat(s)
       }
       break
@@ -133,92 +181,173 @@ export function applyEvent(prev: LiveGame, e: GameEventInput): LiveGame {
       if (s.strikes < 2) s.strikes += 1
       break
     case 'pitch_in_play':
-      // Placeholder pitch marker; the result arrives as its own event.
       break
 
     case 'walk':
     case 'hit_by_pitch':
-      walkAdvance(s)
+      forcedAdvance(s, batterId)
       endAtBat(s)
       break
 
     case 'single':
-      batterReaches(s, 1)
-      endAtBat(s)
-      break
     case 'double':
-      batterReaches(s, 2)
-      endAtBat(s)
-      break
     case 'triple':
-      batterReaches(s, 3)
-      endAtBat(s)
-      break
     case 'home_run':
-      batterReaches(s, 4)
-      endAtBat(s)
-      break
-
     case 'error':
-      // Simplified: batter reaches first, no out.
-      batterReaches(s, 1)
-      endAtBat(s)
-      break
     case 'fielders_choice':
-      // Simplified: one out recorded, batter safe at first, runners hold.
-      recordOut(s)
-      s.bases.first = true
+    case 'groundout':
+    case 'flyout':
+    case 'lineout':
+      applyResolution(s, e)
       endAtBat(s)
       break
 
     case 'strikeout':
-    case 'groundout':
-    case 'flyout':
-    case 'lineout':
       recordOut(s)
       endAtBat(s)
       break
+
+    // --- mid-at-bat baserunning (no PA change, no count reset) ---
+    case 'stolen_base':
+    case 'runner_advance': {
+      const pid = e.payload?.runner
+      const to = e.payload?.to
+      if (pid && to != null) moveRunner(s, pid, to)
+      break
+    }
+    case 'caught_stealing': {
+      const pid = e.payload?.runner
+      if (pid) {
+        removeRunner(s, pid)
+        recordOut(s)
+        if (s.outs >= 3) clearBases(s)
+      }
+      break
+    }
   }
   return s
 }
 
-// --- helpers ---------------------------------------------------------------
+// ---- resolution ----------------------------------------------------------
 
-function batterReaches(s: LiveGame, numBases: number) {
-  // Advance existing runners by numBases; any passing home scores.
-  const occupied: number[] = []
-  if (s.bases.third) occupied.push(3)
-  if (s.bases.second) occupied.push(2)
-  if (s.bases.first) occupied.push(1)
-  s.bases = { first: false, second: false, third: false }
-  let runs = 0
-  for (const b of occupied) {
-    const nb = b + numBases
-    if (nb >= 4) runs += 1
-    else setBase(s.bases, nb, true)
+// Apply an explicit per-runner resolution. Falls back to automatic advancement
+// (legacy behaviour) when no resolution payload is present, so events scored
+// before this model still project correctly.
+function applyResolution(s: LiveGame, e: GameEventRow) {
+  const res = e.payload?.resolution
+  const batterId = e.batter_id ?? null
+  if (!res) {
+    autoAdvanceByType(s, e.event_type, batterId)
+    return
   }
-  // Place the batter (numBases 4 = home run = scores).
-  if (numBases >= 4) runs += 1
-  else setBase(s.bases, numBases, true)
+  const old = s.bases
+  const next: Bases = { first: null, second: null, third: null }
+  let runs = 0
+
+  const place = (pid: string, dest: Dest) => {
+    if (dest === 0) {
+      recordOut(s)
+    } else if (dest === 4) {
+      runs += 1
+    } else {
+      setBase(next, dest, pid)
+    }
+  }
+
+  // existing runners
+  for (const base of [1, 2, 3] as const) {
+    const pid = getBase(old, base)
+    if (!pid) continue
+    const dest = res.runners[pid] ?? (base as Dest) // default: hold
+    place(pid, dest)
+  }
+  // batter
+  if (batterId) place(batterId, res.batter)
+
+  s.bases = next
   addRuns(s, runs)
 }
 
-function walkAdvance(s: LiveGame) {
-  // Force only: batter to 1B; cascade forced runners.
-  if (s.bases.first) {
-    if (s.bases.second) {
-      if (s.bases.third) addRuns(s, 1)
-      s.bases.third = true
-    }
-    s.bases.second = true
+// Legacy auto-advance: everyone moves by the hit value; outs are batter-out.
+function autoAdvanceByType(s: LiveGame, type: EventType, batterId: string | null) {
+  const dest = RESULT_BATTER_DEST[type]
+  if (dest === 0 || dest === undefined) {
+    // an out (or unknown) — batter out, runners hold
+    if (dest === 0) recordOut(s)
+    return
   }
-  s.bases.first = true
+  const n = dest // 1..4
+  const old = s.bases
+  const next: Bases = { first: null, second: null, third: null }
+  let runs = 0
+  const advance = (pid: string, from: number) => {
+    const nb = from + n
+    if (nb >= 4) runs += 1
+    else setBase(next, nb as Dest, pid)
+  }
+  for (const base of [3, 2, 1] as const) {
+    const pid = getBase(old, base)
+    if (pid) advance(pid, base)
+  }
+  if (batterId) {
+    if (n >= 4) runs += 1
+    else setBase(next, n as Dest, batterId)
+  } else if (n >= 4) {
+    // no batter id recorded (legacy) but a HR still scores the batter
+    runs += 1
+  }
+  s.bases = next
+  addRuns(s, runs)
 }
 
-function setBase(b: Bases, base: number, val: boolean) {
-  if (base === 1) b.first = val
-  else if (base === 2) b.second = val
-  else if (base === 3) b.third = val
+// Walk / HBP: batter to first, forced runners cascade only.
+function forcedAdvance(s: LiveGame, batterId: string | null) {
+  const { first, second, third } = s.bases
+  let runs = 0
+  let nf: string | null, ns: string | null, nt: string | null
+  if (!first) {
+    nf = batterId
+    ns = second
+    nt = third
+  } else if (!second) {
+    nf = batterId
+    ns = first
+    nt = third
+  } else if (!third) {
+    nf = batterId
+    ns = first
+    nt = second
+  } else {
+    nf = batterId
+    ns = first
+    nt = second
+    runs = 1 // bases loaded: runner on third forced home
+  }
+  s.bases = { first: nf, second: ns, third: nt }
+  addRuns(s, runs)
+}
+
+// ---- helpers -------------------------------------------------------------
+
+function moveRunner(s: LiveGame, pid: string, to: Dest) {
+  removeRunner(s, pid)
+  if (to === 4) addRuns(s, 1)
+  else if (to >= 1 && to <= 3) setBase(s.bases, to, pid)
+}
+
+function removeRunner(s: LiveGame, pid: string) {
+  if (s.bases.first === pid) s.bases.first = null
+  if (s.bases.second === pid) s.bases.second = null
+  if (s.bases.third === pid) s.bases.third = null
+}
+
+function getBase(b: Bases, base: number): string | null {
+  return base === 1 ? b.first : base === 2 ? b.second : base === 3 ? b.third : null
+}
+function setBase(b: Bases, base: Dest, pid: string) {
+  if (base === 1) b.first = pid
+  else if (base === 2) b.second = pid
+  else if (base === 3) b.third = pid
 }
 
 function addRuns(s: LiveGame, runs: number) {
@@ -231,24 +360,16 @@ function recordOut(s: LiveGame) {
   s.outs += 1
 }
 
-// End the current at-bat: reset the count and advance the batting order for the
-// team that was hitting. If 3 outs, clear bases (the operator advances the inning
-// explicitly with an inning_change event).
+function clearBases(s: LiveGame) {
+  s.bases = { first: null, second: null, third: null }
+}
+
 function endAtBat(s: LiveGame) {
   s.balls = 0
   s.strikes = 0
   if (s.half === 'top') s.awayBatterIdx += 1
   else s.homeBatterIdx += 1
-  if (s.outs >= 3) {
-    s.bases = { first: false, second: false, third: false }
-  }
-}
-
-// The 0-based current-batter slot for the team now at bat, given lineup length.
-export function currentBatterSlot(s: LiveGame, lineupLength: number): number | null {
-  if (lineupLength <= 0) return null
-  const idx = s.half === 'top' ? s.awayBatterIdx : s.homeBatterIdx
-  return idx % lineupLength
+  if (s.outs >= 3) clearBases(s)
 }
 
 function nextHalf(s: LiveGame) {
@@ -261,7 +382,18 @@ function nextHalf(s: LiveGame) {
   s.outs = 0
   s.balls = 0
   s.strikes = 0
-  s.bases = { first: false, second: false, third: false }
+  clearBases(s)
+}
+
+export function currentBatterSlot(s: LiveGame, lineupLength: number): number | null {
+  if (lineupLength <= 0) return null
+  const idx = s.half === 'top' ? s.awayBatterIdx : s.homeBatterIdx
+  return idx % lineupLength
+}
+
+// Occupancy booleans for components that only need on/off (e.g. the scorebug).
+export function occupancy(b: Bases) {
+  return { first: !!b.first, second: !!b.second, third: !!b.third }
 }
 
 function clone(s: LiveGame): LiveGame {

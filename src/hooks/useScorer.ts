@@ -5,7 +5,10 @@ import type { Game, LineupEntry, Player, Team } from '@/lib/types'
 import {
   currentBatterSlot,
   INITIAL_LIVE,
+  PA_ENDING,
+  PITCH_TYPES,
   project,
+  type EventPayload,
   type EventType,
   type GameEventRow,
   type LiveGame,
@@ -19,6 +22,7 @@ export function useScorer(gameId: string | undefined) {
   const [game, setGame] = useState<Game | null>(null)
   const [teams, setTeams] = useState<Teams | null>(null)
   const [lineups, setLineups] = useState<Lineups>({ away: [], home: [] })
+  const [playersById, setPlayersById] = useState<Map<string, Player>>(new Map())
   const [events, setEvents] = useState<GameEventRow[]>([])
   const [live, setLive] = useState<LiveGame>(INITIAL_LIVE)
   const [loading, setLoading] = useState(true)
@@ -53,6 +57,7 @@ export function useScorer(gameId: string | undefined) {
       if (away && home) setTeams({ away: away as Team, home: home as Team })
       // Build batting orders from lineup_entries, resolving player_id -> Player.
       const byId = new Map(((pls ?? []) as Player[]).map((p) => [p.id, p]))
+      setPlayersById(byId)
       const ordered = (teamId: string) =>
         ((le ?? []) as LineupEntry[])
           .filter((e) => e.team_id === teamId)
@@ -113,10 +118,11 @@ export function useScorer(gameId: string | undefined) {
 
   // Append an event, re-project, persist.
   const act = useCallback(
-    async (event_type: EventType, payload: Record<string, unknown> = {}) => {
+    async (event_type: EventType, payload: EventPayload = {}) => {
       if (!gameId) return
       const seq = (events.at(-1)?.seq ?? 0) + 1
-      const row: GameEventRow = { seq, event_type, payload }
+      const batter_id = currentBatter?.id ?? null
+      const row: GameEventRow = { seq, event_type, payload, batter_id }
       const nextEvents = [...events, row]
       const nextLive = project(nextEvents)
       setEvents(nextEvents)
@@ -162,5 +168,51 @@ export function useScorer(gameId: string | undefined) {
     await persist(nextLive)
   }, [gameId, events, persist])
 
-  return { game, teams, lineups, events, live, loading, error, act, undo, currentBatter, onDeck }
+  // Fielding team's current pitcher (lineup player at position P), if known.
+  const fieldingLineup = live.half === 'top' ? lineups.home : lineups.away
+  const currentPitcher = fieldingLineup.find((p) => p.default_position === 'P') ?? null
+
+  // Runners currently on base, resolved to players.
+  const runnersOnBase = {
+    first: live.bases.first ? playersById.get(live.bases.first) ?? null : null,
+    second: live.bases.second ? playersById.get(live.bases.second) ?? null : null,
+    third: live.bases.third ? playersById.get(live.bases.third) ?? null : null,
+  }
+
+  // Pitch chips for the current at-bat (since the last PA-ending / boundary event).
+  const abPitches = currentAbPitches(events)
+
+  return {
+    game,
+    teams,
+    lineups,
+    events,
+    live,
+    loading,
+    error,
+    act,
+    undo,
+    currentBatter,
+    onDeck,
+    currentPitcher,
+    runnersOnBase,
+    playersById,
+    abPitches,
+  }
+}
+
+// Returns the pitch chips (S/B/F) for the in-progress at-bat.
+function currentAbPitches(events: GameEventRow[]): ('S' | 'B' | 'F')[] {
+  const chips: ('S' | 'B' | 'F')[] = []
+  for (let i = events.length - 1; i >= 0; i--) {
+    const t = events[i].event_type
+    if (PITCH_TYPES.includes(t)) {
+      if (t === 'pitch_strike') chips.unshift('S')
+      else if (t === 'pitch_ball') chips.unshift('B')
+      else if (t === 'pitch_foul') chips.unshift('F')
+    } else if (PA_ENDING.includes(t) || t === 'inning_change' || t === 'game_start') {
+      break
+    }
+  }
+  return chips
 }
