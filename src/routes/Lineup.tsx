@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
 import type { Game, LineupEntry, Player, Team } from '@/lib/types'
 
+const POSITIONS_LIST = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
+
 export default function Lineup() {
   const { gameId } = useParams()
   const navigate = useNavigate()
@@ -12,6 +14,7 @@ export default function Lineup() {
   const [home, setHome] = useState<Team | null>(null)
   const [rosters, setRosters] = useState<Record<string, Player[]>>({})
   const [order, setOrder] = useState<Record<string, string[]>>({}) // teamId -> [playerId]
+  const [positions, setPositions] = useState<Record<string, Record<string, string>>>({}) // teamId -> playerId -> pos
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -43,13 +46,24 @@ export default function Lineup() {
         init[e.team_id].push(e.player_id)
       }
       // keep existing batting order
+      const allEntries = (existing.data ?? []) as LineupEntry[]
+      const posInit: Record<string, Record<string, string>> = {
+        [g.away_team_id]: {},
+        [g.home_team_id]: {},
+      }
       for (const tid of Object.keys(init)) {
-        const ents = ((existing.data ?? []) as LineupEntry[])
+        const ents = allEntries
           .filter((e) => e.team_id === tid)
           .sort((x, y) => (x.batting_order ?? 0) - (y.batting_order ?? 0))
         init[tid] = ents.map((e) => e.player_id)
+        const roster = (tid === g.away_team_id ? ap.data : hp.data) as Player[] | null
+        for (const e of ents) {
+          const def = (roster ?? []).find((p) => p.id === e.player_id)?.default_position
+          posInit[tid][e.player_id] = e.position ?? def ?? ''
+        }
       }
       setOrder(init)
+      setPositions(posInit)
       setLoading(false)
     })()
   }, [gameId])
@@ -63,7 +77,10 @@ export default function Lineup() {
     const rows: Omit<LineupEntry, 'id'>[] = []
     for (const teamId of [game.away_team_id, game.home_team_id]) {
       ;(order[teamId] ?? []).forEach((playerId, i) => {
-        const pos = rosters[teamId]?.find((p) => p.id === playerId)?.default_position ?? null
+        const pos =
+          positions[teamId]?.[playerId] ||
+          rosters[teamId]?.find((p) => p.id === playerId)?.default_position ||
+          null
         rows.push({
           game_id: gameId,
           team_id: teamId,
@@ -96,9 +113,10 @@ export default function Lineup() {
       </header>
 
       <div className="mx-auto max-w-3xl px-4 py-5">
-        <h1 className="mb-1 font-display text-2xl">Lineups</h1>
+        <h1 className="mb-1 font-display text-2xl">Lineups &amp; Positions</h1>
         <p className="mb-5 font-data text-sm text-muted-tan">
-          Tap players to add them in order. Reorder by dragging the ⠿ handle or using ▲▼; ✕ removes.
+          Tap players to add them in batting order (drag ⠿ or ▲▼ to reorder, ✕ to remove). Set each
+          player's defensive position with the dropdown — adjust any time, including between innings.
         </p>
 
         {error && (
@@ -113,12 +131,26 @@ export default function Lineup() {
             roster={rosters[game.away_team_id] ?? []}
             order={order[game.away_team_id] ?? []}
             setOrder={(o) => setOrder((prev) => ({ ...prev, [game.away_team_id]: o }))}
+            positions={positions[game.away_team_id] ?? {}}
+            setPosition={(pid, pos) =>
+              setPositions((prev) => ({
+                ...prev,
+                [game.away_team_id]: { ...(prev[game.away_team_id] ?? {}), [pid]: pos },
+              }))
+            }
           />
           <TeamLineup
             team={home}
             roster={rosters[game.home_team_id] ?? []}
             order={order[game.home_team_id] ?? []}
             setOrder={(o) => setOrder((prev) => ({ ...prev, [game.home_team_id]: o }))}
+            positions={positions[game.home_team_id] ?? {}}
+            setPosition={(pid, pos) =>
+              setPositions((prev) => ({
+                ...prev,
+                [game.home_team_id]: { ...(prev[game.home_team_id] ?? {}), [pid]: pos },
+              }))
+            }
             accent
           />
         </div>
@@ -144,12 +176,16 @@ function TeamLineup({
   roster,
   order,
   setOrder,
+  positions,
+  setPosition,
   accent = false,
 }: {
   team: Team
   roster: Player[]
   order: string[]
   setOrder: (o: string[]) => void
+  positions: Record<string, string>
+  setPosition: (playerId: string, pos: string) => void
   accent?: boolean
 }) {
   const byId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster])
@@ -196,7 +232,19 @@ function TeamLineup({
                 {p?.jersey_number ?? '—'}
               </span>
               <span className="font-display text-base">{p?.name ?? '?'}</span>
-              <span className="ml-auto font-data text-xs text-muted-tan">{p?.default_position}</span>
+              <select
+                value={positions[pid] ?? p?.default_position ?? ''}
+                onChange={(e) => setPosition(pid, e.target.value)}
+                className="ml-auto border border-ink/30 bg-white px-1 py-1 font-athletic text-xs"
+                title="Defensive position"
+              >
+                <option value="">POS</option>
+                {POSITIONS_LIST.map((pos) => (
+                  <option key={pos} value={pos}>
+                    {pos}
+                  </option>
+                ))}
+              </select>
               <span className="flex flex-col leading-none">
                 <button
                   onClick={() => move(i, i - 1)}
