@@ -232,7 +232,7 @@ export default function Score() {
           batter={s.currentBatter}
           runners={s.runnersOnBase}
           defense={(live.half === 'top' ? s.lineups.home : s.lineups.away).map((p) => ({
-            pos: p.default_position,
+            pos: p.position ?? p.default_position,
             name: p.name,
           }))}
           onCancel={() => setInPlay(false)}

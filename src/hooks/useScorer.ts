@@ -16,7 +16,9 @@ import {
 import { gameChannelName } from '@/lib/realtime'
 
 type Teams = { away: Team; home: Team }
-type Lineups = { away: Player[]; home: Player[] }
+// Player plus the position assigned for THIS game (lineup_entries.position).
+export type LineupPlayer = Player & { position: string | null }
+type Lineups = { away: LineupPlayer[]; home: LineupPlayer[] }
 
 export function useScorer(gameId: string | undefined) {
   const [game, setGame] = useState<Game | null>(null)
@@ -58,11 +60,14 @@ export function useScorer(gameId: string | undefined) {
       // Build batting orders from lineup_entries, resolving player_id -> Player.
       const byId = new Map(((pls ?? []) as Player[]).map((p) => [p.id, p]))
       setPlayersById(byId)
-      const ordered = (teamId: string) =>
+      const ordered = (teamId: string): LineupPlayer[] =>
         ((le ?? []) as LineupEntry[])
           .filter((e) => e.team_id === teamId)
-          .map((e) => byId.get(e.player_id))
-          .filter((p): p is Player => !!p)
+          .map((e) => {
+            const p = byId.get(e.player_id)
+            return p ? { ...p, position: e.position } : null
+          })
+          .filter((p): p is LineupPlayer => !!p)
       setLineups({ away: ordered(g.away_team_id), home: ordered(g.home_team_id) })
       const rows = (evs ?? []) as GameEventRow[]
       setEvents(rows)
@@ -170,7 +175,8 @@ export function useScorer(gameId: string | undefined) {
 
   // Fielding team's current pitcher (lineup player at position P), if known.
   const fieldingLineup = live.half === 'top' ? lineups.home : lineups.away
-  const currentPitcher = fieldingLineup.find((p) => p.default_position === 'P') ?? null
+  const currentPitcher =
+    fieldingLineup.find((p) => (p.position ?? p.default_position) === 'P') ?? null
 
   // Runners currently on base, resolved to players.
   const runnersOnBase = {

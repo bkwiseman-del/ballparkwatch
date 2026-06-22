@@ -70,6 +70,13 @@ export default function Watch() {
     if (!error && data) setEvents(data as ViewerEvent[])
   }, [gameId])
 
+  // Refresh game info (lineups, status) — picks up substitutions/realignment.
+  const loadGame = useCallback(async () => {
+    if (!gameId) return
+    const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
+    if (data) setInfo(data as PublicGame)
+  }, [gameId])
+
   useEffect(() => {
     if (!gameId) return
     let cancelled = false
@@ -88,13 +95,14 @@ export default function Watch() {
     ch.on('broadcast', { event: 'state' }, ({ payload }) => {
       setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
       loadEvents() // refresh plays/box when the operator scores
+      loadGame() // refresh lineups/status (catches subs)
     }).subscribe()
 
     return () => {
       cancelled = true
       supabase.removeChannel(ch)
     }
-  }, [gameId, loadEvents])
+  }, [gameId, loadEvents, loadGame])
 
   // Briefly animate the spray when a *new* located play arrives (not on load).
   useEffect(() => {
