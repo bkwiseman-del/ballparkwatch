@@ -488,7 +488,7 @@ function InPlayFlow({
   onCancel: () => void
   onConfirm: (result: EventType, payload: EventPayload) => void
 }) {
-  const [result, setResult] = useState<EventType | null>(null)
+  const [result, setResult] = useState<EventType>('single')
   const [location, setLocation] = useState<string | null>(null)
   const [fielders, setFielders] = useState<number[]>([])
 
@@ -499,16 +499,17 @@ function InPlayFlow({
   ].filter(Boolean) as OnBase[]
 
   return (
-    <Overlay onClose={onCancel} align="end">
-      <div className="flex max-h-[90vh] w-full max-w-[430px] flex-col overflow-y-auto border-t-2 border-gold bg-field-green p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="font-athletic text-sm font-semibold uppercase tracking-[.12em] text-cream">
-            Ball in play
-          </span>
-          <button onClick={onCancel} className="font-athletic text-cream">✕</button>
-        </div>
+    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
+      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
+        <span className="font-display text-lg text-cream">Ball in Play</span>
+        <button onClick={onCancel} className="font-athletic text-sm uppercase tracking-wide text-gold">
+          Cancel ✕
+        </button>
+      </header>
 
-        {/* step 1: result */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* result */}
+        <SectionLabel>Result</SectionLabel>
         <div className="mb-2 grid grid-cols-4 gap-2">
           {RESULTS.filter((r) => r.group === 'hit').map((r) => (
             <ResultBtn key={r.type} active={result === r.type} onClick={() => setResult(r.type)} gold>
@@ -524,42 +525,39 @@ function InPlayFlow({
           ))}
         </div>
 
-        {result && (
-          <>
-            {/* step 2: where did it go */}
-            <SectionLabel>Where did it go?</SectionLabel>
-            <div className="mx-auto w-full max-w-[300px]">
-              <SprayField selected={location} onSelect={setLocation} />
-            </div>
+        {/* where did it go */}
+        <SectionLabel>Where did it go?</SectionLabel>
+        <div className="mx-auto w-full max-w-[320px] border-2 border-gold/40">
+          <SprayField selected={location} onSelect={setLocation} />
+        </div>
 
-            {/* step 3: who made the play (putout sequence) */}
-            <SectionLabel>
-              Who made the play{fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
-            </SectionLabel>
-            <FielderGrid
-              sequence={fielders}
-              onAppend={(n) => setFielders((s) => [...s, n])}
-              onClear={() => setFielders([])}
-            />
+        {/* who made the play */}
+        <SectionLabel>
+          Who made the play{fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
+        </SectionLabel>
+        <FielderGrid
+          sequence={fielders}
+          onAppend={(n) => setFielders((s) => [...s, n])}
+          onClear={() => setFielders([])}
+        />
 
-            {/* step 4: resolve each runner */}
-            <Resolver
-              result={result}
-              batter={batter}
-              onBase={onBase}
-              onResolve={(resolution, runs) =>
-                onConfirm(result, {
-                  resolution,
-                  rbi: runs,
-                  ...(location ? { location } : {}),
-                  ...(fielders.length ? { fielders } : {}),
-                })
-              }
-            />
-          </>
-        )}
+        {/* resolve each runner (re-keyed so defaults follow the result) */}
+        <Resolver
+          key={result}
+          result={result}
+          batter={batter}
+          onBase={onBase}
+          onResolve={(resolution, runs) =>
+            onConfirm(result, {
+              resolution,
+              rbi: runs,
+              ...(location ? { location } : {}),
+              ...(fielders.length ? { fielders } : {}),
+            })
+          }
+        />
       </div>
-    </Overlay>
+    </div>
   )
 }
 
