@@ -15,15 +15,15 @@ export type Fielder = { pos: string | null; name: string }
 // where each defensive position stands on the field (kept off the bags so
 // runner chips don't collide)
 const FIELDER_POS: Record<string, { x: number; y: number }> = {
-  P: { x: 170, y: 288 },
-  C: { x: 170, y: 354 },
-  '1B': { x: 288, y: 230 },
-  '2B': { x: 212, y: 206 },
-  SS: { x: 128, y: 206 },
-  '3B': { x: 52, y: 230 },
-  LF: { x: 92, y: 100 },
-  CF: { x: 170, y: 60 },
-  RF: { x: 248, y: 100 },
+  P: { x: 170, y: 290 },
+  C: { x: 170, y: 356 },
+  '1B': { x: 298, y: 240 },
+  '2B': { x: 214, y: 196 },
+  SS: { x: 126, y: 196 },
+  '3B': { x: 42, y: 240 },
+  LF: { x: 90, y: 98 },
+  CF: { x: 170, y: 58 },
+  RF: { x: 250, y: 98 },
 }
 
 export function FieldDiamond({
@@ -81,14 +81,14 @@ export function FieldDiamond({
       />
 
       {/* runners */}
-      <Runner base="third" p={THIRD} id={bases.third} label={label(bases.third)} onTap={onRunnerTap} />
+      <Runner base="third" p={THIRD} id={bases.third} label={label(bases.third)} onTap={onRunnerTap} below />
       <Runner base="second" p={SECOND} id={bases.second} label={label(bases.second)} onTap={onRunnerTap} />
-      <Runner base="first" p={FIRST} id={bases.first} label={label(bases.first)} onTap={onRunnerTap} />
+      <Runner base="first" p={FIRST} id={bases.first} label={label(bases.first)} onTap={onRunnerTap} below />
 
       {batterLabel !== undefined && (
         <g>
           <circle cx={HOME.x} cy={HOME.y + 1} r="10" fill="#A6342E" stroke="#F4ECD8" strokeWidth="1.5" />
-          {batterLabel && <Pill x={HOME.x} y={HOME.y + 22} text={batterLabel} bg="#A6342E" fg="#F4ECD8" />}
+          {batterLabel && <Pill x={HOME.x + 52} y={HOME.y + 1} text={batterLabel} bg="#A6342E" fg="#F4ECD8" />}
         </g>
       )}
     </svg>
@@ -140,12 +140,14 @@ function Runner({
   id,
   label,
   onTap,
+  below = false,
 }: {
   base: BaseName
   p: { x: number; y: number }
   id: string | null
   label: string | null
   onTap?: (base: BaseName, id: string) => void
+  below?: boolean
 }) {
   if (!id) return null
   const interactive = !!onTap
@@ -155,7 +157,7 @@ function Runner({
       style={interactive ? { cursor: 'pointer' } : undefined}
     >
       <circle cx={p.x} cy={p.y} r="13" fill="#C9A14A" stroke="#1A2A4A" strokeWidth="2.5" />
-      {label && <Pill x={p.x} y={p.y - 20} text={label} bg="#C9A14A" fg="#1A2A4A" />}
+      {label && <Pill x={p.x} y={below ? p.y + 24 : p.y - 20} text={label} bg="#C9A14A" fg="#1A2A4A" />}
     </g>
   )
 }
