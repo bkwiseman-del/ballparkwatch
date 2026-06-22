@@ -31,7 +31,7 @@ export type GameEventInput = {
 }
 
 // A stored event row (subset we need to replay).
-export type GameEventRow = GameEventInput & { seq: number }
+export type GameEventRow = GameEventInput & { seq: number; batter_id?: string | null }
 
 // ---------------------------------------------------------------------------
 // Live projected state. game_state.snapshot holds this so viewers read one row.

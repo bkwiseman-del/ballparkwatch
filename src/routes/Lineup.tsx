@@ -98,7 +98,7 @@ export default function Lineup() {
       <div className="mx-auto max-w-3xl px-4 py-5">
         <h1 className="mb-1 font-display text-2xl">Lineups</h1>
         <p className="mb-5 font-data text-sm text-muted-tan">
-          Tap players in batting order. Tap a numbered slot to remove it.
+          Tap players to add them in order. Reorder by dragging the ⠿ handle or using ▲▼; ✕ removes.
         </p>
 
         {error && (
@@ -154,6 +154,15 @@ function TeamLineup({
 }) {
   const byId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster])
   const available = roster.filter((p) => !order.includes(p.id))
+  const [dragId, setDragId] = useState<string | null>(null)
+
+  function move(from: number, to: number) {
+    if (to < 0 || to >= order.length || from === to) return
+    const next = order.slice()
+    const [m] = next.splice(from, 1)
+    next.splice(to, 0, m)
+    setOrder(next)
+  }
 
   return (
     <section className="border-2 border-ink bg-cream-off">
@@ -166,16 +175,49 @@ function TeamLineup({
         {order.map((pid, i) => {
           const p = byId.get(pid)
           return (
-            <li key={pid} className={`flex items-center gap-3 px-3 py-2 ${i > 0 ? 'border-t border-ink/12' : ''}`}>
+            <li
+              key={pid}
+              draggable
+              onDragStart={() => setDragId(pid)}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (dragId && dragId !== pid) move(order.indexOf(dragId), i)
+              }}
+              onDragEnd={() => setDragId(null)}
+              className={`flex items-center gap-2 px-3 py-2 ${i > 0 ? 'border-t border-ink/12' : ''} ${
+                dragId === pid ? 'opacity-50' : ''
+              }`}
+            >
+              <span className="cursor-grab select-none px-1 text-ink/30" title="Drag to reorder">
+                ⠿
+              </span>
               <span className="w-5 text-right font-athletic text-base font-bold text-ink">{i + 1}</span>
               <span className="w-7 text-right font-athletic text-lg font-bold text-barn-red">
                 {p?.jersey_number ?? '—'}
               </span>
               <span className="font-display text-base">{p?.name ?? '?'}</span>
               <span className="ml-auto font-data text-xs text-muted-tan">{p?.default_position}</span>
+              <span className="flex flex-col leading-none">
+                <button
+                  onClick={() => move(i, i - 1)}
+                  disabled={i === 0}
+                  className="px-1 text-ink disabled:opacity-20"
+                  title="Move up"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => move(i, i + 1)}
+                  disabled={i === order.length - 1}
+                  className="px-1 text-ink disabled:opacity-20"
+                  title="Move down"
+                >
+                  ▼
+                </button>
+              </span>
               <button
                 onClick={() => setOrder(order.filter((x) => x !== pid))}
-                className="px-2 font-athletic text-barn-red"
+                className="px-1.5 font-athletic text-barn-red"
                 title="Remove"
               >
                 ✕
