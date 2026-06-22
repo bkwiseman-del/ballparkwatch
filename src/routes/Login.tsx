@@ -37,7 +37,7 @@ export default function Login() {
   return (
     <div className="flex min-h-full flex-col items-center justify-center bg-cream p-6">
       <BrandLogo className="mb-6 w-56 max-w-[70vw]" />
-      <div className="w-full max-w-sm border-2 border-gold bg-field-green p-6">
+      <div className="w-full max-w-sm border-2 border-gold bg-ink p-6">
         <p className="mb-6 text-center font-athletic uppercase tracking-[0.14em] text-muted-green">
           {mode === 'in' ? 'Operator sign in' : 'Create operator account'}
         </p>
@@ -51,7 +51,7 @@ export default function Login() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="border-2 border-gold bg-night-green px-3 py-2 font-data text-cream outline-none focus:border-cream"
+              className="border-2 border-gold bg-cream px-3 py-2 font-data text-ink outline-none focus:border-cream"
             />
           </label>
           <label className="flex flex-col gap-1 font-athletic uppercase tracking-wide text-sm text-muted-green">
@@ -63,7 +63,7 @@ export default function Login() {
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="border-2 border-gold bg-night-green px-3 py-2 font-data text-cream outline-none focus:border-cream"
+              className="border-2 border-gold bg-cream px-3 py-2 font-data text-ink outline-none focus:border-cream"
             />
           </label>
 
