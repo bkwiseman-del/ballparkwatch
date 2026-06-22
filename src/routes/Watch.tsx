@@ -133,7 +133,7 @@ export default function Watch() {
 
       {/* content */}
       <div className="flex-1 p-4">
-        {tab === 'field' && <FieldTab live={live} events={events} />}
+        {tab === 'field' && <FieldTab info={info} live={live} events={events} />}
         {tab === 'plays' && <PlaysTab events={events} />}
         {tab === 'box' && <BoxTab board={board} events={events} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
@@ -209,10 +209,26 @@ function nameMap(events: ViewerEvent[]) {
   return m
 }
 
-function FieldTab({ live, events }: { live: LiveGame; events: ViewerEvent[] }) {
+function FieldTab({ info, live, events }: { info: PublicGame; live: LiveGame; events: ViewerEvent[] }) {
   const map = nameMap(events)
   const plays = buildPlayByPlay(events, (id) => (id ? map.get(id) ?? null : null))
   const latest = plays[0]
+
+  // last name for runner chips
+  const runnerName = (id: string) => {
+    const n = map.get(id)
+    return n ? (n.trim().split(/\s+/).pop() ?? n) : null
+  }
+
+  // defense + current batter from the lineups
+  const fieldingKey = live.half === 'top' ? 'home' : 'away'
+  const battingKey = live.half === 'top' ? 'away' : 'home'
+  const fielders = (info.lineups?.[fieldingKey] ?? []).map((p) => ({ pos: p.pos, name: p.name }))
+  const order = info.lineups?.[battingKey] ?? []
+  const idx = battingKey === 'away' ? live.awayBatterIdx : live.homeBatterIdx
+  const batter = order.length ? order[idx % order.length] : null
+  const batterLabel = batter ? (batter.name.trim().split(/\s+/).pop() ?? batter.name).toUpperCase() : null
+
   return (
     <div>
       {latest && (
@@ -220,8 +236,14 @@ function FieldTab({ live, events }: { live: LiveGame; events: ViewerEvent[] }) {
           ▸ {latest.text}
         </div>
       )}
-      <div className="mx-auto max-w-sm border-2 border-gold">
-        <FieldDiamond bases={live.bases} batterLabel={null} className="block w-full" />
+      <div className="border-2 border-gold">
+        <FieldDiamond
+          bases={live.bases}
+          nameOf={runnerName}
+          fielders={fielders}
+          batterLabel={batterLabel}
+          className="block w-full"
+        />
       </div>
     </div>
   )

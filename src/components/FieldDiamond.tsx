@@ -10,18 +10,34 @@ const SECOND = { x: 170, y: 182 }
 const THIRD = { x: 84, y: 256 }
 
 export type BaseName = 'first' | 'second' | 'third'
+export type Fielder = { pos: string | null; name: string }
+
+// where each defensive position stands on the field
+const FIELDER_POS: Record<string, { x: number; y: number }> = {
+  P: { x: 170, y: 282 },
+  C: { x: 170, y: 352 },
+  '1B': { x: 270, y: 238 },
+  '2B': { x: 206, y: 214 },
+  SS: { x: 132, y: 214 },
+  '3B': { x: 68, y: 238 },
+  LF: { x: 96, y: 104 },
+  CF: { x: 170, y: 64 },
+  RF: { x: 244, y: 104 },
+}
 
 export function FieldDiamond({
   bases,
   nameOf,
   onRunnerTap,
   batterLabel,
+  fielders,
   className = '',
 }: {
   bases: Bases
   nameOf?: (id: string) => string | null
   onRunnerTap?: (base: BaseName, id: string) => void
   batterLabel?: string | null
+  fielders?: Fielder[]
   className?: string
 }) {
   const label = (id: string | null) => (id && nameOf ? nameOf(id) : null)
@@ -40,6 +56,13 @@ export function FieldDiamond({
       <polygon points="170,318 242,256 170,194 98,256" fill="#2C5234" />
       {/* base paths */}
       <polygon points="170,330 256,256 170,182 84,256" fill="none" stroke="#e9ddc2" strokeWidth="3" />
+
+      {/* fielders (defense) */}
+      {fielders?.map((f) => {
+        const p = f.pos ? FIELDER_POS[f.pos] : undefined
+        if (!p) return null
+        return <FielderDot key={f.pos} p={p} pos={f.pos!} name={f.name} />
+      })}
 
       {/* mound */}
       <circle cx="170" cy="256" r="13" fill="#b07a3e" />
@@ -68,6 +91,34 @@ export function FieldDiamond({
         </g>
       )}
     </svg>
+  )
+}
+
+function FielderDot({ p, pos, name }: { p: { x: number; y: number }; pos: string; name: string }) {
+  const last = name.trim().split(/\s+/).pop() ?? name
+  return (
+    <g>
+      <text
+        x={p.x}
+        y={p.y - 15}
+        textAnchor="middle"
+        fontSize="11"
+        fontWeight="600"
+        fill="#F4ECD8"
+        paintOrder="stroke"
+        stroke="#2C5234"
+        strokeWidth="3"
+        strokeLinejoin="round"
+        style={{ fontFamily: "'Saira Condensed', sans-serif" }}
+      >
+        {last}
+      </text>
+      <circle cx={p.x} cy={p.y} r="11" fill="#1A2A4A" />
+      <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#F4ECD8"
+        style={{ fontFamily: "'Saira Condensed', sans-serif" }}>
+        {pos}
+      </text>
+    </g>
   )
 }
 
