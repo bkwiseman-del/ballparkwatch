@@ -503,6 +503,21 @@ function InPlayFlow({
     runners.third && { key: 'third' as const, from: 3, player: runners.third },
   ].filter(Boolean) as OnBase[]
 
+  // Fielder credit only matters when someone's out (or an error was made).
+  const isOut = ['groundout', 'flyout', 'lineout', 'fielders_choice'].includes(result)
+  const isError = result === 'error'
+  const showCredit = isOut || isError
+  const sprayLabel = ['single', 'double', 'triple', 'home_run'].includes(result)
+    ? 'Where was it hit?'
+    : 'Where did it go?'
+
+  const pickResult = (t: EventType) => {
+    setResult(t)
+    if (!['groundout', 'flyout', 'lineout', 'fielders_choice', 'error'].includes(t)) {
+      setFielders([])
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
@@ -517,41 +532,46 @@ function InPlayFlow({
         <SectionLabel>Result</SectionLabel>
         <div className="mb-2 grid grid-cols-4 gap-2">
           {RESULTS.filter((r) => r.group === 'hit').map((r) => (
-            <ResultBtn key={r.type} active={result === r.type} onClick={() => setResult(r.type)} gold>
+            <ResultBtn key={r.type} active={result === r.type} onClick={() => pickResult(r.type)} gold>
               {r.label}
             </ResultBtn>
           ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
           {RESULTS.filter((r) => r.group !== 'hit').map((r) => (
-            <ResultBtn key={r.type} active={result === r.type} onClick={() => setResult(r.type)}>
+            <ResultBtn key={r.type} active={result === r.type} onClick={() => pickResult(r.type)}>
               {r.label}
             </ResultBtn>
           ))}
         </div>
 
         {/* where did it go */}
-        <SectionLabel>Where did it go?</SectionLabel>
+        <SectionLabel>{sprayLabel}</SectionLabel>
         <div className="mx-auto w-full max-w-[320px] border-2 border-gold/40">
           <SprayField
             selected={location}
             onSelect={(id) => {
               setLocation(id)
-              // seed the putout sequence with whoever fielded it
-              setFielders(ZONE_POS[id] ? [ZONE_POS[id]] : [])
+              // seed the putout sequence with whoever fielded it (out/error only)
+              setFielders(showCredit && ZONE_POS[id] ? [ZONE_POS[id]] : [])
             }}
           />
         </div>
 
-        {/* who made the play */}
-        <SectionLabel>
-          Who made the play{fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
-        </SectionLabel>
-        <FielderGrid
-          sequence={fielders}
-          onAppend={(n) => setFielders((s) => [...s, n])}
-          onClear={() => setFielders([])}
-        />
+        {/* who made the out / error — only when relevant */}
+        {showCredit && (
+          <>
+            <SectionLabel>
+              {isError ? 'Who made the error?' : 'Who made the out?'}
+              {fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
+            </SectionLabel>
+            <FielderGrid
+              sequence={fielders}
+              onAppend={(n) => setFielders((s) => [...s, n])}
+              onClear={() => setFielders([])}
+            />
+          </>
+        )}
 
         {/* resolve each runner (re-keyed so defaults follow the result) */}
         <Resolver
