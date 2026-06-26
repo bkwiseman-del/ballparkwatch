@@ -14,6 +14,7 @@ import {
   type LiveGame,
 } from '@/lib/engine'
 import { gameChannelName } from '@/lib/realtime'
+import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
 
 type Teams = { away: Team; home: Team }
 // Player plus the position assigned for THIS game (lineup_entries.position).
@@ -112,8 +113,21 @@ export function useScorer(gameId: string | undefined) {
     [gameId],
   )
 
-  // Current batter / on-deck for the team at bat (from the saved lineup).
-  const battingLineup = live.half === 'top' ? lineups.away : lineups.home
+  // Project the CURRENT lineups (starters + substitutions applied in order).
+  const subs = extractSubs(events)
+  const projectTeam = (key: 'away' | 'home'): LineupPlayer[] => {
+    const initial = lineups[key].map((p) => ({ playerId: p.id, position: p.position }))
+    return projectSlots(initial, subs, key)
+      .map((s) => {
+        const p = playersById.get(s.playerId)
+        return p ? ({ ...p, position: s.position } as LineupPlayer) : null
+      })
+      .filter((p): p is LineupPlayer => !!p)
+  }
+  const currentLineups: Lineups = { away: projectTeam('away'), home: projectTeam('home') }
+
+  // Current batter / on-deck for the team at bat.
+  const battingLineup = live.half === 'top' ? currentLineups.away : currentLineups.home
   const slot = currentBatterSlot(live, battingLineup.length)
   const currentBatter = slot != null ? battingLineup[slot] ?? null : null
   const onDeck =
@@ -173,10 +187,20 @@ export function useScorer(gameId: string | undefined) {
     await persist(nextLive)
   }, [gameId, events, persist])
 
-  // Fielding team's current pitcher (lineup player at position P), if known.
-  const fieldingLineup = live.half === 'top' ? lineups.home : lineups.away
+  // Fielding team's current pitcher (projected lineup player at position P).
+  const fieldingKey = live.half === 'top' ? 'home' : 'away'
+  const fieldingLineup = currentLineups[fieldingKey]
   const currentPitcher =
     fieldingLineup.find((p) => (p.position ?? p.default_position) === 'P') ?? null
+  // Pitch count for THIS pitcher (since they entered).
+  const currentPitcherPitches = pitchesSince(events, fieldingKey, currentPitcherEntrySeq(events, fieldingKey))
+
+  // Bench: roster players not currently in either lineup.
+  const inLineup = new Set([...currentLineups.away, ...currentLineups.home].map((p) => p.id))
+  const bench = {
+    away: [...playersById.values()].filter((p) => p.team_id === teams?.away.id && !inLineup.has(p.id)),
+    home: [...playersById.values()].filter((p) => p.team_id === teams?.home.id && !inLineup.has(p.id)),
+  }
 
   // Runners currently on base, resolved to players.
   const runnersOnBase = {
@@ -191,7 +215,7 @@ export function useScorer(gameId: string | undefined) {
   return {
     game,
     teams,
-    lineups,
+    lineups: currentLineups,
     events,
     live,
     loading,
@@ -201,6 +225,8 @@ export function useScorer(gameId: string | undefined) {
     currentBatter,
     onDeck,
     currentPitcher,
+    currentPitcherPitches,
+    bench,
     runnersOnBase,
     playersById,
     abPitches,

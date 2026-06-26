@@ -30,6 +30,8 @@ export type EventType =
   | 'stolen_base'
   | 'caught_stealing'
   | 'picked_off'
+  // roster: a substitution / defensive change (affects lineup projection, not game state)
+  | 'substitution'
 
 // Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
 export type Dest = 0 | 1 | 2 | 3 | 4
@@ -55,6 +57,11 @@ export type EventPayload = {
   // free-form landing point for hits, or zone label for outs
   spray?: { x: number; y: number }
   location?: string
+  // substitution: team + player out/in + the position the incoming player takes
+  team?: 'away' | 'home'
+  out_id?: string
+  in_id?: string
+  position?: string
   [k: string]: unknown
 }
 
@@ -122,6 +129,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   stolen_base: 'Stolen base',
   caught_stealing: 'Caught stealing',
   picked_off: 'Picked off',
+  substitution: 'Substitution',
 }
 
 // Event-type groupings used across the app.

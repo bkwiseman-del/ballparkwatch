@@ -11,10 +11,10 @@ import {
   computeBattingLines,
   computeBoxScore,
   formatAvg,
-  pitchCounts,
   type BattingLine,
   type PlayKind,
 } from '@/lib/stats'
+import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
 import { gameChannelName } from '@/lib/realtime'
 
 type PublicGame = {
@@ -25,9 +25,13 @@ type PublicGame = {
   home: { name: string; code: string | null }
   snapshot: Partial<LiveGame>
   lineups?: { away: LineupSlot[]; home: LineupSlot[] }
+  players?: Record<string, { name: string; jersey: string | null }>
 }
 
-type LineupSlot = { name: string; jersey: string | null; pos: string | null }
+type LineupSlot = { id?: string; name: string; jersey: string | null; pos: string | null }
+// A lineup slot after substitutions are projected.
+type LiveSlot = { id: string; name: string; jersey: string | null; pos: string | null }
+type LiveLineups = { away: LiveSlot[]; home: LiveSlot[] }
 
 // Build the animated spray for a play. Hits carry a free landing point captured
 // on the same field geometry the viewer uses, so it's drawn as-is. Outs use the
@@ -158,6 +162,19 @@ export default function Watch() {
   // Between half-innings: the scorer is at its between-innings screen (3 outs).
   const between = info!.status === 'live' && (live.outs ?? 0) >= 3
 
+  // Project the current lineups (starters + substitutions) for both teams.
+  const subs = extractSubs(events)
+  const resolveTeam = (key: 'away' | 'home'): LiveSlot[] => {
+    const initial = (info!.lineups?.[key] ?? [])
+      .filter((s): s is LineupSlot & { id: string } => !!s.id)
+      .map((s) => ({ playerId: s.id, position: s.pos }))
+    return projectSlots(initial, subs, key).map((s) => {
+      const pl = info!.players?.[s.playerId]
+      return { id: s.playerId, name: pl?.name ?? '—', jersey: pl?.jersey ?? null, pos: s.position }
+    })
+  }
+  const lineups: LiveLineups = { away: resolveTeam('away'), home: resolveTeam('home') }
+
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream">
       {/* branded header */}
@@ -179,7 +196,7 @@ export default function Watch() {
       <ScorePanel state={board} />
 
       {/* batter / pitcher strip (hidden between innings) */}
-      {info.status === 'live' && !between && <BatterPitcherStrip info={info} live={live} events={events} />}
+      {info.status === 'live' && !between && <BatterPitcherStrip lineups={lineups} live={live} events={events} />}
 
       {/* tab bar */}
       <div className="flex border-y-2 border-gold bg-[#122019]">
@@ -201,9 +218,9 @@ export default function Watch() {
       <div className="flex-1 p-4">
         {tab === 'field' &&
           (between && showStandby ? (
-            <Standby info={info} live={live} />
+            <Standby lineups={lineups} live={live} away={board.away} home={board.home} />
           ) : (
-            <FieldTab info={info} live={live} events={events} spray={flash} />
+            <FieldTab lineups={lineups} live={live} events={events} spray={flash} />
           ))}
         {tab === 'plays' && <PlaysTab events={events} />}
         {tab === 'box' && <BoxTab board={board} events={events} />}
@@ -214,16 +231,14 @@ export default function Watch() {
 }
 
 function BatterPitcherStrip({
-  info,
+  lineups,
   live,
   events,
 }: {
-  info: PublicGame
+  lineups: LiveLineups
   live: LiveGame
   events: ViewerEvent[]
 }) {
-  const lineups = info.lineups
-  if (!lineups) return null
   const battingKey = live.half === 'top' ? 'away' : 'home'
   const fieldingKey = live.half === 'top' ? 'home' : 'away'
   const order = lineups[battingKey]
@@ -231,8 +246,7 @@ function BatterPitcherStrip({
   const batter = order.length ? order[idx % order.length] : null
   const onDeck = order.length ? order[(idx + 1) % order.length] : null
   const pitcher = lineups[fieldingKey].find((p) => p.pos === 'P') ?? null
-  const pc = pitchCounts(events)
-  const pitches = fieldingKey === 'home' ? pc.home : pc.away
+  const pitches = pitchesSince(events, fieldingKey, currentPitcherEntrySeq(events, fieldingKey))
   if (!batter && !pitcher) return null
 
   return (
@@ -272,9 +286,19 @@ function BatterPitcherStrip({
   )
 }
 
-function Standby({ info, live }: { info: PublicGame; live: LiveGame }) {
+function Standby({
+  lineups,
+  live,
+  away,
+  home,
+}: {
+  lineups: LiveLineups
+  live: LiveGame
+  away: { code: string }
+  home: { code: string }
+}) {
   const nextTop = live.half === 'bottom'
-  const order = info.lineups?.[nextTop ? 'away' : 'home'] ?? []
+  const order = lineups[nextTop ? 'away' : 'home']
   const idx = (nextTop ? live.awayBatterIdx : live.homeBatterIdx) % (order.length || 1)
   const due = order.length ? [0, 1, 2].map((i) => order[(idx + i) % order.length]) : []
   const label = live.half === 'top' ? 'Middle' : 'End'
@@ -287,7 +311,7 @@ function Standby({ info, live }: { info: PublicGame; live: LiveGame }) {
         of the {ordinalNum(live.inning)}
       </p>
       <p className="font-athletic text-sm uppercase tracking-[.12em] text-muted-green">
-        {info.away.code ?? 'AWY'} {live.awayScore} · {info.home.code ?? 'HOM'} {live.homeScore}
+        {away.code} {live.awayScore} · {home.code} {live.homeScore}
       </p>
       {due.length > 0 && (
         <div className="w-full max-w-xs border-t border-gold/30 pt-4">
@@ -326,12 +350,12 @@ function nameMap(events: ViewerEvent[]) {
 }
 
 function FieldTab({
-  info,
+  lineups,
   live,
   events,
   spray,
 }: {
-  info: PublicGame
+  lineups: LiveLineups
   live: LiveGame
   events: ViewerEvent[]
   spray?: SprayViz | null
@@ -346,11 +370,11 @@ function FieldTab({
     return n ? (n.trim().split(/\s+/).pop() ?? n) : null
   }
 
-  // defense + current batter from the lineups
+  // defense + current batter from the projected lineups
   const fieldingKey = live.half === 'top' ? 'home' : 'away'
   const battingKey = live.half === 'top' ? 'away' : 'home'
-  const fielders = (info.lineups?.[fieldingKey] ?? []).map((p) => ({ pos: p.pos, name: p.name }))
-  const order = info.lineups?.[battingKey] ?? []
+  const fielders = lineups[fieldingKey].map((p) => ({ pos: p.pos, name: p.name }))
+  const order = lineups[battingKey]
   const idx = battingKey === 'away' ? live.awayBatterIdx : live.homeBatterIdx
   const batter = order.length ? order[idx % order.length] : null
   const batterLabel = batter ? (batter.name.trim().split(/\s+/).pop() ?? batter.name).toUpperCase() : null

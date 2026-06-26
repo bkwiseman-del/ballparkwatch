@@ -4,7 +4,7 @@ import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { resolveCode } from '@/lib/scoreboard'
-import { computeBattingLines, pitchCounts } from '@/lib/stats'
+import { computeBattingLines } from '@/lib/stats'
 import {
   EVENT_LABELS,
   occupancy,
@@ -23,6 +23,7 @@ export default function Score() {
   const [strikePopup, setStrikePopup] = useState(false)
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
+  const [showSub, setShowSub] = useState(false)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
   // Scoring mode is chosen at game start and locked for the game (Full default).
   const [simple, setSimple] = useState(() => localStorage.getItem(`bpw_mode_${gameId}`) === 'quick')
@@ -176,9 +177,15 @@ export default function Score() {
           <button onClick={undo} disabled={!events.length} className="font-athletic text-[13px] font-semibold text-ink disabled:opacity-40">
             ↶ UNDO{lastLabel ? ` — ${lastLabel}` : ''}
           </button>
-          <button onClick={() => setEndPopup(true)} className="font-athletic text-xs font-bold uppercase text-barn-red">
-            END ▸
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowSub(true)} className="font-athletic text-xs font-bold uppercase text-ink">
+              ⇄ SUB
+            </button>
+            <span className="h-4 w-px bg-ink/25" />
+            <button onClick={() => setEndPopup(true)} className="font-athletic text-xs font-bold uppercase text-barn-red">
+              END ▸
+            </button>
+          </div>
         </div>
       )}
 
@@ -227,6 +234,7 @@ export default function Score() {
           onClose={() => setRunnerAction(null)}
         />
       )}
+      {showSub && <SubstitutionFlow scorer={s} onClose={() => setShowSub(false)} />}
       {inPlay && (
         <InPlayFlow
           batter={s.currentBatter}
@@ -255,7 +263,7 @@ function BatterPitcherStrip({
   scorer: ReturnType<typeof useScorer>
   gameId: string | undefined
 }) {
-  const { currentBatter, onDeck, currentPitcher, events, playersById, live } = scorer
+  const { currentBatter, onDeck, currentPitcher, currentPitcherPitches, events, playersById } = scorer
   if (!currentBatter) {
     return (
       <div className="flex items-center justify-between bg-cream px-3 py-2 text-ink">
@@ -269,8 +277,7 @@ function BatterPitcherStrip({
   const lines = computeBattingLines(events, (id) => playersById.get(id)?.name ?? null)
   const line = [...lines.away, ...lines.home].find((l) => l.playerId === currentBatter.id)
   const lineText = line && line.ab > 0 ? `${line.h}-for-${line.ab}` : 'first AB'
-  const pc = pitchCounts(events)
-  const pitches = live.half === 'top' ? pc.home : pc.away
+  const pitches = currentPitcherPitches
   return (
     <div className="flex border-b-2 border-ink bg-cream text-ink">
       <div className="flex-1 border-r border-ink/20 px-3 py-2">
@@ -461,6 +468,135 @@ function EndGamePopup({
         </div>
       </div>
     </Overlay>
+  )
+}
+
+/* ---------------------------------------------------------- substitutions */
+
+const SUB_POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
+
+function SubstitutionFlow({
+  scorer,
+  onClose,
+}: {
+  scorer: ReturnType<typeof useScorer>
+  onClose: () => void
+}) {
+  const { teams, lineups, bench, live, act } = scorer
+  const [team, setTeam] = useState<'away' | 'home'>(live.half === 'top' ? 'home' : 'away')
+  const [outId, setOutId] = useState<string | null>(null)
+  const [inId, setInId] = useState<string | null>(null)
+  const [position, setPosition] = useState<string>('')
+
+  const lineup = lineups[team]
+  const benchList = bench[team]
+  const outPlayer = lineup.find((p) => p.id === outId)
+
+  const chooseOut = (id: string) => {
+    setOutId(id)
+    const pos = lineup.find((p) => p.id === id)?.position
+    setPosition(pos ?? '')
+  }
+
+  const confirm = () => {
+    if (!outId || !inId) return
+    act('substitution', { team, out_id: outId, in_id: inId, position: position || undefined })
+    onClose()
+  }
+
+  const teamName = (k: 'away' | 'home') => (k === 'away' ? teams?.away.name : teams?.home.name) ?? k
+
+  return (
+    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
+      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
+        <span className="font-display text-lg text-cream">Substitution</span>
+        <button onClick={onClose} className="font-athletic text-sm uppercase tracking-wide text-gold">
+          Cancel ✕
+        </button>
+      </header>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* team */}
+        <div className="mb-4 inline-flex border-2 border-gold">
+          {(['away', 'home'] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => {
+                setTeam(k)
+                setOutId(null)
+                setInId(null)
+                setPosition('')
+              }}
+              className={`px-4 py-1.5 font-display text-sm ${team === k ? 'bg-gold text-ink' : 'text-cream'}`}
+            >
+              {teamName(k)}
+            </button>
+          ))}
+        </div>
+
+        <SectionLabel>Coming out</SectionLabel>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          {lineup.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => chooseOut(p.id)}
+              className={`flex items-center gap-2 border-2 px-2 py-2 text-left ${
+                outId === p.id ? 'border-gold bg-field-green' : 'border-cream/30'
+              }`}
+            >
+              <span className="font-athletic text-base font-bold text-barn-red">{p.jersey_number ?? '—'}</span>
+              <span className="flex-1 font-data text-sm">{p.name}</span>
+              <span className="font-athletic text-[10px] uppercase text-muted-green">
+                {p.position ?? p.default_position}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <SectionLabel>Coming in {outPlayer ? `(bench · ${teamName(team)})` : ''}</SectionLabel>
+        {benchList.length === 0 ? (
+          <p className="mb-4 font-data text-sm text-muted-green">No bench players for this team.</p>
+        ) : (
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {benchList.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setInId(p.id)}
+                className={`flex items-center gap-2 border-2 px-2 py-2 text-left ${
+                  inId === p.id ? 'border-gold bg-field-green' : 'border-cream/30'
+                }`}
+              >
+                <span className="font-athletic text-base font-bold text-barn-red">{p.jersey_number ?? '—'}</span>
+                <span className="flex-1 font-data text-sm">{p.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <SectionLabel>Position</SectionLabel>
+        <div className="mb-6 grid grid-cols-6 gap-1.5">
+          {SUB_POSITIONS.map((pos) => (
+            <button
+              key={pos}
+              onClick={() => setPosition(pos)}
+              className={`py-2 font-athletic text-sm font-bold ${position === pos ? 'bg-gold text-ink' : 'border border-cream/30'}`}
+            >
+              {pos}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t-2 border-ink bg-ink p-3.5">
+        <button
+          onClick={confirm}
+          disabled={!outId || !inId}
+          className="w-full bg-gold py-3 font-display text-lg text-ink disabled:opacity-40"
+        >
+          Confirm Sub ▸
+        </button>
+      </div>
+    </div>
   )
 }
 
