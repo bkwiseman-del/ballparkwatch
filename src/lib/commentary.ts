@@ -10,6 +10,8 @@ import { buildPlayByPlay } from './stats'
 type NameOf = (id: string | null | undefined) => string | null
 type Slot = { name: string; jersey: string | null }
 type Lineups = { away: Slot[]; home: Slot[] }
+// Spoken team names (so commentary says "Riverside leads it", not "Away leads it").
+type Teams = { away: string; home: string }
 
 export type VoiceKind = 'pitch' | 'play' | 'info' | 'summary'
 // A spoken line. (Sound FX are handled separately via fxCues — they play
@@ -75,11 +77,11 @@ function plateLines(state: LiveGame, lineups: Lineups): { text: string; kind: Vo
   return lines
 }
 
-function scoreSummary(s: LiveGame): string {
+function scoreSummary(s: LiveGame, teams: Teams): string {
   const a = s.awayScore
   const h = s.homeScore
   if (a === h) return `We're tied up, ${a} to ${a}.`
-  return `${h > a ? 'Home' : 'Away'} leads it, ${Math.max(a, h)} to ${Math.min(a, h)}.`
+  return `${h > a ? teams.home : teams.away} leads it, ${Math.max(a, h)} to ${Math.min(a, h)}.`
 }
 
 function fullCount(s: LiveGame): boolean {
@@ -130,6 +132,7 @@ function voiceFor(
   after: LiveGame,
   play: Map<number, string>,
   lineups: Lineups,
+  teams: Teams,
 ): Line[] {
   const text = play.get(ev.seq)
   const out: (Line | null)[] = []
@@ -138,7 +141,7 @@ function voiceFor(
   const scored = after.awayScore + after.homeScore > before.awayScore + before.homeScore
   // After a play that scored, announce the score, then the next batter.
   const afterPlay = (): Line[] => [
-    ...(scored ? [{ text: scoreSummary(after), kind: 'info' as VoiceKind }] : []),
+    ...(scored ? [{ text: scoreSummary(after, teams), kind: 'info' as VoiceKind }] : []),
     ...plateLines(after, lineups),
   ]
 
@@ -198,7 +201,7 @@ function voiceFor(
       )
       break
     case 'game_end':
-      out.push({ text: `That's the ballgame! ${scoreSummary(after)}`, kind: 'info' })
+      out.push({ text: `That's the ballgame! ${scoreSummary(after, teams)}`, kind: 'info' })
       break
   }
   return out.filter((l): l is Line => !!l && l.text.trim().length > 0)
@@ -206,16 +209,16 @@ function voiceFor(
 
 // A structured recap of a half-inning that just ended on the 3rd out — the
 // server voices this (kind 'summary') as a natural couple of sentences.
-function inningRecap(state: LiveGame, runsThisHalf: number, lineups: Lineups): string {
+function inningRecap(state: LiveGame, runsThisHalf: number, lineups: Lineups, teams: Teams): string {
   const battingTop = state.half === 'top'
-  const team = battingTop ? 'the away team' : 'the home team'
+  const team = battingTop ? teams.away : teams.home
   const half = `${battingTop ? 'top' : 'bottom'} of the ${ord(state.inning)}`
   const scored =
     runsThisHalf === 0
       ? `${team} were held scoreless`
       : `${team} put up ${runsThisHalf} run${runsThisHalf === 1 ? '' : 's'}`
   const next = nextHalfLeadoff(state, lineups)
-  const score = `The score is now away ${state.awayScore}, home ${state.homeScore}.`
+  const score = `The score is now ${teams.away} ${state.awayScore}, ${teams.home} ${state.homeScore}.`
   return `That's the end of the ${half}. ${scored} that half. ${score}${next ? ` Leading off next, ${next}.` : ''}`
 }
 
@@ -225,6 +228,7 @@ export function freshCues(
   sinceSeq: number,
   nameOf: NameOf,
   lineups: Lineups,
+  teams: Teams,
 ): Cue[] {
   const sorted = [...events].sort((a, b) => a.seq - b.seq)
   const play = new Map(buildPlayByPlay(events, nameOf).map((p) => [p.seq, p.text]))
@@ -246,11 +250,11 @@ export function freshCues(
       : 0
 
     if (ev.seq > sinceSeq) {
-      voiceFor(ev, before, after, play, lineups).forEach((l, i) => {
+      voiceFor(ev, before, after, play, lineups, teams).forEach((l, i) => {
         cues.push({ key: i === 0 ? String(ev.seq) : `${ev.seq}.${i}`, text: l.text, kind: l.kind })
       })
       if (halfEnded) {
-        cues.push({ key: `${ev.seq}-sum`, text: inningRecap(after, runsThisHalf, lineups), kind: 'summary' })
+        cues.push({ key: `${ev.seq}-sum`, text: inningRecap(after, runsThisHalf, lineups, teams), kind: 'summary' })
       }
     }
     if (halfEnded) {

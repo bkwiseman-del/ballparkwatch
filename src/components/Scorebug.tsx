@@ -113,7 +113,7 @@ function Cell({
 // vertical footprint for overlaying across the bottom of a live broadcast.
 export function ScorebugBar({ state }: { state: ScoreboardState }) {
   return (
-    <div className="flex w-full items-center gap-2.5 bg-ink/90 px-3 py-1 font-athletic text-cream backdrop-blur-sm">
+    <div className="flex w-full items-center gap-2.5 bg-night-green/90 px-3 py-1 font-athletic text-cream backdrop-blur-sm">
       <BarPair code={state.away.code} score={state.away.score} />
       <BarPair code={state.home.code} score={state.home.score} home />
 

@@ -76,7 +76,7 @@ export default function Score() {
   const onStrikeSimple = () => (live.strikes >= 2 ? act('strikeout', {}) : act('pitch_strike', {}))
 
   return (
-    <div className="mx-auto flex h-[100dvh] max-w-[430px] flex-col overflow-hidden bg-ink text-cream">
+    <div className="mx-auto flex h-[100dvh] max-w-[430px] flex-col overflow-hidden bg-night-green text-cream">
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))]">
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
           ← Setup
@@ -644,7 +644,7 @@ function SubstitutionFlow({
   }
 
   return (
-    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-ink text-cream">
+    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <span className="font-display text-lg text-cream">Substitution</span>
         <button onClick={onClose} className="font-athletic text-sm uppercase tracking-wide text-gold">
@@ -687,7 +687,7 @@ function SubstitutionFlow({
                   <select
                     value={pos[p.id] ?? ''}
                     onChange={(e) => setPos((m) => ({ ...m, [p.id]: e.target.value }))}
-                    className="border border-cream/30 bg-ink px-1 py-1 font-athletic text-xs text-cream"
+                    className="border border-cream/30 bg-night-green px-1 py-1 font-athletic text-xs text-cream"
                   >
                     <option value="">—</option>
                     {SUB_POSITIONS.map((x) => (
@@ -892,7 +892,7 @@ function InPlayFlow({
   }
 
   return (
-    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-ink text-cream">
+    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <span className="font-display text-lg text-cream">Ball in Play</span>
         <button onClick={onCancel} className="font-athletic text-sm uppercase tracking-wide text-gold">

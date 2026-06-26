@@ -83,7 +83,7 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
     )
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-ink text-cream">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-night-green text-cream">
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <HeaderWordmark />
         <span className="font-athletic text-sm uppercase tracking-[.18em] text-muted-green">Broadcast</span>
@@ -158,7 +158,7 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
 
 function Center({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-ink p-6 text-center font-data text-cream">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-night-green p-6 text-center font-data text-cream">
       {children}
     </div>
   )
