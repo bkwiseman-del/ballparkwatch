@@ -22,6 +22,8 @@ import { parseYouTubeId } from '@/lib/youtube'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
+import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
+import { audio, fxForEvent } from '@/lib/audio'
 import type { Recap } from '@/lib/types'
 
 type PublicGame = {
@@ -87,6 +89,7 @@ export default function Watch() {
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<SprayViz | null>(null)
   const [showStandby, setShowStandby] = useState(false)
+  const [soundOn, setSoundOn] = useState(false)
   const isDesktop = useIsDesktop()
   const loadingEvents = useRef(false)
   const prevMaxSeq = useRef<number | null>(null)
@@ -187,10 +190,11 @@ export default function Watch() {
     if (maxSeq > prevMaxSeq.current) {
       const baseline = prevMaxSeq.current
       prevMaxSeq.current = maxSeq
-      const fresh = events
-        .filter((e) => e.seq > baseline && (e.payload?.spray || e.payload?.fielders))
-        .sort((a, b) => a.seq - b.seq)
-      const last = fresh[fresh.length - 1]
+      const freshAll = events.filter((e) => e.seq > baseline).sort((a, b) => a.seq - b.seq)
+
+      // spray animation (located plays only)
+      const located = freshAll.filter((e) => e.payload?.spray || e.payload?.fielders)
+      const last = located[located.length - 1]
       if (last) {
         const viz = buildViz(last.payload, last.seq)
         if (viz) {
@@ -199,8 +203,29 @@ export default function Watch() {
           flashTimer.current = window.setTimeout(() => setFlash(null), 4500)
         }
       }
+
+      // sound fx + voice commentary for the newest action
+      const newest = freshAll[freshAll.length - 1]
+      if (audio.isEnabled() && newest) {
+        const fx = fxForEvent(newest.event_type)
+        if (fx) audio.playFx(fx)
+        if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
+
+        // Commentary only for real plays (not pitches), generated once + cached.
+        const nameOf = (id: string | null | undefined) =>
+          (id && info?.players?.[id]?.name) || null
+        const line = buildPlayByPlay(events, nameOf).find((p) => p.seq === newest.seq)
+        if (line && gameId) {
+          supabase.functions
+            .invoke('commentary', { body: { gameId, seq: newest.seq, text: line.text } })
+            .then(({ data }) => {
+              if (data?.url) audio.playCommentary(data.url)
+            })
+            .catch(() => {})
+        }
+      }
     }
-  }, [events])
+  }, [events, gameId, info])
 
   // When a half ends (3 outs), show the final play for a beat before the standby.
   const halfEnded = live.status === 'live' && (live.outs ?? 0) >= 3
@@ -267,16 +292,33 @@ export default function Watch() {
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
-        {live.status === 'live' ? (
-          <span className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
-            <span className="font-athletic text-sm font-semibold tracking-[.18em] text-barn-red">LIVE</span>
-          </span>
-        ) : (
-          <span className="font-athletic text-sm tracking-[.18em] text-muted-green">
-            {live.status === 'final' ? 'FINAL' : 'STARTING SOON'}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (soundOn) {
+                audio.disable()
+                setSoundOn(false)
+              } else {
+                audio.enable()
+                setSoundOn(true)
+              }
+            }}
+            aria-label={soundOn ? 'Mute sound' : 'Turn on sound'}
+            className="text-gold"
+          >
+            {soundOn ? <SoundOnIcon className="h-5 w-5" /> : <SoundOffIcon className="h-5 w-5" />}
+          </button>
+          {live.status === 'live' ? (
+            <span className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
+              <span className="font-athletic text-sm font-semibold tracking-[.18em] text-barn-red">LIVE</span>
+            </span>
+          ) : (
+            <span className="font-athletic text-sm tracking-[.18em] text-muted-green">
+              {live.status === 'final' ? 'FINAL' : 'STARTING SOON'}
+            </span>
+          )}
+        </div>
       </header>
 
       {live.status === 'final' ? (

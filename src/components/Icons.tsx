@@ -42,3 +42,23 @@ export function ArrowUpRightIcon({ className = 'h-4 w-4' }: IconProps) {
     </svg>
   )
 }
+
+export function SoundOnIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" />
+      <path d="M16 9a3 3 0 0 1 0 6" />
+      <path d="M18.5 7a6 6 0 0 1 0 10" />
+    </svg>
+  )
+}
+
+export function SoundOffIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" />
+      <path d="M16 9l5 6" />
+      <path d="M21 9l-5 6" />
+    </svg>
+  )
+}

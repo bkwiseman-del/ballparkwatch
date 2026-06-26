@@ -78,6 +78,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   const camVideoRef = useRef<HTMLVideoElement | null>(null) // hidden <video> of the camera
   const canvasRef = useRef<HTMLCanvasElement | null>(null) // 16:9 crop surface
   const rafRef = useRef<number | undefined>(undefined)
+  const iceRef = useRef<RTCIceServer[]>(ICE)
   const bcastRef = useRef(false)
   const startTs = useRef(0)
   const curBc = useRef<string | null>(null) // current broadcaster id (viewer side)
@@ -87,6 +88,24 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   const send = useCallback((m: Sig) => {
     chan.current?.send({ type: 'broadcast', event: 'sig', payload: m })
   }, [])
+
+  // Fetch TURN/STUN servers once — TURN relays make cross-network connects work
+  // (LTE ↔ home wifi). Falls back to the bundled STUN list on any failure.
+  useEffect(() => {
+    if (!active) return
+    let cancelled = false
+    supabase.functions
+      .invoke('ice-servers')
+      .then(({ data }) => {
+        if (!cancelled && Array.isArray(data?.iceServers) && data.iceServers.length) {
+          iceRef.current = data.iceServers as RTCIceServer[]
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [active])
 
   const closePc = useCallback((id: string) => {
     const pc = pcs.current.get(id)
@@ -121,7 +140,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   const offerTo = useCallback(
     async (subId: string) => {
       if (!bcastRef.current || pcs.current.has(subId) || !localRef.current) return
-      const pc = new RTCPeerConnection({ iceServers: ICE })
+      const pc = new RTCPeerConnection({ iceServers: iceRef.current })
       pcs.current.set(subId, pc)
       setViewers(pcs.current.size)
       localRef.current.getTracks().forEach((t) => pc.addTrack(t, localRef.current!))
@@ -146,7 +165,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   const onOffer = useCallback(
     async (bcId: string, sdp: RTCSessionDescriptionInit) => {
       closePc(bcId)
-      const pc = new RTCPeerConnection({ iceServers: ICE })
+      const pc = new RTCPeerConnection({ iceServers: iceRef.current })
       pcs.current.set(bcId, pc)
       curBc.current = bcId
       pc.onicecandidate = (e) => {
