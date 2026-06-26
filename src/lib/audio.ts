@@ -43,7 +43,11 @@ class AudioManager {
       const entries = Object.entries(FX_FILES)
       const bufs = await Promise.all(entries.map(([, url]) => this.load(url)))
       entries.forEach(([k], i) => {
-        if (bufs[i]) this.fx[k] = bufs[i] as AudioBuffer
+        const b = bufs[i]
+        if (!b) return
+        // Trim short FX to their salient front (~0.6s) so pitch finishes before
+        // catch when staggered. The cheer is left full to layer over a hit.
+        this.fx[k] = k === 'cheer' ? b : this.trim(b, 0.6)
       })
       this.crowdBuffer = await this.load(CROWD_FILE)
       this.enabled = true
@@ -73,6 +77,17 @@ class AudioManager {
     } catch {
       return null
     }
+  }
+
+  // Return a copy of the first `maxSec` seconds of a buffer.
+  private trim(buf: AudioBuffer, maxSec: number): AudioBuffer {
+    if (!this.ctx || buf.duration <= maxSec) return buf
+    const len = Math.floor(maxSec * buf.sampleRate)
+    const out = this.ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate)
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      out.getChannelData(ch).set(buf.getChannelData(ch).subarray(0, len))
+    }
+    return out
   }
 
   // Crowd ambience loop — on for no-video games, off when live video is present.
@@ -120,7 +135,6 @@ class AudioManager {
   // staggered one after another (e.g. pitch, then the crack + cheer).
   playFx(steps: string[][]) {
     if (!this.enabled || !this.ctx) return
-    const FX_CLIP = 0.55 // play just the salient front of each short FX
     let when = this.ctx.currentTime
     for (const layers of steps) {
       let adv = 0
@@ -128,16 +142,15 @@ class AudioManager {
         const buf = this.fx[name]
         if (!buf) continue
         const isCheer = name === 'cheer'
-        const dur = isCheer ? buf.duration : Math.min(buf.duration, FX_CLIP)
         const src = this.ctx.createBufferSource()
         src.buffer = buf
         const g = this.ctx.createGain()
         g.gain.value = isCheer ? CHEER_VOLUME : FX_VOLUME
         src.connect(g).connect(this.ctx.destination)
-        src.start(when, 0, dur) // start at `when`, play only `dur` seconds
-        if (!isCheer) adv = Math.max(adv, dur) // sequence by the short FX, not the long cheer
+        src.start(when)
+        if (!isCheer) adv = Math.max(adv, buf.duration) // sequence by the (trimmed) FX length
       }
-      when += (adv || 0.3) + 0.06 // next step starts after this one finishes
+      when += (adv || 0.3) + 0.06 // next step starts just after this one finishes
     }
   }
 

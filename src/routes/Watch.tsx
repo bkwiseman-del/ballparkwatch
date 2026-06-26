@@ -93,7 +93,8 @@ export default function Watch() {
   const [showStandby, setShowStandby] = useState(false)
   const [soundOn, setSoundOn] = useState(false)
   const isDesktop = useIsDesktop()
-  const loadingEvents = useRef(false)
+  const eventsReq = useRef(0)
+  const lastApply = useRef(0)
   const prevMaxSeq = useRef<number | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
   // Hold live updates back by stat_delay_ms so the scorebug matches what the
@@ -101,11 +102,12 @@ export default function Watch() {
   const delayRef = useRef(0)
   const delayTimers = useRef<number[]>([])
 
+  // Latest-response-wins, so a slow request can't leave the event list stale.
   const loadEvents = useCallback(async () => {
-    if (!gameId || loadingEvents.current) return
-    loadingEvents.current = true
+    if (!gameId) return
+    const my = ++eventsReq.current
     const { data, error } = await supabase.rpc('get_public_events', { p_game_id: gameId })
-    loadingEvents.current = false
+    if (my !== eventsReq.current) return // superseded by a newer load
     if (!error && data) setEvents(data as ViewerEvent[])
   }, [gameId])
 
@@ -128,12 +130,14 @@ export default function Watch() {
     })
     loadEvents()
 
-    // A scored play broadcasts; we reload the event log (delayed for video games)
-    // and re-project from it — the events are the source of truth, so the score
-    // is always right even if the cached snapshot goes stale.
+    // The broadcast payload IS the scorer's exact live state — use it directly so
+    // the viewer's scorebug can never diverge from the scorer. (Delayed for video
+    // games.) We also reload events for the plays/box/commentary.
     const ch = supabase.channel(gameChannelName(gameId))
-    ch.on('broadcast', { event: 'state' }, () => {
+    ch.on('broadcast', { event: 'state' }, ({ payload }) => {
       const apply = () => {
+        setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
+        lastApply.current = Date.now()
         loadEvents()
         loadGame()
       }
@@ -154,11 +158,14 @@ export default function Watch() {
     }
   }, [gameId, loadEvents, loadGame])
 
-  // The live scorebug state is projected from the event log (source of truth),
-  // not the cached snapshot. Events arrive delayed for video games, so this
-  // stays in sync with the configured delay.
+  // Seed the scorebug from the event log on first load (so we never show a stale
+  // cached snapshot), and self-heal from it if broadcasts go quiet for a while.
+  // While broadcasts flow, the payload above is authoritative.
   useEffect(() => {
-    setLive(project(events))
+    if (!events.length) return
+    if (lastApply.current === 0 || Date.now() - lastApply.current > 12000) {
+      setLive(project(events))
+    }
   }, [events])
 
   // Keep the live delay in sync with the game's configured stat_delay_ms.
