@@ -1,7 +1,7 @@
 // Viewer audio on the Web Audio API. HTML <audio> played outside a tap is
 // blocked on iOS; an AudioContext unlocked by the tap can play buffers anytime,
-// so FX, crowd ambience, and TTS commentary all play reliably. FX and voice run
-// through one sequential queue (pitch → catch → voice), so nothing overlaps.
+// so FX, crowd ambience, and TTS commentary all play reliably. Sound FX play
+// IMMEDIATELY (synced to the play); only the spoken commentary is queued.
 
 const FX_FILES: Record<string, string> = {
   pitch: '/sfx/pitch.m4a',
@@ -9,38 +9,12 @@ const FX_FILES: Record<string, string> = {
   catch: '/sfx/catch.m4a',
   foul: '/sfx/foul.m4a',
   slide: '/sfx/slide.m4a',
+  cheer: '/sfx/cheer.m4a',
 }
 const CROWD_FILE = '/sfx/crowd.m4a'
 const CROWD_BASE = 0.18
 const FX_VOLUME = 0.7
-
-export function fxForEvent(eventType: string): string | null {
-  switch (eventType) {
-    case 'pitch_ball':
-    case 'pitch_strike':
-      return 'pitch'
-    case 'pitch_foul':
-      return 'foul'
-    case 'single':
-    case 'double':
-    case 'triple':
-    case 'home_run':
-      return 'hit'
-    case 'groundout':
-    case 'flyout':
-    case 'lineout':
-      return 'catch'
-    case 'stolen_base':
-    case 'caught_stealing':
-    case 'runner_advance':
-    case 'picked_off':
-      return 'slide'
-    default:
-      return null
-  }
-}
-
-type QueueItem = { kind: 'fx'; name: string } | { kind: 'voice'; url: string }
+const CHEER_VOLUME = 0.8
 
 class AudioManager {
   private ctx: AudioContext | null = null
@@ -50,7 +24,7 @@ class AudioManager {
   private crowdGain: GainNode | null = null
   private enabled = false
   private crowdOn = false
-  private queue: QueueItem[] = []
+  private queue: string[] = [] // voice clip URLs only — FX play immediately
   private playing = false
   private voiceCache = new Map<string, AudioBuffer>()
 
@@ -141,45 +115,53 @@ class AudioManager {
     this.crowdGain.gain.setTargetAtTime(CROWD_BASE, this.ctx.currentTime + 3, 0.6)
   }
 
-  enqueueFx(name: string) {
-    if (!this.enabled) return
-    this.queue.push({ kind: 'fx', name })
-    this.cap()
-    void this.pump()
+  // Play a sound-FX sequence IMMEDIATELY (synced to the live action). Each step
+  // is a set of sounds layered together (e.g. ['hit','cheer']); steps are
+  // staggered one after another (e.g. pitch, then the crack + cheer).
+  playFx(steps: string[][]) {
+    if (!this.enabled || !this.ctx) return
+    let when = this.ctx.currentTime
+    for (const layers of steps) {
+      let step = 0
+      for (const name of layers) {
+        const buf = this.fx[name]
+        if (!buf) continue
+        const src = this.ctx.createBufferSource()
+        src.buffer = buf
+        const g = this.ctx.createGain()
+        g.gain.value = name === 'cheer' ? CHEER_VOLUME : FX_VOLUME
+        src.connect(g).connect(this.ctx.destination)
+        src.start(when)
+        step = Math.max(step, Math.min(buf.duration, 0.4)) // advance by the short sounds
+      }
+      when += step || 0.3
+    }
   }
 
   enqueueVoice(url: string) {
     if (!this.enabled) return
-    this.queue.push({ kind: 'voice', url })
-    this.cap()
+    this.queue.push(url)
+    if (this.queue.length > 8) this.queue.splice(0, this.queue.length - 8)
     void this.pump()
-  }
-
-  private cap() {
-    if (this.queue.length > 10) this.queue.splice(0, this.queue.length - 10)
   }
 
   private async pump() {
     if (this.playing || !this.enabled || !this.ctx) return
-    const item = this.queue.shift()
-    if (!item) return
+    const url = this.queue.shift()
+    if (!url) return
     this.playing = true
     try {
-      if (item.kind === 'fx') {
-        await this.playAndWait(this.fx[item.name] ?? null, FX_VOLUME)
-      } else {
-        let buf = this.voiceCache.get(item.url)
-        if (!buf) {
-          const loaded = await this.load(item.url)
-          if (loaded) {
-            buf = loaded
-            this.voiceCache.set(item.url, loaded)
-          }
+      let buf = this.voiceCache.get(url)
+      if (!buf) {
+        const loaded = await this.load(url)
+        if (loaded) {
+          buf = loaded
+          this.voiceCache.set(url, loaded)
         }
-        this.rampCrowd(CROWD_BASE * 0.3)
-        await this.playAndWait(buf ?? null, 1)
-        this.rampCrowd(CROWD_BASE)
       }
+      this.rampCrowd(CROWD_BASE * 0.3)
+      await this.playAndWait(buf ?? null, 1)
+      this.rampCrowd(CROWD_BASE)
     } catch {
       /* skip */
     }

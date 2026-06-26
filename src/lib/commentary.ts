@@ -1,4 +1,4 @@
-import { applyEvent, INITIAL_LIVE, type GameEventRow, type LiveGame } from './engine'
+import { applyEvent, INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from './engine'
 import { buildPlayByPlay } from './stats'
 
 // Builds an ordered list of audio "cues" per event, GameChanger-style: the
@@ -12,9 +12,9 @@ type Slot = { name: string; jersey: string | null }
 type Lineups = { away: Slot[]; home: Slot[] }
 
 export type VoiceKind = 'pitch' | 'play' | 'info' | 'summary'
-export type Cue =
-  | { type: 'fx'; name: string }
-  | { type: 'voice'; key: string; text: string; kind: VoiceKind }
+// A spoken line. (Sound FX are handled separately via fxCues — they play
+// immediately, synced to the action, not queued behind commentary.)
+export type Cue = { key: string; text: string; kind: VoiceKind }
 
 const ONES = ['', 'one', 'two', 'three']
 const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th', '11th', '12th']
@@ -30,13 +30,49 @@ function nextBatterName(state: LiveGame, lineups: Lineups): string | null {
 }
 
 function batterUp(state: LiveGame, lineups: Lineups): string | null {
+  if (state.outs >= 3) return null // inning's over; the recap covers who's next
   const n = nextBatterName(state, lineups)
   return n ? `Now batting, ${n}.` : null
 }
 
-function outsLine(state: LiveGame): string | null {
-  if (state.outs <= 0 || state.outs >= 3) return null
-  return state.outs === 1 ? 'One out.' : 'Two outs.'
+// Leadoff batter of the next half (the other team).
+function nextHalfLeadoff(state: LiveGame, lineups: Lineups): string | null {
+  const nextKey = state.half === 'top' ? 'home' : 'away'
+  const order = lineups[nextKey]
+  if (!order.length) return null
+  const idx = (nextKey === 'away' ? state.awayBatterIdx : state.homeBatterIdx) % order.length
+  return order[idx]?.name ?? null
+}
+
+// The situation between batters: who's on base and how many outs.
+function situationLine(state: LiveGame): string | null {
+  if (state.outs >= 3) return null
+  const o = occupancy(state.bases)
+  const names: string[] = []
+  if (o.first) names.push('first')
+  if (o.second) names.push('second')
+  if (o.third) names.push('third')
+  // Only worth saying when there are runners on, or with two outs.
+  if (names.length === 0 && state.outs < 2) return null
+  const outs = state.outs === 0 ? 'nobody out' : state.outs === 1 ? 'one out' : 'two outs'
+  let bases: string
+  if (names.length === 0) bases = 'Bases empty'
+  else if (names.length === 3) bases = 'Bases loaded'
+  else {
+    const list = names.length === 2 ? `${names[0]} and ${names[1]}` : names[0]
+    bases = `${names.length === 2 ? 'Runners' : 'Runner'} on ${list}`
+  }
+  return `${bases}, ${outs}.`
+}
+
+// Lines for a new batter stepping in: who's up, then the situation.
+function plateLines(state: LiveGame, lineups: Lineups): { text: string; kind: VoiceKind }[] {
+  const lines: { text: string; kind: VoiceKind }[] = []
+  const b = batterUp(state, lineups)
+  if (b) lines.push({ text: b, kind: 'info' })
+  const s = situationLine(state)
+  if (s) lines.push({ text: s, kind: 'info' })
+  return lines
 }
 
 function scoreSummary(s: LiveGame): string {
@@ -50,32 +86,37 @@ function fullCount(s: LiveGame): boolean {
   return s.balls === 3 && s.strikes === 2
 }
 
-// FX sequence for an event — plays before the spoken lines.
-function fxCues(eventType: string): string[] {
+// Sound-FX steps for an event. Each step is a set of sounds layered together;
+// steps play one after another (e.g. pitch, then the crack + cheer). Plays
+// immediately, synced to the live action — independent of the spoken lines.
+export function fxCues(eventType: string): string[][] {
   switch (eventType) {
     case 'pitch_ball':
     case 'pitch_strike':
     case 'walk':
     case 'strikeout':
-      return ['pitch', 'catch']
+      return [['pitch'], ['catch']]
     case 'pitch_foul':
-      return ['pitch', 'foul']
+      return [['pitch'], ['foul']]
+    case 'hit_by_pitch':
+      return [['pitch']]
     case 'single':
     case 'double':
     case 'triple':
     case 'home_run':
+      return [['pitch'], ['hit', 'cheer']] // crack of the bat + crowd cheer
     case 'error':
     case 'fielders_choice':
-      return ['pitch', 'hit']
+      return [['pitch'], ['hit']]
     case 'groundout':
     case 'flyout':
     case 'lineout':
-      return ['pitch', 'hit', 'catch']
+      return [['pitch'], ['hit'], ['catch']]
     case 'stolen_base':
     case 'caught_stealing':
     case 'runner_advance':
     case 'picked_off':
-      return ['slide']
+      return [['slide']]
     default:
       return []
   }
@@ -92,12 +133,12 @@ function voiceFor(
 ): Line[] {
   const text = play.get(ev.seq)
   const out: (Line | null)[] = []
-  const info = (t: string | null): Line | null => (t ? { text: t, kind: 'info' } : null)
   const playLine = (t: string | undefined): Line | null => (t ? { text: t, kind: 'play' } : null)
+  const plate = () => plateLines(after, lineups)
 
   switch (ev.event_type) {
     case 'game_start':
-      out.push({ text: 'Play ball!', kind: 'info' }, info(batterUp(after, lineups)))
+      out.push({ text: 'Play ball!', kind: 'info' }, ...plate())
       break
     case 'pitch_ball':
       out.push({
@@ -115,14 +156,13 @@ function voiceFor(
       out.push({ text: 'Fouled away.', kind: 'pitch' })
       break
     case 'walk':
-      out.push({ text: 'Ball four — he takes his base.', kind: 'info' }, info(batterUp(after, lineups)))
+      out.push({ text: 'Ball four — he takes his base.', kind: 'info' }, ...plate())
+      break
+    case 'hit_by_pitch':
+      out.push(playLine(text) ?? { text: 'Hit by the pitch — he takes his base.', kind: 'info' }, ...plate())
       break
     case 'strikeout':
-      out.push(
-        { text: 'Strike three, he is out!', kind: 'info' },
-        info(outsLine(after)),
-        info(batterUp(after, lineups)),
-      )
+      out.push({ text: 'Strike three, he is out!', kind: 'info' }, ...plate())
       break
     case 'single':
     case 'double':
@@ -130,12 +170,12 @@ function voiceFor(
     case 'home_run':
     case 'error':
     case 'fielders_choice':
-      out.push(playLine(text), info(batterUp(after, lineups)))
+      out.push(playLine(text), ...plate())
       break
     case 'groundout':
     case 'flyout':
     case 'lineout':
-      out.push(playLine(text), info(outsLine(after)), info(batterUp(after, lineups)))
+      out.push(playLine(text), ...plate())
       break
     case 'stolen_base':
     case 'caught_stealing':
@@ -151,25 +191,19 @@ function voiceFor(
   return out.filter((l): l is Line => !!l && l.text.trim().length > 0)
 }
 
-// A structured recap of a just-completed half-inning — the server voices this
-// (kind 'summary') as a natural couple of sentences.
-function inningSummary(
-  before: LiveGame,
-  after: LiveGame,
-  runsThisHalf: number,
-  lineups: Lineups,
-): string {
-  const battingTop = before.half === 'top'
+// A structured recap of a half-inning that just ended on the 3rd out — the
+// server voices this (kind 'summary') as a natural couple of sentences.
+function inningRecap(state: LiveGame, runsThisHalf: number, lineups: Lineups): string {
+  const battingTop = state.half === 'top'
   const team = battingTop ? 'the away team' : 'the home team'
-  const half = `${battingTop ? 'top' : 'bottom'} of the ${ord(before.inning)}`
+  const half = `${battingTop ? 'top' : 'bottom'} of the ${ord(state.inning)}`
   const scored =
     runsThisHalf === 0
       ? `${team} were held scoreless`
       : `${team} put up ${runsThisHalf} run${runsThisHalf === 1 ? '' : 's'}`
-  const next = nextBatterName(after, lineups)
-  const score = `The score is now away ${after.awayScore}, home ${after.homeScore}.`
-  const upNext = next ? ` Leading off next is ${next}.` : ''
-  return `End of the ${half}. ${scored} that half. ${score}${upNext}`
+  const next = nextHalfLeadoff(state, lineups)
+  const score = `The score is now away ${state.awayScore}, home ${state.homeScore}.`
+  return `That's the end of the ${half}. ${scored} that half. ${score}${next ? ` Leading off next, ${next}.` : ''}`
 }
 
 // All audio cues for events newer than `sinceSeq`, in order.
@@ -189,24 +223,24 @@ export function freshCues(
     const before = state
     const after = applyEvent(before, ev)
     state = after
-    const isInning = ev.event_type === 'inning_change'
-    const runsThisHalf = isInning
-      ? before.half === 'top'
-        ? before.awayScore - halfAway
-        : before.homeScore - halfHome
+    // The half ends the moment the 3rd out is recorded (the "end of inning"
+    // screen), NOT when the next half is started.
+    const halfEnded = before.outs < 3 && after.outs >= 3 && ev.event_type !== 'game_end'
+    const runsThisHalf = halfEnded
+      ? after.half === 'top'
+        ? after.awayScore - halfAway
+        : after.homeScore - halfHome
       : 0
 
     if (ev.seq > sinceSeq) {
-      for (const name of fxCues(ev.event_type)) cues.push({ type: 'fx', name })
-      if (isInning) {
-        cues.push({ type: 'voice', key: String(ev.seq), text: inningSummary(before, after, runsThisHalf, lineups), kind: 'summary' })
-      } else {
-        voiceFor(ev, before, after, play, lineups).forEach((l, i) => {
-          cues.push({ type: 'voice', key: i === 0 ? String(ev.seq) : `${ev.seq}.${i}`, text: l.text, kind: l.kind })
-        })
+      voiceFor(ev, before, after, play, lineups).forEach((l, i) => {
+        cues.push({ key: i === 0 ? String(ev.seq) : `${ev.seq}.${i}`, text: l.text, kind: l.kind })
+      })
+      if (halfEnded) {
+        cues.push({ key: `${ev.seq}-sum`, text: inningRecap(after, runsThisHalf, lineups), kind: 'summary' })
       }
     }
-    if (isInning) {
+    if (halfEnded) {
       halfAway = after.awayScore
       halfHome = after.homeScore
     }

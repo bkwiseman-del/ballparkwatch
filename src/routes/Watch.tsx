@@ -25,7 +25,7 @@ import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
 import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
 import { audio } from '@/lib/audio'
-import { freshCues } from '@/lib/commentary'
+import { freshCues, fxCues } from '@/lib/commentary'
 import type { Recap } from '@/lib/types'
 
 type PublicGame = {
@@ -219,23 +219,25 @@ export default function Watch() {
         }
       }
 
-      // GameChanger-style audio: FX (pitch → catch / hit) then play-by-play —
-      // batter up, balls/strikes, the play, outs, inning summaries — all queued
-      // so nothing overlaps. Only when commentary is on, to avoid wasted TTS.
-      if (audio.isEnabled() && gameId) {
-        const nameOf = (id: string | null | undefined) =>
-          (id && info?.players?.[id]?.name) || null
-        const lns = {
-          away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-          home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-        }
-        const cues = freshCues(events, baseline, nameOf, lns)
-        if (cues.some((c) => c.type === 'fx' && c.name === 'hit')) audio.swellCrowd()
-        ;(async () => {
-          for (const c of cues) {
-            if (c.type === 'fx') {
-              audio.enqueueFx(c.name)
-            } else {
+      // GameChanger-style audio. Sound FX fire immediately, synced to the play
+      // (pitch → crack + cheer); the play-by-play voice — batter up, the count,
+      // the play, the situation, inning recaps — is generated (cached) and
+      // queued so lines don't overlap. Only when commentary is on.
+      const newest = freshAll[freshAll.length - 1]
+      if (audio.isEnabled() && newest) {
+        audio.playFx(fxCues(newest.event_type))
+        if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
+
+        if (gameId) {
+          const nameOf = (id: string | null | undefined) =>
+            (id && info?.players?.[id]?.name) || null
+          const lns = {
+            away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+            home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+          }
+          const cues = freshCues(events, baseline, nameOf, lns)
+          ;(async () => {
+            for (const c of cues) {
               try {
                 const { data } = await supabase.functions.invoke('commentary', {
                   body: { gameId, seq: c.key, text: c.text, kind: c.kind },
@@ -245,8 +247,8 @@ export default function Watch() {
                 /* skip this line */
               }
             }
-          }
-        })()
+          })()
+        }
       }
     }
   }, [events, gameId, info])
