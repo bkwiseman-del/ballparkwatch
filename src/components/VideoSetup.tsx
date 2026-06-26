@@ -123,18 +123,27 @@ export function VideoSetup({
         <section>
           <h3 className="mb-1 font-display text-lg">Sync the scorebug to the video</h3>
           <p className="mb-3 font-data text-[12px] text-muted-tan">
-            Video runs a few seconds behind real life. Tap when a real play happens, then tap
-            again the moment you see it on the video. Do it a few times for a good average.
+            The video runs a few seconds behind real life. We can’t draw a marker into a
+            YouTube/GoPro feed — only what the camera films travels through the delay — so a real
+            play is the marker: mark the same moment <b>twice</b> (once live, once on the video) and
+            we read the gap. A few reps gives a good average.
           </p>
 
           <button
             onClick={tap}
-            className={`w-full border-2 border-ink py-6 font-display text-xl ${
+            className={`w-full border-2 border-ink py-6 font-display text-lg leading-tight ${
               armedAt === null ? 'bg-board-green text-cream' : 'bg-gold text-ink'
             }`}
           >
-            {armedAt === null ? '① Tap at the real play' : '② Tap when you see it on video'}
+            {armedAt === null
+              ? '① Watch the field — tap on the next pitch or hit'
+              : '② Now watch the video — tap when that play appears'}
           </button>
+          <p className="mt-1 text-center font-data text-[11px] text-muted-tan">
+            {armedAt === null
+              ? 'Mark a real moment as it happens out on the field.'
+              : 'Tap the instant you see that same moment on the delayed video.'}
+          </p>
 
           {/* Samples + measured average */}
           <div className="mt-3 flex flex-wrap items-center gap-2">
