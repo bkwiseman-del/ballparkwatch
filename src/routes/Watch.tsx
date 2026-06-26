@@ -86,11 +86,19 @@ export default function Watch() {
     if (!error && data) setEvents(data as ViewerEvent[])
   }, [gameId])
 
-  // Refresh game info (lineups, status) — picks up substitutions/realignment.
+  // Refresh game info (lineups, status, video) — picks up substitutions/realignment.
+  // When there's no stat delay, also reconcile the live score from the snapshot
+  // (the authoritative, upsert-on-every-event projection) so a missed broadcast
+  // self-heals. Delayed games skip this so we don't bypass the delay buffer.
   const loadGame = useCallback(async () => {
     if (!gameId) return
     const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
-    if (data) setInfo(data as PublicGame)
+    if (!data) return
+    const g = data as PublicGame
+    setInfo(g)
+    if ((g.stat_delay_ms ?? 0) === 0 && g.snapshot) {
+      setLive({ ...INITIAL_LIVE, ...g.snapshot })
+    }
   }, [gameId])
 
   useEffect(() => {
@@ -141,9 +149,14 @@ export default function Watch() {
   // The live score itself rides the instant (delayed) broadcast path.
   useEffect(() => {
     if (!gameId) return
-    const id = window.setInterval(loadGame, 10000)
+    const tick = () => {
+      loadGame()
+      // No delay → also catch up the plays/box feed if a broadcast was missed.
+      if (delayRef.current === 0) loadEvents()
+    }
+    const id = window.setInterval(tick, 10000)
     return () => window.clearInterval(id)
-  }, [gameId, loadGame])
+  }, [gameId, loadGame, loadEvents])
 
   // Briefly animate the spray when a *new* located play arrives (not on load).
   useEffect(() => {
