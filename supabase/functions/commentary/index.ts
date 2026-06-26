@@ -7,12 +7,16 @@
 // Secrets: ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
 // (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are injected automatically.)
 
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+
 const ELEVEN_KEY = Deno.env.get('ELEVENLABS_API_KEY')
 const VOICE_ID = Deno.env.get('ELEVENLABS_VOICE_ID')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const BUCKET = 'bpw-audio'
 const MODEL = 'eleven_turbo_v2_5' // low-latency, good for live
+
+const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -66,19 +70,13 @@ Deno.serve(async (req) => {
   }
   const bytes = new Uint8Array(await tts.arrayBuffer())
 
-  // Cache to Storage (best-effort; we still return the URL).
-  try {
-    await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        'content-type': 'audio/mpeg',
-        'x-upsert': 'true',
-      },
-      body: bytes,
-    })
-  } catch (e) {
-    console.error('storage upload failed', e)
+  // Cache to Storage so all viewers reuse this one generation.
+  const { error: upErr } = await sb.storage
+    .from(BUCKET)
+    .upload(path, bytes, { contentType: 'audio/mpeg', upsert: true })
+  if (upErr) {
+    console.error('storage upload failed', upErr.message)
+    return json({ error: 'Could not store the clip.' }, 502)
   }
 
   return json({ url: publicUrl }, 200)

@@ -13,6 +13,18 @@ import { supabase } from './supabase'
 
 const ICE: RTCIceServer[] = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  // Free public TURN relay (Metered Open Relay) so cross-network connects work
+  // without an account. The ice-servers function can upgrade this to a paid
+  // relay if TURN creds are configured.
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ]
 export const videoChannelName = (gameId: string) => `bpw:video:${gameId}`
 const HEARTBEAT_MS = 2000

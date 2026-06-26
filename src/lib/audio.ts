@@ -3,14 +3,14 @@
 // is called from a user gesture (the viewer's Sound toggle).
 
 const FX_FILES: Record<string, string> = {
-  pitch: '/sfx/pitch.mp3',
-  hit: '/sfx/hit.mp3',
-  catch: '/sfx/catch.mp3',
-  foul: '/sfx/foul.mp3',
-  slide: '/sfx/slide.mp3',
+  pitch: '/sfx/pitch.m4a',
+  hit: '/sfx/hit.m4a',
+  catch: '/sfx/catch.m4a',
+  foul: '/sfx/foul.m4a',
+  slide: '/sfx/slide.m4a',
 }
-const CROWD_FILE = '/sfx/crowd.mp3'
-const CROWD_BASE = 0.22 // resting ambience volume
+const CROWD_FILE = '/sfx/crowd.m4a'
+const CROWD_BASE = 0.18 // resting ambience volume (sits below commentary + FX)
 const FX_VOLUME = 0.7
 
 // Map a game event type to a sound effect (or null for silence).
@@ -45,12 +45,17 @@ class AudioManager {
   private fx: Record<string, HTMLAudioElement> = {}
   private crowd: HTMLAudioElement | null = null
   private commentary: HTMLAudioElement | null = null
+  private crowdOn = false
+  private queue: string[] = []
+  private playing = false
 
   isEnabled() {
     return this.enabled
   }
 
   // Must be called from a user gesture (tap) to satisfy autoplay policies.
+  // Preloads FX and the crowd loop, but does NOT start the crowd — that's
+  // controlled by setCrowd() (we skip ambience when there's live video).
   enable() {
     if (this.enabled) return
     this.enabled = true
@@ -63,11 +68,22 @@ class AudioManager {
     this.crowd = new Audio(CROWD_FILE)
     this.crowd.loop = true
     this.crowd.volume = CROWD_BASE
-    this.crowd.play().catch(() => {})
+  }
+
+  // Loop the crowd ambience (no-video games) or stop it (live video provides the
+  // ambience itself).
+  setCrowd(on: boolean) {
+    this.crowdOn = on
+    if (!this.enabled || !this.crowd) return
+    if (on) this.crowd.play().catch(() => {})
+    else this.crowd.pause()
   }
 
   disable() {
     this.enabled = false
+    this.crowdOn = false
+    this.queue = []
+    this.playing = false
     this.crowd?.pause()
     this.crowd = null
     this.commentary?.pause()
@@ -84,31 +100,44 @@ class AudioManager {
     a.play().catch(() => {})
   }
 
-  // Briefly raise the crowd for a big moment (hit / run scoring).
+  // Briefly raise the crowd for a big moment (only when ambience is playing).
   swellCrowd() {
-    if (!this.enabled || !this.crowd) return
+    if (!this.enabled || !this.crowd || !this.crowdOn) return
     const c = this.crowd
-    c.volume = 0.6
+    c.volume = 0.55
     window.setTimeout(() => {
-      if (this.crowd === c) c.volume = CROWD_BASE
+      if (this.crowd === c && this.crowdOn) c.volume = CROWD_BASE
     }, 4000)
   }
 
-  // Play a TTS clip, ducking the crowd under the voice.
-  playCommentary(url: string) {
+  // Queue a TTS clip; clips play one after another so they never overlap. If we
+  // fall well behind live, stale clips are dropped.
+  enqueueCommentary(url: string) {
     if (!this.enabled) return
-    this.commentary?.pause()
+    this.queue.push(url)
+    if (this.queue.length > 5) this.queue.splice(0, this.queue.length - 5)
+    this.pump()
+  }
+
+  private pump() {
+    if (this.playing || !this.enabled) return
+    const url = this.queue.shift()
+    if (!url) return
+    this.playing = true
     const a = new Audio(url)
     this.commentary = a
-    const c = this.crowd
-    const resting = CROWD_BASE
-    if (c) c.volume = resting * 0.35
-    const restore = () => {
-      if (c && this.crowd === c) c.volume = resting
+    // Duck the crowd under the voice when ambience is on; with live video there's
+    // no crowd, so it simply overlays the video audio.
+    const c = this.crowdOn ? this.crowd : null
+    if (c) c.volume = CROWD_BASE * 0.35
+    const done = () => {
+      if (c && this.crowd === c && this.crowdOn) c.volume = CROWD_BASE
+      this.playing = false
+      this.pump()
     }
-    a.onended = restore
-    a.onerror = restore
-    a.play().catch(restore)
+    a.onended = done
+    a.onerror = done
+    a.play().catch(done)
   }
 }
 

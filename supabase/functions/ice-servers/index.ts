@@ -11,7 +11,20 @@
 const SID = Deno.env.get('TWILIO_ACCOUNT_SID')
 const TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
 
-const STUN = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }]
+// STUN + free public TURN (Metered Open Relay) — works with no account, so even
+// without Twilio configured we still relay across networks.
+const STUN = [
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  {
+    urls: [
+      'turn:openrelay.metered.ca:80',
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:443?transport=tcp',
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+]
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

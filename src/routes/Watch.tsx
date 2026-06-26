@@ -19,11 +19,13 @@ import {
 import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
 import { gameChannelName } from '@/lib/realtime'
 import { parseYouTubeId } from '@/lib/youtube'
+import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
 import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
 import { audio, fxForEvent } from '@/lib/audio'
+import { freshCommentary } from '@/lib/commentary'
 import type { Recap } from '@/lib/types'
 
 type PublicGame = {
@@ -165,6 +167,19 @@ export default function Watch() {
     delayRef.current = info?.stat_delay_ms ?? 0
   }, [info?.stat_delay_ms])
 
+  // Is there live video? (YouTube link set, or a phone broadcast in progress.)
+  const phoneStatus = useBroadcastStatus(gameId, info?.video_source === 'phone_whip')
+  const hasVideo =
+    (info?.video_source === 'youtube' &&
+      !!parseYouTubeId(String(info?.video_config?.youtube_url ?? ''))) ||
+    (info?.video_source === 'phone_whip' && phoneStatus.live)
+
+  // Crowd ambience loops only for no-video games; with live video the video's
+  // own audio is the ambience, so we run just commentary + sound FX over it.
+  useEffect(() => {
+    audio.setCrowd(soundOn && !hasVideo)
+  }, [soundOn, hasVideo])
+
   // Poll game info so status (scheduled → live → final), the video link, and
   // lineup changes reach an already-open viewer even before any play is scored.
   // The live score itself rides the instant (delayed) broadcast path.
@@ -204,24 +219,36 @@ export default function Watch() {
         }
       }
 
-      // sound fx + voice commentary for the newest action
+      // sound fx + voice commentary for the new action
       const newest = freshAll[freshAll.length - 1]
       if (audio.isEnabled() && newest) {
         const fx = fxForEvent(newest.event_type)
         if (fx) audio.playFx(fx)
         if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
 
-        // Commentary only for real plays (not pitches), generated once + cached.
-        const nameOf = (id: string | null | undefined) =>
-          (id && info?.players?.[id]?.name) || null
-        const line = buildPlayByPlay(events, nameOf).find((p) => p.seq === newest.seq)
-        if (line && gameId) {
-          supabase.functions
-            .invoke('commentary', { body: { gameId, seq: newest.seq, text: line.text } })
-            .then(({ data }) => {
-              if (data?.url) audio.playCommentary(data.url)
-            })
-            .catch(() => {})
+        // GameChanger-style play-by-play: batter up, balls/strikes, the play,
+        // outs, inning summaries. Generated (cached) then queued so they don't
+        // overlap. Only when sound is on, to avoid wasted TTS.
+        if (gameId) {
+          const nameOf = (id: string | null | undefined) =>
+            (id && info?.players?.[id]?.name) || null
+          const lns = {
+            away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+            home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+          }
+          const lines = freshCommentary(events, baseline, nameOf, lns)
+          ;(async () => {
+            for (const ln of lines) {
+              try {
+                const { data } = await supabase.functions.invoke('commentary', {
+                  body: { gameId, seq: ln.key, text: ln.text },
+                })
+                if (data?.url) audio.enqueueCommentary(data.url)
+              } catch {
+                /* skip this line */
+              }
+            }
+          })()
         }
       }
     }
