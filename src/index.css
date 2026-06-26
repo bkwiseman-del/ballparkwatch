@@ -25,7 +25,7 @@
 
   /* Dark mode = the night-game scoreboard. */
   html.dark body {
-    @apply bg-night-green text-cream;
+    @apply bg-ink text-cream;
   }
 
   /* Block numerals should be tabular so digits don't jitter. */

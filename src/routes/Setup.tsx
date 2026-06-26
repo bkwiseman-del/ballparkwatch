@@ -310,7 +310,7 @@ function CreateGameCard({
           type="datetime-local"
           value={when}
           onChange={(e) => setWhen(e.target.value)}
-          className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+          className="box-border block w-full min-w-0 max-w-full appearance-none border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
         />
       </label>
 

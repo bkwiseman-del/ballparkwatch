@@ -12,7 +12,7 @@ export function ScorePanel({ state }: { state: ScoreboardState }) {
       <div className="h-px bg-gold/25" />
       <TeamRow code={state.home.code} name={state.home.name} score={state.home.score} home />
 
-      <div className="flex items-center justify-between border-t-2 border-gold/40 bg-night-green px-4 py-2.5 font-athletic">
+      <div className="flex items-center justify-between border-t-2 border-gold/40 bg-ink px-4 py-2.5 font-athletic">
         <div className="flex items-baseline gap-1.5">
           <span className="text-xl font-bold leading-none">
             {halfArrow(state.half)}

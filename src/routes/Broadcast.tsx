@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { usePhoneVideo } from '@/lib/phoneVideo'
+import { gameChannelName } from '@/lib/realtime'
 import { HeaderWordmark } from '@/components/Logo'
 
 type Resolved = {
@@ -38,13 +39,51 @@ export default function Broadcast() {
 function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
   const v = usePhoneVideo(gameId, true)
   const localRef = useRef<HTMLVideoElement>(null)
+  const [ended, setEnded] = useState(false)
+  const stop = v.stop
 
   useEffect(() => {
     if (localRef.current) localRef.current.srcObject = v.local
   }, [v.local])
 
+  // End the broadcast when the scorer ends the game. Catch it instantly off the
+  // scorer's state broadcast, and poll as a fallback in case that event is missed.
+  useEffect(() => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      setEnded(true)
+      stop()
+    }
+    const ch = supabase
+      .channel(gameChannelName(gameId))
+      .on('broadcast', { event: 'state' }, ({ payload }) => {
+        if ((payload as { status?: string })?.status === 'final') finish()
+      })
+      .subscribe()
+    const poll = setInterval(async () => {
+      const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
+      if ((data as { status?: string })?.status === 'final') finish()
+    }, 20000)
+    return () => {
+      clearInterval(poll)
+      supabase.removeChannel(ch)
+    }
+  }, [gameId, stop])
+
+  if (ended)
+    return (
+      <Center>
+        <div className="space-y-2">
+          <p className="font-display text-2xl text-gold">Game over</p>
+          <p className="font-data text-sm text-muted-green">The broadcast has ended. You can close this screen.</p>
+        </div>
+      </Center>
+    )
+
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-night-green text-cream">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-ink text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
         <HeaderWordmark />
         <span className="font-athletic text-sm uppercase tracking-[.18em] text-muted-green">Broadcast</span>
@@ -119,7 +158,7 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
 
 function Center({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-night-green p-6 text-center font-data text-cream">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-ink p-6 text-center font-data text-cream">
       {children}
     </div>
   )

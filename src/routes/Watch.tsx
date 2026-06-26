@@ -320,7 +320,7 @@ export default function Watch() {
   )
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col bg-night-green text-cream min-[760px]:max-w-3xl lg:max-w-6xl">
+    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col bg-ink text-cream min-[760px]:max-w-3xl lg:max-w-6xl">
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
@@ -926,7 +926,7 @@ function StatsTab({
         </h3>
         <div className="grid grid-cols-3 gap-px bg-cream/15 font-data text-sm">
           {['', board.away.code, board.home.code].map((c, i) => (
-            <div key={i} className="bg-night-green px-2 py-1.5 text-center font-athletic font-semibold text-muted-green">
+            <div key={i} className="bg-ink px-2 py-1.5 text-center font-athletic font-semibold text-muted-green">
               {c}
             </div>
           ))}
@@ -966,16 +966,16 @@ function StatsTab({
 function Stat3({ label, a, h }: { label: string; a: number; h: number }) {
   return (
     <>
-      <div className="bg-night-green px-2 py-1.5 text-muted-green">{label}</div>
-      <div className="bg-night-green px-2 py-1.5 text-center tabular text-cream">{a}</div>
-      <div className="bg-night-green px-2 py-1.5 text-center tabular text-cream">{h}</div>
+      <div className="bg-ink px-2 py-1.5 text-muted-green">{label}</div>
+      <div className="bg-ink px-2 py-1.5 text-center tabular text-cream">{a}</div>
+      <div className="bg-ink px-2 py-1.5 text-center tabular text-cream">{h}</div>
     </>
   )
 }
 
 function Center({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-full items-center justify-center bg-night-green p-6 text-center font-athletic text-muted-green">
+    <div className="flex min-h-full items-center justify-center bg-ink p-6 text-center font-athletic text-muted-green">
       {children}
     </div>
   )
