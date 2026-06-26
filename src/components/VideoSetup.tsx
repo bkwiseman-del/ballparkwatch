@@ -69,7 +69,7 @@ export function VideoSetup({
 
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-cream text-ink">
-      <div className="flex items-center justify-between border-b-2 border-gold bg-ink px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <span className="font-display text-lg text-cream">
           {isPhone ? 'Phone broadcast' : 'Video & sync'}
         </span>
