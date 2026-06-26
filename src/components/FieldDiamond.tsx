@@ -32,10 +32,10 @@ export const NUM_BY_POS: Record<string, number> = {
 export const FIELDER_POS: Record<string, { x: number; y: number }> = {
   P: { x: 170, y: 272 },
   C: { x: 170, y: 356 },
-  '1B': { x: 298, y: 240 },
+  '1B': { x: 272, y: 238 },
   '2B': { x: 214, y: 196 },
   SS: { x: 126, y: 196 },
-  '3B': { x: 42, y: 240 },
+  '3B': { x: 68, y: 238 },
   LF: { x: 90, y: 98 },
   CF: { x: 170, y: 58 },
   RF: { x: 250, y: 98 },
