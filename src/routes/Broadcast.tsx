@@ -44,15 +44,16 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
   }, [v.local])
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-night-green text-cream">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-night-green text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
         <HeaderWordmark />
         <span className="font-athletic text-sm uppercase tracking-[.18em] text-muted-green">Broadcast</span>
       </header>
 
       {v.isBroadcasting ? (
-        <div className="relative flex-1 bg-black">
-          <video ref={localRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+        <div className="relative min-h-0 flex-1 bg-black">
+          <video ref={localRef} autoPlay playsInline muted className="h-full w-full object-contain" />
+
           <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-black/50 px-4 py-2">
             <span className="flex items-center gap-2 font-athletic text-sm font-semibold uppercase tracking-wide">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
@@ -62,9 +63,29 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
               Stop
             </button>
           </div>
-          <p className="absolute inset-x-0 bottom-0 bg-black/40 px-4 py-1.5 text-center font-data text-[11px] text-cream/80">
-            Keep this screen on and pointed at the field.
-          </p>
+
+          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-black/50 px-4 py-3">
+            {v.zoomRange && (
+              <label className="flex items-center gap-3 font-athletic text-xs uppercase tracking-wide">
+                <span>Zoom</span>
+                <input
+                  type="range"
+                  min={v.zoomRange.min}
+                  max={v.zoomRange.max}
+                  step={v.zoomRange.step}
+                  value={v.zoom}
+                  onChange={(e) => v.setZoom(Number(e.target.value))}
+                  className="flex-1 accent-board-green"
+                />
+              </label>
+            )}
+            <button
+              onClick={v.switchCamera}
+              className="border-2 border-cream/40 py-2 font-display text-cream"
+            >
+              Flip camera
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

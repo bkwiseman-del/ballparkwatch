@@ -5,7 +5,7 @@ import { ScorePanel } from '@/components/ScorePanel'
 import { ScorebugBar } from '@/components/Scorebug'
 import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type SprayViz } from '@/components/FieldDiamond'
 import { HeaderWordmark } from '@/components/Logo'
-import { resolveCode } from '@/lib/scoreboard'
+import { resolveCode, type ScoreboardState } from '@/lib/scoreboard'
 import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
 import {
   buildPlayByPlay,
@@ -13,6 +13,7 @@ import {
   computeBoxScore,
   formatAvg,
   type BattingLine,
+  type BoxScore,
   type PlayKind,
 } from '@/lib/stats'
 import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
@@ -231,14 +232,12 @@ export default function Watch() {
       ? parseYouTubeId(String(info.video_config?.youtube_url ?? ''))
       : null
 
-  // Live video block (shared by both layouts): the feed with the broadcast bug,
-  // the phone feed, or just the scoreboard when there's no video.
+  // Live video block: the feed with the scorebug bar BELOW it (so it never sits
+  // over the player's controls), the phone feed, or the scoreboard if no video.
   const videoBlock = ytId ? (
-    <div className="relative">
+    <div>
       <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-        <ScorebugBar state={board} />
-      </div>
+      <ScorebugBar state={board} />
     </div>
   ) : info.video_source === 'phone_whip' ? (
     <PhoneVideo gameId={gameId} board={board} />
@@ -247,9 +246,9 @@ export default function Watch() {
   )
 
   return (
-    <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream min-[820px]:max-w-6xl">
-      {/* branded header — full width */}
-      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
+    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col bg-night-green text-cream min-[760px]:max-w-3xl">
+      {/* branded header */}
+      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
         {live.status === 'live' ? (
           <span className="flex items-center gap-2">
@@ -263,17 +262,12 @@ export default function Watch() {
         )}
       </header>
 
-      {/* Stacked on phones; video + stats side-by-side once there's width
-          (≥820px → desktop and landscape phones/tablets). */}
-      <div className="flex flex-1 flex-col min-[820px]:flex-row min-[820px]:items-stretch">
-        {/* video / scoreboard column */}
-        <div className="min-[820px]:sticky min-[820px]:top-0 min-[820px]:flex-1 min-[820px]:self-start">
+      {live.status === 'final' ? (
+        <FinalView board={board} events={events} recap={info.recap ?? null} />
+      ) : (
+        <>
           {videoBlock}
-          {live.status === 'final' && info.recap && <RecapCard recap={info.recap} />}
-        </div>
 
-        {/* stats column */}
-        <div className="flex flex-1 flex-col min-[820px]:w-[380px] min-[820px]:flex-none min-[820px]:border-l-2 min-[820px]:border-gold">
           {live.status === 'live' && !between && (
             <BatterPitcherStrip lineups={lineups} live={live} events={events} />
           )}
@@ -293,7 +287,7 @@ export default function Watch() {
             ))}
           </div>
 
-          <div className="flex-1 p-4">
+          <div className="flex-1 p-4 min-[760px]:p-6">
             {tab === 'field' &&
               (between && showStandby ? (
                 <Standby lineups={lineups} live={live} away={board.away} home={board.home} />
@@ -304,22 +298,144 @@ export default function Watch() {
             {tab === 'box' && <BoxTab board={board} events={events} />}
             {tab === 'stats' && <StatsTab board={board} events={events} />}
           </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Post-game screen: FINAL hero, the AI recap, and tabs into the box/stats/plays.
+function FinalView({
+  board,
+  events,
+  recap,
+}: {
+  board: ScoreboardState
+  events: ViewerEvent[]
+  recap: Recap | null
+}) {
+  const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
+  return (
+    <div className="flex flex-1 flex-col">
+      {/* FINAL hero */}
+      <div className="border-b-2 border-gold bg-[#122019] px-4 py-6 text-center">
+        <p className="font-display text-2xl tracking-[.3em] text-barn-red">FINAL</p>
+        <div className="mt-3 flex items-center justify-center gap-4 font-display text-3xl min-[760px]:text-4xl">
+          <span className="text-cream">
+            {board.away.code} {board.away.score}
+          </span>
+          <span className="text-muted-green">—</span>
+          <span className="text-gold">
+            {board.home.code} {board.home.score}
+          </span>
         </div>
+        {(board.away.name || board.home.name) && (
+          <p className="mt-1.5 font-data text-xs text-muted-green">
+            {board.away.name} at {board.home.name}
+          </p>
+        )}
+      </div>
+
+      {/* sub-tabs */}
+      <div className="flex border-b-2 border-gold bg-[#122019]">
+        {(['recap', 'box', 'stats', 'plays'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="relative flex-1 py-3 font-athletic text-xs font-semibold uppercase tracking-[.08em]"
+          >
+            <span className={tab === t ? 'text-cream' : 'text-muted-green'}>{t}</span>
+            {tab === t && (
+              <span className="absolute bottom-0 left-1/2 h-[3px] w-[30px] -translate-x-1/2 bg-gold" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 p-4 min-[760px]:p-6">
+        {tab === 'recap' && <RecapFinal recap={recap} events={events} board={board} />}
+        {tab === 'box' && <BoxTab board={board} events={events} />}
+        {tab === 'stats' && <StatsTab board={board} events={events} />}
+        {tab === 'plays' && <PlaysTab events={events} />}
       </div>
     </div>
   )
 }
 
-function RecapCard({ recap }: { recap: Recap }) {
+function RecapFinal({
+  recap,
+  events,
+  board,
+}: {
+  recap: Recap | null
+  events: ViewerEvent[]
+  board: ScoreboardState
+}) {
+  const box = computeBoxScore(events)
   return (
-    <div className="border-b-2 border-gold bg-[#122019] px-4 py-4">
-      <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.16em] text-gold">
-        Game recap
-      </p>
-      <p className="mt-1 font-display text-xl leading-tight text-cream">{recap.headline}</p>
-      <p className="mt-2 whitespace-pre-line font-data text-sm leading-relaxed text-cream/90">
-        {recap.body}
-      </p>
+    <div className="mx-auto max-w-xl">
+      {recap ? (
+        <div className="border-2 border-gold bg-black/20 p-4 min-[760px]:p-5">
+          <p className="font-display text-2xl leading-tight text-gold">{recap.headline}</p>
+          <p className="mt-3 whitespace-pre-line font-data text-sm leading-relaxed text-cream/90">
+            {recap.body}
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center gap-2 border-2 border-dashed border-gold/40 p-6 text-center font-athletic text-sm uppercase tracking-[.14em] text-muted-green">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-gold" />
+          Writing the game recap…
+        </div>
+      )}
+      <LineScore box={box} awayCode={board.away.code} homeCode={board.home.code} />
+    </div>
+  )
+}
+
+function LineScore({ box, awayCode, homeCode }: { box: BoxScore; awayCode: string; homeCode: string }) {
+  const innings = Math.max(
+    box.innings,
+    box.away.runsByInning.length,
+    box.home.runsByInning.length,
+    1,
+  )
+  const cols = Array.from({ length: innings }, (_, i) => i + 1)
+  const rows: { code: string; b: BoxScore['away']; accent?: boolean }[] = [
+    { code: awayCode, b: box.away },
+    { code: homeCode, b: box.home, accent: true },
+  ]
+  return (
+    <div className="mt-5 overflow-x-auto">
+      <table className="w-full border-2 border-gold text-center font-data text-sm tabular">
+        <thead>
+          <tr className="bg-[#122019] text-[11px] uppercase tracking-wide text-muted-green">
+            <th className="px-2 py-1.5 text-left" />
+            {cols.map((c) => (
+              <th key={c} className="px-2 py-1.5">
+                {c}
+              </th>
+            ))}
+            <th className="px-2 py-1.5 text-gold">R</th>
+            <th className="px-2 py-1.5">H</th>
+            <th className="px-2 py-1.5">E</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.code} className="border-t border-gold/20">
+              <td className="px-2 py-1.5 text-left font-athletic font-bold">{r.code}</td>
+              {cols.map((c) => (
+                <td key={c} className="px-2 py-1.5 text-cream/90">
+                  {r.b.runsByInning[c - 1] ?? ''}
+                </td>
+              ))}
+              <td className={`px-2 py-1.5 font-bold ${r.accent ? 'text-gold' : 'text-cream'}`}>{r.b.r}</td>
+              <td className="px-2 py-1.5 text-cream/80">{r.b.h}</td>
+              <td className="px-2 py-1.5 text-cream/80">{r.b.e}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

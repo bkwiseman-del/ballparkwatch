@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
@@ -1166,6 +1166,7 @@ function FinalRecap({
   const [recap, setRecap] = useState<Recap | null>(initial)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const tried = useRef(false)
 
   async function generate() {
     if (!teams || !gameId) return
@@ -1184,6 +1185,16 @@ function FinalRecap({
       setBusy(false)
     }
   }
+
+  // Auto-write the recap the moment the game ends (once). The scorer can still
+  // regenerate, and viewers pick it up from games.recap.
+  useEffect(() => {
+    if (!recap && !tried.current && teams) {
+      tried.current = true
+      generate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teams])
 
   return (
     <div className="flex flex-1 flex-col items-center overflow-y-auto px-4 py-8 text-center">
@@ -1204,17 +1215,18 @@ function FinalRecap({
             {busy ? 'Rewriting…' : 'Regenerate'}
           </button>
         </div>
+      ) : err ? (
+        <div className="mt-6 text-center">
+          <p className="font-data text-sm text-barn-red">{err}</p>
+          <button onClick={generate} className="mt-2 bg-gold px-6 py-2 font-display text-ink">
+            Try again
+          </button>
+        </div>
       ) : (
-        <button
-          onClick={generate}
-          disabled={busy || !teams}
-          className="mt-6 bg-gold px-6 py-3 font-display text-ink disabled:opacity-60"
-        >
-          {busy ? 'Writing recap…' : 'Generate recap'}
-        </button>
+        <p className="mt-6 font-athletic text-sm uppercase tracking-[.14em] text-muted-green">
+          Writing the game recap…
+        </p>
       )}
-
-      {err && <p className="mt-3 font-data text-sm text-barn-red">{err}</p>}
     </div>
   )
 }

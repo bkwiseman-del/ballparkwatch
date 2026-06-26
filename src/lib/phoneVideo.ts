@@ -28,6 +28,9 @@ type Sig =
   | { kind: 'answer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'ice'; from: string; to: string; candidate: RTCIceCandidateInit }
 
+export type Facing = 'environment' | 'user'
+export type ZoomRange = { min: number; max: number; step: number }
+
 export type PhoneVideo = {
   isLive: boolean // someone (possibly us) is broadcasting
   isBroadcasting: boolean // we are the broadcaster
@@ -35,8 +38,23 @@ export type PhoneVideo = {
   local: MediaStream | null // our own camera (when broadcasting)
   viewers: number // connected viewers (broadcaster side)
   error: string | null
+  facing: Facing // which camera is in use
+  zoom: number
+  zoomRange: ZoomRange | null // null when the camera/browser doesn't expose zoom
   goLive: () => Promise<void>
+  switchCamera: () => Promise<void>
+  setZoom: (z: number) => void
   stop: () => void
+}
+
+// 16:9 video constraints for a given camera.
+function videoConstraints(facing: Facing): MediaTrackConstraints {
+  return {
+    facingMode: { ideal: facing },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    aspectRatio: { ideal: 16 / 9 },
+  }
 }
 
 export function usePhoneVideo(gameId: string | undefined, active: boolean): PhoneVideo {
@@ -46,6 +64,9 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   const [local, setLocal] = useState<MediaStream | null>(null)
   const [viewers, setViewers] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [facing, setFacing] = useState<Facing>('environment')
+  const [zoom, setZoomState] = useState(1)
+  const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null)
 
   const me = useRef(rid())
   const chan = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -210,15 +231,29 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     }
   }, [gameId, active, send, offerTo, onOffer, closePc, teardownBroadcast])
 
+  // Read whether the current camera supports zoom, and expose its range.
+  const readZoom = useCallback((track: MediaStreamTrack) => {
+    const caps = (track.getCapabilities?.() ?? {}) as { zoom?: { min: number; max: number; step?: number } }
+    if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+      setZoomRange({ min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step ?? 0.1 })
+      const cur = (track.getSettings?.() as { zoom?: number }).zoom
+      setZoomState(cur ?? caps.zoom.min)
+    } else {
+      setZoomRange(null)
+    }
+  }, [])
+
   const goLive = useCallback(async () => {
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
+        video: videoConstraints('environment'),
         audio: true,
       })
       localRef.current = stream
       setLocal(stream)
+      setFacing('environment')
+      readZoom(stream.getVideoTracks()[0])
       setIncoming(null)
       for (const id of [...pcs.current.keys()]) closePc(id) // drop any viewer PCs we held
       bcastRef.current = true
@@ -232,16 +267,65 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not access the camera.')
     }
-  }, [send, closePc])
+  }, [send, closePc, readZoom])
+
+  // Flip front/back: grab the other camera and hot-swap the video track on every
+  // peer connection (no renegotiation) plus the local preview.
+  const switchCamera = useCallback(async () => {
+    if (!bcastRef.current || !localRef.current) return
+    const next: Facing = facing === 'environment' ? 'user' : 'environment'
+    try {
+      const fresh = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(next) })
+      const newTrack = fresh.getVideoTracks()[0]
+      for (const pc of pcs.current.values()) {
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+        if (sender) await sender.replaceTrack(newTrack)
+      }
+      const audio = localRef.current.getAudioTracks()
+      localRef.current.getVideoTracks().forEach((t) => t.stop())
+      const merged = new MediaStream([newTrack, ...audio])
+      localRef.current = merged
+      setLocal(merged)
+      setFacing(next)
+      readZoom(newTrack)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not switch cameras.')
+    }
+  }, [facing, readZoom])
+
+  const setZoom = useCallback((z: number) => {
+    const track = localRef.current?.getVideoTracks()[0]
+    if (!track) return
+    setZoomState(z)
+    // `zoom` isn't in the standard constraint typings.
+    track
+      .applyConstraints({ advanced: [{ zoom: z }] } as unknown as MediaTrackConstraints)
+      .catch(() => {})
+  }, [])
 
   const stop = useCallback(() => {
     send({ kind: 'bye', from: me.current })
     teardownBroadcast()
     setIsLive(false)
+    setZoomRange(null)
     send({ kind: 'hello', from: me.current }) // rejoin as a viewer if someone else picks up
   }, [send, teardownBroadcast])
 
-  return { isLive, isBroadcasting, incoming, local, viewers, error, goLive, stop }
+  return {
+    isLive,
+    isBroadcasting,
+    incoming,
+    local,
+    viewers,
+    error,
+    facing,
+    zoom,
+    zoomRange,
+    goLive,
+    switchCamera,
+    setZoom,
+    stop,
+  }
 }
 
 export type BroadcastStatus = { live: boolean; viewers: number }

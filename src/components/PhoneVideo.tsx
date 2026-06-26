@@ -18,7 +18,7 @@ export function PhoneVideo({ gameId, board }: { gameId?: string; board: Scoreboa
 
   if (v.incoming) {
     return (
-      <div className="relative bg-black">
+      <div>
         <video
           ref={remoteRef}
           autoPlay
@@ -26,9 +26,7 @@ export function PhoneVideo({ gameId, board }: { gameId?: string; board: Scoreboa
           controls
           className="aspect-video w-full bg-black object-contain"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-          <ScorebugBar state={board} />
-        </div>
+        <ScorebugBar state={board} />
       </div>
     )
   }
