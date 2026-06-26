@@ -863,7 +863,7 @@ function InPlayFlow({
   const [result, setResult] = useState<EventType>('single')
   const [landing, setLanding] = useState<{ x: number; y: number } | null>(null) // field coords (hits)
   const [fielders, setFielders] = useState<number[]>([])
-  const [dp, setDp] = useState(false) // double play — pre-marks the forced runner out
+  const [extraOuts, setExtraOuts] = useState(0) // 0 = normal, 1 = double play, 2 = triple play
 
   const onBase: OnBase[] = [
     runners.first && { key: 'first' as const, from: 1, player: runners.first },
@@ -891,13 +891,15 @@ function InPlayFlow({
 
   const pickResult = (t: EventType) => {
     setResult(t)
-    setDp(false) // re-decide per result
+    setExtraOuts(0) // re-decide per result
     if (!['groundout', 'flyout', 'lineout', 'fielders_choice', 'error'].includes(t)) {
       setFielders([])
     }
   }
-  // A double play only makes sense on an out with a runner who can be forced/doubled off.
-  const canDP = ['groundout', 'lineout', 'flyout'].includes(result) && onBase.length > 0
+  // Double/triple plays only make sense on an out with runners who can be doubled
+  // off. One extra out per runner on base (a triple play needs at least two on).
+  const isOutResult = ['groundout', 'lineout', 'flyout'].includes(result)
+  const maxExtraOuts = isOutResult ? Math.min(onBase.length, 2) : 0
 
   return (
     <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
@@ -926,16 +928,29 @@ function InPlayFlow({
           ))}
         </div>
 
-        {/* double play — pre-marks the forced runner out so the scorer doesn't redo it */}
-        {canDP && (
-          <button
-            onClick={() => setDp((v) => !v)}
-            className={`mt-2 w-full border-2 py-2.5 font-display text-sm ${
-              dp ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
-            }`}
-          >
-            {dp ? 'DOUBLE PLAY ✓' : 'MARK AS DOUBLE PLAY'}
-          </button>
+        {/* double / triple play — pre-marks the lead forced runners out so the
+            scorer doesn't redo it (triple play only offered with two-plus on base) */}
+        {maxExtraOuts > 0 && (
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => setExtraOuts((v) => (v === 1 ? 0 : 1))}
+              className={`flex-1 border-2 py-2.5 font-display text-sm ${
+                extraOuts === 1 ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
+              }`}
+            >
+              {extraOuts === 1 ? 'DOUBLE PLAY ✓' : 'DOUBLE PLAY'}
+            </button>
+            {maxExtraOuts >= 2 && (
+              <button
+                onClick={() => setExtraOuts((v) => (v === 2 ? 0 : 2))}
+                className={`flex-1 border-2 py-2.5 font-display text-sm ${
+                  extraOuts === 2 ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
+                }`}
+              >
+                {extraOuts === 2 ? 'TRIPLE PLAY ✓' : 'TRIPLE PLAY'}
+              </button>
+            )}
+          </div>
         )}
 
         {/* where did the ball go — tap the field; on outs tap fielders for the putout */}
@@ -973,11 +988,11 @@ function InPlayFlow({
 
         {/* resolve each runner (re-keyed so defaults follow the result + DP toggle) */}
         <Resolver
-          key={`${result}:${dp}`}
+          key={`${result}:${extraOuts}`}
           result={result}
           batter={batter}
           onBase={onBase}
-          dp={dp}
+          extraOuts={extraOuts}
           locked={result === 'home_run'}
           hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
           onResolve={(resolution, runs, advances) =>
@@ -1043,7 +1058,7 @@ function Resolver({
   batter,
   onBase,
   hideBatter = false,
-  dp = false,
+  extraOuts = 0,
   locked = false,
   onResolve,
 }: {
@@ -1051,7 +1066,7 @@ function Resolver({
   batter: Player | null
   onBase: OnBase[]
   hideBatter?: boolean
-  dp?: boolean
+  extraOuts?: number
   locked?: boolean
   onResolve: (resolution: Resolution, runs: number, advances: { id: string; from: number; to: Dest }[]) => void
 }) {
@@ -1061,11 +1076,13 @@ function Resolver({
   for (const r of onBase) {
     initial[r.player.id] = (adv ? Math.min(r.from + adv, 4) : r.from) as Dest
   }
-  if (dp) {
-    // The second out of a double play: the lead forced runner (on first by
-    // default — the classic 6-4-3). Scorer can still correct it below.
-    const forced = onBase.find((r) => r.from === 1) ?? onBase.find((r) => r.from === 2) ?? onBase.find((r) => r.from === 3)
-    if (forced) initial[forced.player.id] = 0
+  if (extraOuts > 0) {
+    // Double/triple play: mark the lead forced runners out, starting at first
+    // (the classic 6-4-3 / around-the-horn). Scorer can still correct below.
+    const ordered = [1, 2, 3]
+      .map((b) => onBase.find((r) => r.from === b))
+      .filter((r): r is OnBase => !!r)
+    ordered.slice(0, extraOuts).forEach((r) => (initial[r.player.id] = 0))
   }
   const [dest, setDest] = useState<Record<string, Dest>>(initial)
 
