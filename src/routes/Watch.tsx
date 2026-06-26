@@ -231,9 +231,24 @@ export default function Watch() {
       ? parseYouTubeId(String(info.video_config?.youtube_url ?? ''))
       : null
 
+  // Live video block (shared by both layouts): the feed with the broadcast bug,
+  // the phone feed, or just the scoreboard when there's no video.
+  const videoBlock = ytId ? (
+    <div className="relative">
+      <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+        <ScorebugBar state={board} />
+      </div>
+    </div>
+  ) : info.video_source === 'phone_whip' ? (
+    <PhoneVideo gameId={gameId} board={board} />
+  ) : (
+    <ScorePanel state={board} />
+  )
+
   return (
-    <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream">
-      {/* branded header */}
+    <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream min-[820px]:max-w-6xl">
+      {/* branded header — full width */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
         <HeaderWordmark />
         {live.status === 'live' ? (
@@ -248,54 +263,48 @@ export default function Watch() {
         )}
       </header>
 
-      {/* Live video with a thin one-row scorebug spanning the bottom, like a
-          broadcast lower-third. Non-interactive so taps reach the video. */}
-      {ytId ? (
-        <div className="relative">
-          <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-            <ScorebugBar state={board} />
+      {/* Stacked on phones; video + stats side-by-side once there's width
+          (≥820px → desktop and landscape phones/tablets). */}
+      <div className="flex flex-1 flex-col min-[820px]:flex-row min-[820px]:items-stretch">
+        {/* video / scoreboard column */}
+        <div className="min-[820px]:sticky min-[820px]:top-0 min-[820px]:flex-1 min-[820px]:self-start">
+          {videoBlock}
+          {live.status === 'final' && info.recap && <RecapCard recap={info.recap} />}
+        </div>
+
+        {/* stats column */}
+        <div className="flex flex-1 flex-col min-[820px]:w-[380px] min-[820px]:flex-none min-[820px]:border-l-2 min-[820px]:border-gold">
+          {live.status === 'live' && !between && (
+            <BatterPitcherStrip lineups={lineups} live={live} events={events} />
+          )}
+
+          <div className="flex border-y-2 border-gold bg-[#122019]">
+            {(['field', 'plays', 'box', 'stats'] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className="relative flex-1 py-3 font-athletic text-xs font-semibold uppercase tracking-[.08em]"
+              >
+                <span className={tab === t ? 'text-cream' : 'text-muted-green'}>{t}</span>
+                {tab === t && (
+                  <span className="absolute bottom-0 left-1/2 h-[3px] w-[30px] -translate-x-1/2 bg-gold" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 p-4">
+            {tab === 'field' &&
+              (between && showStandby ? (
+                <Standby lineups={lineups} live={live} away={board.away} home={board.home} />
+              ) : (
+                <FieldTab lineups={lineups} live={live} events={events} spray={flash} />
+              ))}
+            {tab === 'plays' && <PlaysTab events={events} />}
+            {tab === 'box' && <BoxTab board={board} events={events} />}
+            {tab === 'stats' && <StatsTab board={board} events={events} />}
           </div>
         </div>
-      ) : info.video_source === 'phone_whip' ? (
-        <PhoneVideo gameId={gameId} board={board} />
-      ) : (
-        <ScorePanel state={board} />
-      )}
-
-      {/* post-game recap */}
-      {live.status === 'final' && info.recap && <RecapCard recap={info.recap} />}
-
-      {/* batter / pitcher strip (hidden between innings) */}
-      {live.status === 'live' && !between && <BatterPitcherStrip lineups={lineups} live={live} events={events} />}
-
-      {/* tab bar */}
-      <div className="flex border-y-2 border-gold bg-[#122019]">
-        {(['field', 'plays', 'box', 'stats'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="relative flex-1 py-3 font-athletic text-xs font-semibold uppercase tracking-[.08em]"
-          >
-            <span className={tab === t ? 'text-cream' : 'text-muted-green'}>{t}</span>
-            {tab === t && (
-              <span className="absolute bottom-0 left-1/2 h-[3px] w-[30px] -translate-x-1/2 bg-gold" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* content */}
-      <div className="flex-1 p-4">
-        {tab === 'field' &&
-          (between && showStandby ? (
-            <Standby lineups={lineups} live={live} away={board.away} home={board.home} />
-          ) : (
-            <FieldTab lineups={lineups} live={live} events={events} spray={flash} />
-          ))}
-        {tab === 'plays' && <PlaysTab events={events} />}
-        {tab === 'box' && <BoxTab board={board} events={events} />}
-        {tab === 'stats' && <StatsTab board={board} events={events} />}
       </div>
     </div>
   )
