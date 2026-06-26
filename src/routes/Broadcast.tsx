@@ -84,7 +84,7 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-ink text-cream">
-      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
+      <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <HeaderWordmark />
         <span className="font-athletic text-sm uppercase tracking-[.18em] text-muted-green">Broadcast</span>
       </header>
