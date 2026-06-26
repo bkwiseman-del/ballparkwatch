@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { ScorePanel } from '@/components/ScorePanel'
+import { Scorebug } from '@/components/Scorebug'
 import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type SprayViz } from '@/components/FieldDiamond'
 import { HeaderWordmark } from '@/components/Logo'
 import { resolveCode } from '@/lib/scoreboard'
@@ -231,13 +232,14 @@ export default function Watch() {
         )}
       </header>
 
-      {/* Live video with the scorebug overlaid like a broadcast bug. The overlay
-          is non-interactive so taps reach the video controls underneath. */}
+      {/* Live video with a sleek one-row scorebug overlaid like a broadcast bug.
+          Non-interactive overlay so taps reach the video controls underneath;
+          sits bottom-left to leave the player's controls reachable. */}
       {ytId ? (
         <div className="relative">
           <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-            <ScorePanel state={board} />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-start p-2">
+            <Scorebug state={board} variant="dark" />
           </div>
         </div>
       ) : (
