@@ -64,7 +64,7 @@ export default function Score() {
   const onStrikeSimple = () => (live.strikes >= 2 ? act('strikeout', {}) : act('pitch_strike', {}))
 
   return (
-    <div className="mx-auto flex min-h-full max-w-[430px] flex-col bg-night-green text-cream">
+    <div className="mx-auto flex h-[100dvh] max-w-[430px] flex-col overflow-hidden bg-night-green text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2">
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
           ← Setup
