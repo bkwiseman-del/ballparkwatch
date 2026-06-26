@@ -57,11 +57,12 @@ export type EventPayload = {
   // free-form landing point for hits, or zone label for outs
   spray?: { x: number; y: number }
   location?: string
-  // substitution: team + player out/in + the position the incoming player takes
+  // substitution: team + one or more moves (bench swap or position change)
   team?: 'away' | 'home'
   out_id?: string
   in_id?: string
   position?: string
+  moves?: { out_id?: string; in_id: string; position?: string }[]
   [k: string]: unknown
 }
 

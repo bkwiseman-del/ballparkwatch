@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
@@ -484,27 +484,45 @@ function SubstitutionFlow({
 }) {
   const { teams, lineups, bench, live, act } = scorer
   const [team, setTeam] = useState<'away' | 'home'>(live.half === 'top' ? 'home' : 'away')
-  const [outId, setOutId] = useState<string | null>(null)
-  const [inId, setInId] = useState<string | null>(null)
-  const [position, setPosition] = useState<string>('')
-
   const lineup = lineups[team]
   const benchList = bench[team]
-  const outPlayer = lineup.find((p) => p.id === outId)
+  const benchById = new Map(benchList.map((p) => [p.id, p]))
 
-  const chooseOut = (id: string) => {
-    setOutId(id)
-    const pos = lineup.find((p) => p.id === id)?.position
-    setPosition(pos ?? '')
-  }
+  // pos: each slot's (original player id) -> position. repl: slot -> bench player in.
+  const [pos, setPos] = useState<Record<string, string>>({})
+  const [repl, setRepl] = useState<Record<string, string>>({})
+  const [pickFor, setPickFor] = useState<string | null>(null)
 
-  const confirm = () => {
-    if (!outId || !inId) return
-    act('substitution', { team, out_id: outId, in_id: inId, position: position || undefined })
-    onClose()
-  }
+  useEffect(() => {
+    const init: Record<string, string> = {}
+    for (const p of lineup) init[p.id] = p.position ?? p.default_position ?? ''
+    setPos(init)
+    setRepl({})
+    setPickFor(null)
+    // re-init when the team changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team])
 
   const teamName = (k: 'away' | 'home') => (k === 'away' ? teams?.away.name : teams?.home.name) ?? k
+  const usedBench = new Set(Object.values(repl))
+  const avail = benchList.filter((p) => !usedBench.has(p.id))
+
+  const dirty =
+    Object.keys(repl).length > 0 ||
+    lineup.some((p) => (pos[p.id] ?? '') !== (p.position ?? p.default_position ?? ''))
+
+  const confirm = () => {
+    const moves: { out_id?: string; in_id: string; position?: string }[] = []
+    for (const p of lineup) {
+      const benchId = repl[p.id]
+      const original = p.position ?? p.default_position ?? ''
+      if (benchId) moves.push({ out_id: p.id, in_id: benchId, position: pos[p.id] || undefined })
+      else if ((pos[p.id] ?? '') !== original) moves.push({ in_id: p.id, position: pos[p.id] || undefined })
+    }
+    if (!moves.length) return
+    act('substitution', { team, moves })
+    onClose()
+  }
 
   return (
     <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
@@ -516,81 +534,97 @@ function SubstitutionFlow({
       </header>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {/* team */}
-        <div className="mb-4 inline-flex border-2 border-gold">
+        <div className="mb-3 inline-flex border-2 border-gold">
           {(['away', 'home'] as const).map((k) => (
             <button
               key={k}
-              onClick={() => {
-                setTeam(k)
-                setOutId(null)
-                setInId(null)
-                setPosition('')
-              }}
+              onClick={() => setTeam(k)}
               className={`px-4 py-1.5 font-display text-sm ${team === k ? 'bg-gold text-ink' : 'text-cream'}`}
             >
               {teamName(k)}
             </button>
           ))}
         </div>
+        <p className="mb-3 font-data text-xs text-muted-green">
+          Change a position with the dropdown, or tap <b>Replace</b> to bring in a bench player. Move
+          a fielder to P and another to their old spot for an on-field pitching change.
+        </p>
 
-        <SectionLabel>Coming out</SectionLabel>
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          {lineup.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => chooseOut(p.id)}
-              className={`flex items-center gap-2 border-2 px-2 py-2 text-left ${
-                outId === p.id ? 'border-gold bg-field-green' : 'border-cream/30'
-              }`}
-            >
-              <span className="font-athletic text-base font-bold text-barn-red">{p.jersey_number ?? '—'}</span>
-              <span className="flex-1 font-data text-sm">{p.name}</span>
-              <span className="font-athletic text-[10px] uppercase text-muted-green">
-                {p.position ?? p.default_position}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <SectionLabel>Coming in {outPlayer ? `(bench · ${teamName(team)})` : ''}</SectionLabel>
-        {benchList.length === 0 ? (
-          <p className="mb-4 font-data text-sm text-muted-green">No bench players for this team.</p>
-        ) : (
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            {benchList.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setInId(p.id)}
-                className={`flex items-center gap-2 border-2 px-2 py-2 text-left ${
-                  inId === p.id ? 'border-gold bg-field-green' : 'border-cream/30'
-                }`}
-              >
-                <span className="font-athletic text-base font-bold text-barn-red">{p.jersey_number ?? '—'}</span>
-                <span className="flex-1 font-data text-sm">{p.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        <SectionLabel>Position</SectionLabel>
-        <div className="mb-6 grid grid-cols-6 gap-1.5">
-          {SUB_POSITIONS.map((pos) => (
-            <button
-              key={pos}
-              onClick={() => setPosition(pos)}
-              className={`py-2 font-athletic text-sm font-bold ${position === pos ? 'bg-gold text-ink' : 'border border-cream/30'}`}
-            >
-              {pos}
-            </button>
-          ))}
+        <div className="flex flex-col border-2 border-cream/20">
+          {lineup.map((p, i) => {
+            const benchId = repl[p.id]
+            const shown = benchId ? benchById.get(benchId) : p
+            return (
+              <div key={p.id} className={`${i > 0 ? 'border-t border-cream/12' : ''}`}>
+                <div className="flex items-center gap-2 px-2 py-2">
+                  <span className="w-4 text-right font-athletic text-xs text-muted-green">{i + 1}</span>
+                  <span className="w-6 text-right font-athletic text-base font-bold text-barn-red">
+                    {shown?.jersey_number ?? '—'}
+                  </span>
+                  <span className="flex-1 truncate font-data text-sm">
+                    {shown?.name}
+                    {benchId && <span className="ml-1 font-athletic text-[9px] uppercase text-gold">in</span>}
+                  </span>
+                  <select
+                    value={pos[p.id] ?? ''}
+                    onChange={(e) => setPos((m) => ({ ...m, [p.id]: e.target.value }))}
+                    className="border border-cream/30 bg-night-green px-1 py-1 font-athletic text-xs text-cream"
+                  >
+                    <option value="">—</option>
+                    {SUB_POSITIONS.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                  {benchId ? (
+                    <button
+                      onClick={() => setRepl((m) => { const n = { ...m }; delete n[p.id]; return n })}
+                      className="px-1.5 font-athletic text-xs text-barn-red"
+                    >
+                      ↶
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setPickFor(pickFor === p.id ? null : p.id)}
+                      className="px-1.5 font-athletic text-[11px] uppercase text-gold"
+                    >
+                      Replace
+                    </button>
+                  )}
+                </div>
+                {pickFor === p.id && (
+                  <div className="bg-field-green px-2 py-2">
+                    {avail.length === 0 ? (
+                      <p className="font-data text-xs text-muted-green">No bench players left.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {avail.map((b) => (
+                          <button
+                            key={b.id}
+                            onClick={() => {
+                              setRepl((m) => ({ ...m, [p.id]: b.id }))
+                              setPickFor(null)
+                            }}
+                            className="border border-cream/30 px-2 py-1 font-data text-xs"
+                          >
+                            <b className="text-barn-red">{b.jersey_number ?? '—'}</b> {b.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
       <div className="border-t-2 border-ink bg-ink p-3.5">
         <button
           onClick={confirm}
-          disabled={!outId || !inId}
+          disabled={!dirty}
           className="w-full bg-gold py-3 font-display text-lg text-ink disabled:opacity-40"
         >
           Confirm Sub ▸
