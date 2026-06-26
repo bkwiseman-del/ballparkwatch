@@ -60,6 +60,8 @@ export default function Score() {
   const onBall = () => (live.balls >= 3 ? act('walk') : act('pitch_ball'))
   const onStrikeKind = (kind: string) => {
     setStrikePopup(false)
+    // A foul ball is never strike three — it's a foul (stays at two strikes).
+    if (kind === 'foul_tip') return void act('pitch_foul')
     if (live.strikes >= 2) act('strikeout', { kind })
     else act('pitch_strike', { kind })
   }
@@ -267,11 +269,11 @@ export default function Score() {
       {endHalf && (
         <ConfirmPopup
           title="End half-inning?"
-          body={`End the ${live.half === 'top' ? 'top' : 'bottom'} of the ${live.inning}${ordSuffix(live.inning)} now (run limit reached). The other team comes up to bat.`}
+          body={`Retire the ${live.half === 'top' ? 'top' : 'bottom'} of the ${live.inning}${ordSuffix(live.inning)} now (run limit reached). You'll get the between-innings screen, then start the next half.`}
           confirmLabel="End half ▸"
           onCancel={() => setEndHalf(false)}
           onConfirm={() => {
-            act('inning_change')
+            act('end_half')
             setEndHalf(false)
           }}
         />
@@ -402,11 +404,13 @@ function StrikePopup({
             onClick={() => onPick('foul_tip')}
             className="h-[44px] border-2 border-ink/30 font-athletic font-bold uppercase tracking-wide text-muted-tan"
           >
-            Foul tip
+            Foul {willK ? '(stays alive)' : 'tip'}
           </button>
         </div>
         {willK && (
-          <p className="px-3 pb-3 text-center font-data text-xs text-barn-red">This is strike three — records a strikeout.</p>
+          <p className="px-3 pb-3 text-center font-data text-xs text-barn-red">
+            Swinging or looking is strike three. A foul stays at two strikes.
+          </p>
         )}
       </div>
     </Overlay>
@@ -859,6 +863,7 @@ function InPlayFlow({
   const [result, setResult] = useState<EventType>('single')
   const [landing, setLanding] = useState<{ x: number; y: number } | null>(null) // field coords (hits)
   const [fielders, setFielders] = useState<number[]>([])
+  const [dp, setDp] = useState(false) // double play — pre-marks the forced runner out
 
   const onBase: OnBase[] = [
     runners.first && { key: 'first' as const, from: 1, player: runners.first },
@@ -886,10 +891,13 @@ function InPlayFlow({
 
   const pickResult = (t: EventType) => {
     setResult(t)
+    setDp(false) // re-decide per result
     if (!['groundout', 'flyout', 'lineout', 'fielders_choice', 'error'].includes(t)) {
       setFielders([])
     }
   }
+  // A double play only makes sense on an out with a runner who can be forced/doubled off.
+  const canDP = ['groundout', 'lineout', 'flyout'].includes(result) && onBase.length > 0
 
   return (
     <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
@@ -917,6 +925,18 @@ function InPlayFlow({
             </ResultBtn>
           ))}
         </div>
+
+        {/* double play — pre-marks the forced runner out so the scorer doesn't redo it */}
+        {canDP && (
+          <button
+            onClick={() => setDp((v) => !v)}
+            className={`mt-2 w-full border-2 py-2.5 font-display text-sm ${
+              dp ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
+            }`}
+          >
+            {dp ? 'DOUBLE PLAY ✓' : 'MARK AS DOUBLE PLAY'}
+          </button>
+        )}
 
         {/* where did the ball go — tap the field; on outs tap fielders for the putout */}
         <SectionLabel>
@@ -951,12 +971,14 @@ function InPlayFlow({
           </>
         )}
 
-        {/* resolve each runner (re-keyed so defaults follow the result) */}
+        {/* resolve each runner (re-keyed so defaults follow the result + DP toggle) */}
         <Resolver
-          key={result}
+          key={`${result}:${dp}`}
           result={result}
           batter={batter}
           onBase={onBase}
+          dp={dp}
+          locked={result === 'home_run'}
           hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
           onResolve={(resolution, runs, advances) =>
             onConfirm(result, {
@@ -1021,12 +1043,16 @@ function Resolver({
   batter,
   onBase,
   hideBatter = false,
+  dp = false,
+  locked = false,
   onResolve,
 }: {
   result: EventType
   batter: Player | null
   onBase: OnBase[]
   hideBatter?: boolean
+  dp?: boolean
+  locked?: boolean
   onResolve: (resolution: Resolution, runs: number, advances: { id: string; from: number; to: Dest }[]) => void
 }) {
   const adv = RUNNER_ADVANCE[result]
@@ -1034,6 +1060,12 @@ function Resolver({
   initial['batter'] = BATTER_DEST[result] ?? 0
   for (const r of onBase) {
     initial[r.player.id] = (adv ? Math.min(r.from + adv, 4) : r.from) as Dest
+  }
+  if (dp) {
+    // The second out of a double play: the lead forced runner (on first by
+    // default — the classic 6-4-3). Scorer can still correct it below.
+    const forced = onBase.find((r) => r.from === 1) ?? onBase.find((r) => r.from === 2) ?? onBase.find((r) => r.from === 3)
+    if (forced) initial[forced.player.id] = 0
   }
   const [dest, setDest] = useState<Record<string, Dest>>(initial)
 
@@ -1048,6 +1080,31 @@ function Resolver({
     }
     const advances = onBase.map((r) => ({ id: r.player.id, from: r.from, to: (dest[r.player.id] ?? r.from) as Dest }))
     onResolve(resolution, runs, advances)
+  }
+
+  // Home run: everyone scores, full stop — no destinations to edit.
+  if (locked) {
+    return (
+      <div className="mt-4 border-t-2 border-gold/30 pt-3">
+        <p className="mb-2 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-green">
+          Home run — everyone scores
+        </p>
+        <div className="flex flex-col gap-2">
+          {!hideBatter && <ScoredRow label="BATTER" name={batter?.name ?? 'Batter'} />}
+          {onBase.map((r) => (
+            <ScoredRow key={r.player.id} label={`ON ${baseLabel(r.from)}`} name={r.player.name} />
+          ))}
+        </div>
+        <div className="mt-4 flex items-center gap-4">
+          <span className="font-athletic text-xs uppercase tracking-wide text-muted-green">
+            RBI <b className="font-display text-cream">{onBase.length + (hideBatter ? 0 : 1)}</b>
+          </span>
+          <button onClick={confirm} className="ml-auto flex-1 bg-board-green py-3 font-display text-cream">
+            CONFIRM PLAY ▸
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const nothingToResolve = hideBatter && onBase.length === 0
@@ -1089,6 +1146,19 @@ function Resolver({
   )
 }
 
+
+// A non-editable runner row (home run: everyone scored).
+function ScoredRow({ label, name }: { label: string; name: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="bg-gold px-1.5 py-0.5 font-athletic text-[10px] font-bold uppercase text-ink">{label}</span>
+      <span className="font-display text-sm text-cream">{name}</span>
+      <span className="ml-auto bg-board-green px-2 py-0.5 font-athletic text-[10px] font-bold uppercase text-cream">
+        Scored
+      </span>
+    </div>
+  )
+}
 
 const DESTS: { d: Dest; label: string }[] = [
   { d: 0, label: 'OUT' },

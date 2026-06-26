@@ -23,16 +23,17 @@ const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 // Turn a terse play / structured recap into natural broadcast speech. Pitches
 // and info lines are already natural, so they pass through untouched.
 async function announcerText(text: string, kind?: string): Promise<string> {
-  if (!ANTHROPIC_KEY || (kind !== 'play' && kind !== 'summary')) return text
+  // Only single play descriptions get a natural-language rewrite. Inning recaps
+  // (kind 'summary') already carry exact, hard facts (runs, score, who's up) in a
+  // natural sentence — sending them through the model only risks it mangling the
+  // score/outs, so they pass through verbatim. Everything else is already natural.
+  if (!ANTHROPIC_KEY || kind !== 'play') return text
   const rules =
     ' CRITICAL — restate ONLY what is in the input. "first", "second", "third" are BASES, never outs. ' +
     'Do NOT add or guess the number of outs, the count, or the score, and do NOT say the inning or half is over, the side is retired, "to end the inning", or "for the Nth out" — unless that exact information is already in the input. Never invent facts.'
   const system =
-    kind === 'summary'
-      ? 'You are an upbeat youth-baseball broadcaster. Turn this end-of-inning recap into two short, natural spoken sentences. Keep every fact exactly (runs, score, who is up next). Warm and positive. Output only the sentences — no quotes, no emojis.' +
-        rules
-      : 'You are an upbeat youth-baseball play-by-play announcer. Rewrite this terse play into ONE natural, energetic spoken sentence (max ~18 words). Keep the facts (who did what, who scored). Positive in tone. Output only the sentence — no quotes, no emojis.' +
-        rules
+    'You are an upbeat youth-baseball play-by-play announcer. Rewrite this terse play into ONE natural, energetic spoken sentence (max ~18 words). Keep the facts (who did what, who scored). Positive in tone. Output only the sentence — no quotes, no emojis.' +
+    rules
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

@@ -32,6 +32,8 @@ export type EventType =
   | 'picked_off'
   // roster: a substitution / defensive change (affects lineup projection, not game state)
   | 'substitution'
+  // end the half early (e.g. a run-limit rule) — retires the side without a play
+  | 'end_half'
 
 // Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
 export type Dest = 0 | 1 | 2 | 3 | 4
@@ -131,6 +133,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   caught_stealing: 'Caught stealing',
   picked_off: 'Picked off',
   substitution: 'Substitution',
+  end_half: 'End half',
 }
 
 // Event-type groupings used across the app.
@@ -177,6 +180,13 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
       break
     case 'inning_change':
       nextHalf(s)
+      break
+    case 'end_half':
+      // Run-limit early end: retire the side (forces the between-innings screen).
+      s.outs = 3
+      s.balls = 0
+      s.strikes = 0
+      clearBases(s)
       break
 
     case 'pitch_ball':

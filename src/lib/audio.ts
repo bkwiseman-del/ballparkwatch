@@ -10,7 +10,9 @@ const FX_FILES: Record<string, string> = {
   foul: '/sfx/foul.m4a',
   slide: '/sfx/slide.m4a',
   cheer: '/sfx/cheer.m4a',
+  organ: '/sfx/organ.m4a', // inning-intro stinger (played via the voice queue)
 }
+const ORGAN_CUE = '@organ' // queue sentinel: play the organ stinger, not a TTS url
 const CROWD_FILE = '/sfx/crowd.m4a'
 const CROWD_BASE = 0.18
 const FX_VOLUME = 0.7
@@ -27,6 +29,8 @@ class AudioManager {
   private queue: string[] = [] // voice clip URLs only — FX play immediately
   private playing = false
   private voiceCache = new Map<string, AudioBuffer>()
+  // Stadium reverb bus for the announcer voice (big-PA echo).
+  private verbInput: AudioNode | null = null
 
   isEnabled() {
     return this.enabled
@@ -51,6 +55,7 @@ class AudioManager {
         if (b) this.fx[k] = this.trimLead(b)
       })
       this.crowdBuffer = await this.load(CROWD_FILE)
+      this.buildReverb()
       this.enabled = true
     } catch {
       this.enabled = false
@@ -67,6 +72,7 @@ class AudioManager {
     this.ctx = null
     this.fx = {}
     this.crowdBuffer = null
+    this.verbInput = null
     this.voiceCache.clear()
   }
 
@@ -78,6 +84,35 @@ class AudioManager {
     } catch {
       return null
     }
+  }
+
+  // Build the announcer's stadium reverb: a short pre-delay into a synthesized
+  // convolution tail, mixed in as a wet send. The voice still plays dry to the
+  // destination too — this just adds the big-room echo around it.
+  private buildReverb() {
+    if (!this.ctx) return
+    const pre = this.ctx.createDelay(0.2)
+    pre.delayTime.value = 0.045 // a touch of pre-delay reads as "big space"
+    const conv = this.ctx.createConvolver()
+    conv.buffer = this.makeImpulse(2.6, 2.4)
+    const wet = this.ctx.createGain()
+    wet.gain.value = 0.3 // subtle — present, not cavernous
+    pre.connect(conv).connect(wet).connect(this.ctx.destination)
+    this.verbInput = pre
+  }
+
+  // Exponentially-decaying stereo noise — a cheap, natural-sounding room impulse.
+  private makeImpulse(seconds: number, decay: number): AudioBuffer {
+    const ctx = this.ctx!
+    const len = Math.floor(seconds * ctx.sampleRate)
+    const imp = ctx.createBuffer(2, len, ctx.sampleRate)
+    for (let ch = 0; ch < 2; ch++) {
+      const d = imp.getChannelData(ch)
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay)
+      }
+    }
+    return imp
   }
 
   // Drop leading near-silence so a clip starts at its attack (keeps a tiny 5ms
@@ -175,23 +210,35 @@ class AudioManager {
     void this.pump()
   }
 
+  // Play the organ stinger at the top of an inning. Goes through the voice queue
+  // so it finishes BEFORE the inning's commentary (which queues behind it).
+  enqueueOrgan() {
+    if (!this.enabled) return
+    this.queue.push(ORGAN_CUE)
+    void this.pump()
+  }
+
   private async pump() {
     if (this.playing || !this.enabled || !this.ctx) return
     const url = this.queue.shift()
     if (!url) return
     this.playing = true
     try {
-      let buf = this.voiceCache.get(url)
-      if (!buf) {
-        const loaded = await this.load(url)
-        if (loaded) {
-          buf = loaded
-          this.voiceCache.set(url, loaded)
+      if (url === ORGAN_CUE) {
+        await this.playAndWait(this.fx['organ'] ?? null, 0.7)
+      } else {
+        let buf = this.voiceCache.get(url)
+        if (!buf) {
+          const loaded = await this.load(url)
+          if (loaded) {
+            buf = loaded
+            this.voiceCache.set(url, loaded)
+          }
         }
+        this.rampCrowd(CROWD_BASE * 0.3)
+        await this.playAndWait(buf ?? null, 1)
+        this.rampCrowd(CROWD_BASE)
       }
-      this.rampCrowd(CROWD_BASE * 0.3)
-      await this.playAndWait(buf ?? null, 1)
-      this.rampCrowd(CROWD_BASE)
     } catch {
       /* skip */
     }
@@ -206,7 +253,9 @@ class AudioManager {
       src.buffer = buf
       const g = this.ctx.createGain()
       g.gain.value = gain
-      src.connect(g).connect(this.ctx.destination)
+      src.connect(g)
+      g.connect(this.ctx.destination) // dry
+      if (this.verbInput) g.connect(this.verbInput) // + stadium reverb send
       src.onended = () => resolve()
       src.start()
     })

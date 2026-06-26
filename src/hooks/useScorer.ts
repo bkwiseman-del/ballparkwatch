@@ -21,6 +21,28 @@ type Teams = { away: Team; home: Team }
 export type LineupPlayer = Player & { position: string | null }
 type Lineups = { away: LineupPlayer[]; home: LineupPlayer[] }
 
+// Local write-ahead log. Every scored play is mirrored to localStorage
+// SYNCHRONOUSLY before the async DB insert, so a force-quit (or a dropped
+// network write) can't lose plays — on reopen we replay anything that never
+// reached the server. localStorage survives the app being killed; an in-flight
+// fetch does not.
+const walKey = (gameId: string) => `bpw_wal_${gameId}`
+function readWal(gameId: string): GameEventRow[] {
+  try {
+    const raw = localStorage.getItem(walKey(gameId))
+    return raw ? (JSON.parse(raw) as GameEventRow[]) : []
+  } catch {
+    return []
+  }
+}
+function writeWal(gameId: string, rows: GameEventRow[]) {
+  try {
+    localStorage.setItem(walKey(gameId), JSON.stringify(rows))
+  } catch {
+    /* storage unavailable (private mode / quota) — degrade gracefully */
+  }
+}
+
 export function useScorer(gameId: string | undefined) {
   const [game, setGame] = useState<Game | null>(null)
   const [teams, setTeams] = useState<Teams | null>(null)
@@ -32,6 +54,9 @@ export function useScorer(gameId: string | undefined) {
   const [error, setError] = useState<string | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const statusRef = useRef<string | null>(null)
+  // Authoritative, synchronously-updated event list — so back-to-back taps each
+  // compute a unique next seq (the React `events` state lags a render behind).
+  const eventsRef = useRef<GameEventRow[]>([])
 
   // Initial load + open the broadcast channel.
   useEffect(() => {
@@ -71,9 +96,38 @@ export function useScorer(gameId: string | undefined) {
           })
           .filter((p): p is LineupPlayer => !!p)
       setLineups({ away: ordered(g.away_team_id), home: ordered(g.home_team_id) })
-      const rows = (evs ?? []) as GameEventRow[]
+
+      // Reconcile the DB with the local write-ahead log: replay any plays that
+      // were scored locally but never reached the server (force-quit / dropped
+      // write). We only replay the unconfirmed *tail* (seq beyond the DB max),
+      // so we never resurrect plays that were legitimately undone.
+      const dbRows = (evs ?? []) as GameEventRow[]
+      let rows = dbRows
+      const maxDbSeq = dbRows.at(-1)?.seq ?? 0
+      const pending = readWal(gameId).filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
+      if (pending.length) {
+        const intended = [...dbRows, ...pending]
+        const inserts = pending.map((p) => {
+          const upto = project(intended.filter((e) => e.seq <= p.seq))
+          return {
+            game_id: gameId,
+            seq: p.seq,
+            event_type: p.event_type,
+            payload: p.payload,
+            inning: upto.inning,
+            half: upto.half,
+            batter_id: p.batter_id ?? null,
+          }
+        })
+        const { error: replayErr } = await supabase.from('game_events').insert(inserts)
+        if (!replayErr) rows = intended // recovered; otherwise keep WAL and retry next load
+      }
+
+      if (cancelled) return
+      eventsRef.current = rows
       setEvents(rows)
       setLive(project(rows))
+      writeWal(gameId, rows)
       setLoading(false)
     })()
 
@@ -148,13 +202,16 @@ export function useScorer(gameId: string | undefined) {
   const act = useCallback(
     async (event_type: EventType, payload: EventPayload = {}) => {
       if (!gameId) return
-      const seq = (events.at(-1)?.seq ?? 0) + 1
+      const base = eventsRef.current
+      const seq = (base.at(-1)?.seq ?? 0) + 1
       const batter_id = currentBatter?.id ?? null
       const row: GameEventRow = { seq, event_type, payload, batter_id }
-      const nextEvents = [...events, row]
+      const nextEvents = [...base, row]
       const nextLive = project(nextEvents)
+      eventsRef.current = nextEvents // synchronous — a rapid next tap gets seq+1
       setEvents(nextEvents)
       setLive(nextLive)
+      writeWal(gameId, nextEvents) // durable BEFORE the network write — survives a force-quit
       const { error: insErr } = await supabase.from('game_events').insert({
         game_id: gameId,
         seq,
@@ -162,28 +219,34 @@ export function useScorer(gameId: string | undefined) {
         payload,
         inning: nextLive.inning,
         half: nextLive.half,
-        batter_id: currentBatter?.id ?? null,
+        batter_id,
       })
       if (insErr) {
         setError(insErr.message)
-        // roll back optimistic state
-        setEvents(events)
-        setLive(project(events))
+        // roll back just this row
+        const rolled = eventsRef.current.filter((e) => e !== row)
+        eventsRef.current = rolled
+        setEvents(rolled)
+        setLive(project(rolled))
+        writeWal(gameId, rolled)
         return
       }
       await persist(nextLive)
     },
-    [gameId, events, persist, currentBatter],
+    [gameId, persist, currentBatter],
   )
 
   // Undo: remove the last event, re-project, persist.
   const undo = useCallback(async () => {
-    const last = events.at(-1)
+    const base = eventsRef.current
+    const last = base.at(-1)
     if (!gameId || !last) return
-    const nextEvents = events.slice(0, -1)
+    const nextEvents = base.slice(0, -1)
     const nextLive = project(nextEvents)
+    eventsRef.current = nextEvents
     setEvents(nextEvents)
     setLive(nextLive)
+    writeWal(gameId, nextEvents)
     const { error: delErr } = await supabase
       .from('game_events')
       .delete()
@@ -191,10 +254,15 @@ export function useScorer(gameId: string | undefined) {
       .eq('seq', last.seq)
     if (delErr) {
       setError(delErr.message)
+      // restore
+      eventsRef.current = base
+      setEvents(base)
+      setLive(project(base))
+      writeWal(gameId, base)
       return
     }
     await persist(nextLive)
-  }, [gameId, events, persist])
+  }, [gameId, persist])
 
   // Fielding team's current pitcher (projected lineup player at position P).
   const fieldingKey = live.half === 'top' ? 'home' : 'away'

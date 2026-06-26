@@ -237,6 +237,9 @@ export default function Watch() {
       if (audio.isEnabled() && newest) {
         audio.playFx(fxCues(newest.event_type))
         if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
+        // Organ stinger at the top of an inning, ahead of the inning's commentary.
+        if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start'))
+          audio.enqueueOrgan()
 
         if (gameId) {
           const nameOf = (id: string | null | undefined) =>

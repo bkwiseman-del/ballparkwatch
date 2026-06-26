@@ -187,8 +187,12 @@ function voiceFor(
       out.push(playLine(text), ...afterPlay())
       break
     case 'stolen_base':
-    case 'caught_stealing':
     case 'runner_advance':
+      // A steal/advance home scores a run — call it (the batter is unchanged).
+      out.push(playLine(text))
+      if (scored) out.push({ text: scoreSummary(after, teams), kind: 'info' }, ...(situationLine(after) ? [{ text: situationLine(after)!, kind: 'info' as VoiceKind }] : []))
+      break
+    case 'caught_stealing':
     case 'picked_off':
       out.push(playLine(text))
       break
