@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ShareSheet } from '@/components/ShareSheet'
+import { VideoSetup } from '@/components/VideoSetup'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { ArrowUpRightIcon } from '@/components/Icons'
 import { resolveCode } from '@/lib/scoreboard'
@@ -27,6 +28,7 @@ export default function Score() {
   const [endPopup, setEndPopup] = useState(false)
   const [showSub, setShowSub] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showVideo, setShowVideo] = useState(false)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
   // Scoring mode is chosen at game start and locked for the game (Full default).
   const [simple, setSimple] = useState(() => localStorage.getItem(`bpw_mode_${gameId}`) === 'quick')
@@ -73,9 +75,19 @@ export default function Score() {
           ← Setup
         </Link>
         <span className="font-athletic text-xs uppercase tracking-[.16em] text-muted-green">Scorer</span>
-        <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">
-          Share <ArrowUpRightIcon className="h-3.5 w-3.5" />
-        </button>
+        <div className="flex items-center gap-3">
+          {game && game.video_source !== 'none' && (
+            <button
+              onClick={() => setShowVideo(true)}
+              className="font-athletic text-sm font-semibold uppercase tracking-wide text-gold"
+            >
+              Video
+            </button>
+          )}
+          <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">
+            Share <ArrowUpRightIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </header>
 
       <ScorePanel state={board} />
@@ -246,6 +258,7 @@ export default function Score() {
           onClose={() => setShowShare(false)}
         />
       )}
+      {showVideo && game && <VideoSetup game={game} onClose={() => setShowVideo(false)} />}
       {inPlay && (
         <InPlayFlow
           batter={s.currentBatter}

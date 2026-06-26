@@ -173,10 +173,9 @@ function GamesView({
 }
 
 const VIDEO_SOURCES: { value: VideoSource; label: string; sub: string }[] = [
-  { value: 'none', label: 'None', sub: 'Stats only' },
-  { value: 'phone_whip', label: 'This phone', sub: 'Camera here' },
-  { value: 'camera_rtmp', label: 'External', sub: 'GoPro / Mevo' },
-  { value: 'youtube', label: 'YouTube', sub: 'Unlisted live' },
+  { value: 'none', label: 'No video', sub: 'Stats only' },
+  { value: 'phone_whip', label: 'Another phone', sub: 'Film from a 2nd device' },
+  { value: 'youtube', label: 'External camera', sub: 'GoPro / DJI' },
 ]
 
 function CreateGameCard({
@@ -198,6 +197,7 @@ function CreateGameCard({
   const [home, setHome] = useState(firstFav)
   const [when, setWhen] = useState('')
   const [video, setVideo] = useState<VideoSource>('none')
+  const [ytUrl, setYtUrl] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function create() {
@@ -212,6 +212,7 @@ function CreateGameCard({
       home_team_id: home,
       scheduled_at: when || null,
       video_source: video,
+      video_config: video === 'youtube' && ytUrl.trim() ? { youtube_url: ytUrl.trim() } : {},
       slug: makeSlug(aName, hName),
     })
     setBusy(false)
@@ -241,7 +242,7 @@ function CreateGameCard({
       <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
         Video source
       </p>
-      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mb-5 grid grid-cols-3 gap-2">
         {VIDEO_SOURCES.map((v) => {
           const sel = video === v.value
           return (
@@ -266,6 +267,25 @@ function CreateGameCard({
           )
         })}
       </div>
+
+      {/* External camera → YouTube link (optional now; can be added at game time) */}
+      {video === 'youtube' && (
+        <label className="mb-5 block">
+          <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+            YouTube live link (optional)
+          </span>
+          <input
+            value={ytUrl}
+            onChange={(e) => setYtUrl(e.target.value)}
+            placeholder="https://youtu.be/…"
+            className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+          />
+          <span className="mt-1 block font-data text-[11px] text-muted-tan">
+            Go live from your GoPro/DJI app to an unlisted YouTube stream and paste the link.
+            You can also add or change it later from the scorer’s Video screen.
+          </span>
+        </label>
+      )}
 
       {/* Field & time */}
       <label className="mb-5 block">
@@ -932,7 +952,7 @@ function StatusPill({ status }: { status: Game['status'] }) {
 
 function videoLabel(v: VideoSource): string {
   return (
-    { none: 'Stats only', phone_whip: 'This phone', camera_rtmp: 'External camera', youtube: 'YouTube', cloudflare_hls: 'Cloudflare' } as Record<
+    { none: 'Stats only', phone_whip: 'Another phone', camera_rtmp: 'External camera', youtube: 'External camera', cloudflare_hls: 'Cloudflare' } as Record<
       VideoSource,
       string
     >

@@ -16,11 +16,15 @@ import {
 } from '@/lib/stats'
 import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
 import { gameChannelName } from '@/lib/realtime'
+import { parseYouTubeId } from '@/lib/youtube'
+import { YouTubeEmbed } from '@/components/VideoEmbed'
 
 type PublicGame = {
   id: string
   status: 'scheduled' | 'live' | 'final'
   video_source: string
+  video_config?: Record<string, unknown>
+  stat_delay_ms?: number
   away: { name: string; code: string | null }
   home: { name: string; code: string | null }
   snapshot: Partial<LiveGame>
@@ -65,6 +69,10 @@ export default function Watch() {
   const loadingEvents = useRef(false)
   const prevMaxSeq = useRef<number | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
+  // Hold live updates back by stat_delay_ms so the scorebug matches what the
+  // viewer is actually seeing on the (delayed) video, instead of spoiling it.
+  const delayRef = useRef(0)
+  const delayTimers = useRef<number[]>([])
 
   const loadEvents = useCallback(async () => {
     if (!gameId || loadingEvents.current) return
@@ -97,16 +105,32 @@ export default function Watch() {
 
     const ch = supabase.channel(gameChannelName(gameId))
     ch.on('broadcast', { event: 'state' }, ({ payload }) => {
-      setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
-      loadEvents() // refresh plays/box when the operator scores
-      loadGame() // refresh lineups/status (catches subs)
+      const apply = () => {
+        setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
+        loadEvents() // refresh plays/box when the operator scores
+        loadGame() // refresh lineups/status (catches subs)
+      }
+      const d = delayRef.current
+      if (d > 0) {
+        const id = window.setTimeout(apply, d)
+        delayTimers.current.push(id)
+      } else {
+        apply()
+      }
     }).subscribe()
 
     return () => {
       cancelled = true
       supabase.removeChannel(ch)
+      delayTimers.current.forEach((id) => window.clearTimeout(id))
+      delayTimers.current = []
     }
   }, [gameId, loadEvents, loadGame])
+
+  // Keep the live delay in sync with the game's configured stat_delay_ms.
+  useEffect(() => {
+    delayRef.current = info?.stat_delay_ms ?? 0
+  }, [info?.stat_delay_ms])
 
   // Briefly animate the spray when a *new* located play arrives (not on load).
   useEffect(() => {
@@ -175,6 +199,12 @@ export default function Watch() {
   }
   const lineups: LiveLineups = { away: resolveTeam('away'), home: resolveTeam('home') }
 
+  // External-camera games stream to YouTube; embed it if we have a usable link.
+  const ytId =
+    info.video_source === 'youtube'
+      ? parseYouTubeId(String(info.video_config?.youtube_url ?? ''))
+      : null
+
   return (
     <div className="mx-auto flex min-h-full max-w-lg flex-col bg-night-green text-cream">
       {/* branded header */}
@@ -191,6 +221,9 @@ export default function Watch() {
           </span>
         )}
       </header>
+
+      {/* live video (external camera → YouTube) above the scorebug */}
+      {ytId && <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />}
 
       {/* score panel — full width */}
       <ScorePanel state={board} />
