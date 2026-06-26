@@ -108,3 +108,62 @@ function Cell({
     </div>
   )
 }
+
+// Thin single-row bug that spans the full width of the video frame — minimal
+// vertical footprint for overlaying across the bottom of a live broadcast.
+export function ScorebugBar({ state }: { state: ScoreboardState }) {
+  return (
+    <div className="flex w-full items-center gap-2.5 bg-night-green/90 px-3 py-1 font-athletic text-cream backdrop-blur-sm">
+      <BarPair code={state.away.code} score={state.away.score} />
+      <BarPair code={state.home.code} score={state.home.score} home />
+
+      <span className="mx-0.5 h-4 w-px bg-gold/30" />
+
+      {/* inning + half */}
+      <span className="tabular text-sm font-bold leading-none">
+        {halfArrow(state.half)}
+        {state.inning}
+      </span>
+
+      {/* count */}
+      <span className="flex items-baseline gap-1">
+        <span className="text-[9px] tracking-[.1em] text-muted-green">B–S</span>
+        <span className="tabular text-sm font-bold leading-none">
+          {state.balls}–{state.strikes}
+        </span>
+      </span>
+
+      {/* outs */}
+      <span className="flex items-center gap-1">
+        <span className="flex gap-0.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="h-2 w-2 rounded-full"
+              style={
+                i < state.outs
+                  ? { background: '#A6342E' }
+                  : { border: '1.5px solid #F4ECD8', boxSizing: 'border-box' }
+              }
+            />
+          ))}
+        </span>
+        <span className="text-[9px] tracking-[.1em] text-muted-green">OUT</span>
+      </span>
+
+      <span className="ml-auto">
+        <RunnerDiamond runners={state.runners} size={20} emptyStroke="#F4ECD8" />
+      </span>
+    </div>
+  )
+}
+
+function BarPair({ code, score, home = false }: { code: string; score: number; home?: boolean }) {
+  const accent = home ? 'text-gold' : 'text-cream'
+  return (
+    <span className="flex items-baseline gap-1">
+      <span className={`text-sm font-semibold tracking-[.05em] ${accent}`}>{code}</span>
+      <span className={`tabular text-base font-bold leading-none ${accent}`}>{score}</span>
+    </span>
+  )
+}
