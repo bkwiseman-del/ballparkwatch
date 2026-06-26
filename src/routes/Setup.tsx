@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import { HeaderWordmark } from '@/components/Logo'
 import { downloadCsv, parseRosterCsv, rosterTemplateCsv } from '@/lib/csv'
-import type { Game, Player, Team, VideoSource } from '@/lib/types'
+import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
+import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
 
@@ -514,6 +515,9 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
   const [players, setPlayers] = useState<Player[]>([])
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const scanRef = useRef<HTMLInputElement>(null)
+  const [scanning, setScanning] = useState(false)
+  const [review, setReview] = useState<ScannedPlayer[] | null>(null)
 
   const reload = useCallback(() => {
     supabase
@@ -563,6 +567,43 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
     reload()
   }
 
+  async function onScanFile(file: File) {
+    setImportMsg(null)
+    setScanning(true)
+    try {
+      const found = await scanLineupImage(file)
+      setReview(found)
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Lineup scan failed.')
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  async function saveScanned(rows: ScannedPlayer[]) {
+    const clean = rows.filter((r) => r.name.trim())
+    if (clean.length === 0) {
+      setReview(null)
+      return
+    }
+    const { error } = await supabase.from('players').insert(
+      clean.map((r) => ({
+        team_id: team.id,
+        name: r.name.trim(),
+        jersey_number: r.number.trim() || null,
+        default_position: r.position.trim() || null,
+        bats: r.bats || null,
+      })),
+    )
+    if (error) {
+      onError(error.message)
+      return
+    }
+    setReview(null)
+    setImportMsg(`Added ${clean.length} player${clean.length === 1 ? '' : 's'} from scan.`)
+    reload()
+  }
+
   return (
     <div className="border-2 border-ink bg-cream-off">
       <div className="flex items-center justify-between gap-3 border-b-2 border-ink bg-white px-4 py-3">
@@ -601,6 +642,31 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
       <div className="border-t-2 border-ink p-4">
         <AddPlayerForm onAdd={addPlayer} />
 
+        {/* Scan a lineup: screenshot from GameChanger, or a photo of the book. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            ref={scanRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) onScanFile(f)
+              e.target.value = ''
+            }}
+          />
+          <button
+            onClick={() => scanRef.current?.click()}
+            disabled={scanning}
+            className="bg-board-green px-3 py-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-cream disabled:opacity-60"
+          >
+            {scanning ? 'Reading lineup…' : '📷 Scan lineup'}
+          </button>
+          <span className="font-data text-[11px] text-muted-tan">
+            Screenshot or photo · we’ll auto-fill, you confirm
+          </span>
+        </div>
+
         {/* CSV controls (desktop-friendly bulk import) */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
@@ -631,6 +697,142 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
         <p className="mt-1.5 font-data text-[11px] text-muted-tan">
           CSV columns: name, jersey_number, position, bats (L/R/S), throws (L/R).
         </p>
+      </div>
+
+      {review && (
+        <LineupReviewModal
+          teamName={team.name}
+          initial={review}
+          onCancel={() => setReview(null)}
+          onSave={saveScanned}
+        />
+      )}
+    </div>
+  )
+}
+
+/* --------------------------------------------------- Scan review (confirm) */
+
+// The review/edit step IS the design: a scan is a draft. Everything here is
+// editable, rows can be dropped, and nothing is written until "Confirm & save".
+function LineupReviewModal({
+  teamName,
+  initial,
+  onCancel,
+  onSave,
+}: {
+  teamName: string
+  initial: ScannedPlayer[]
+  onCancel: () => void
+  onSave: (rows: ScannedPlayer[]) => Promise<void> | void
+}) {
+  const [rows, setRows] = useState<ScannedPlayer[]>(initial)
+  const [busy, setBusy] = useState(false)
+
+  function patch(i: number, field: keyof ScannedPlayer, value: string) {
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [field]: value } : r)))
+  }
+  function removeRow(i: number) {
+    setRows((rs) => rs.filter((_, j) => j !== i))
+  }
+
+  const keepCount = rows.filter((r) => r.name.trim()).length
+
+  async function save() {
+    setBusy(true)
+    await onSave(rows)
+    setBusy(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center" onClick={onCancel}>
+      <div
+        className="flex max-h-[90vh] w-full max-w-lg flex-col border-t-2 border-gold bg-cream text-ink sm:border-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
+          <span className="font-display text-lg text-cream">Confirm scanned lineup</span>
+          <button onClick={onCancel} className="font-athletic text-cream">
+            ✕
+          </button>
+        </div>
+
+        <p className="px-4 pt-3 font-athletic text-[11px] uppercase tracking-[.12em] text-muted-tan">
+          {teamName} · review &amp; fix before saving
+        </p>
+
+        <div className="overflow-y-auto px-3 py-2">
+          {/* Column headers */}
+          <div className="grid grid-cols-[2.5rem_1fr_3rem_3rem_1.5rem] items-center gap-1.5 px-1 pb-1 font-athletic text-[10px] font-semibold uppercase tracking-wide text-muted-tan">
+            <span>#</span>
+            <span>Player</span>
+            <span>Pos</span>
+            <span>Bats</span>
+            <span />
+          </div>
+          <ul className="flex flex-col gap-1.5">
+            {rows.map((r, i) => (
+              <li
+                key={i}
+                className="grid grid-cols-[2.5rem_1fr_3rem_3rem_1.5rem] items-center gap-1.5"
+              >
+                <input
+                  className="w-full border-2 border-ink bg-white px-1 py-1.5 text-center font-data text-sm outline-none focus:border-board-green"
+                  value={r.number}
+                  onChange={(e) => patch(i, 'number', e.target.value)}
+                  placeholder="#"
+                />
+                <input
+                  className="w-full border-2 border-ink bg-white px-2 py-1.5 font-data text-sm outline-none focus:border-board-green"
+                  value={r.name}
+                  onChange={(e) => patch(i, 'name', e.target.value)}
+                  placeholder="Name"
+                />
+                <input
+                  className="w-full border-2 border-ink bg-white px-1 py-1.5 text-center font-data text-sm uppercase outline-none focus:border-board-green"
+                  value={r.position}
+                  onChange={(e) => patch(i, 'position', e.target.value.toUpperCase())}
+                  placeholder="—"
+                />
+                <select
+                  className="w-full border-2 border-ink bg-white px-0.5 py-1.5 text-center font-data text-sm outline-none focus:border-board-green"
+                  value={r.bats}
+                  onChange={(e) => patch(i, 'bats', e.target.value as Handedness | '')}
+                >
+                  <option value="">—</option>
+                  <option value="L">L</option>
+                  <option value="R">R</option>
+                  <option value="S">S</option>
+                </select>
+                <button
+                  onClick={() => removeRow(i)}
+                  title="Remove row"
+                  className="text-lg text-barn-red"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+            {rows.length === 0 && (
+              <li className="px-1 py-3 font-data text-sm text-muted-tan">
+                No rows left. Cancel and try a clearer image.
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className="mt-auto flex gap-2 border-t-2 border-ink p-4">
+          <button
+            onClick={save}
+            disabled={busy || keepCount === 0}
+            className="flex-1 bg-gold py-3 font-display text-ink disabled:opacity-60"
+          >
+            {busy ? 'Saving…' : `Confirm & save ${keepCount} player${keepCount === 1 ? '' : 's'} ▸`}
+          </button>
+          <button onClick={onCancel} className="border-2 border-ink px-4 py-3 font-display text-ink">
+            Discard
+          </button>
+        </div>
       </div>
     </div>
   )
