@@ -492,7 +492,12 @@ function SubstitutionFlow({
   onClose: () => void
 }) {
   const { teams, lineups, bench, live, act } = scorer
-  const [team, setTeam] = useState<'away' | 'home'>(live.half === 'top' ? 'home' : 'away')
+  // Default to the team about to take the field: mid-inning that's the current
+  // fielding team; between innings (3 outs) it's the team fielding next half.
+  const fielding = live.half === 'top' ? 'home' : 'away'
+  const defaultTeam: 'away' | 'home' =
+    live.outs >= 3 ? (fielding === 'home' ? 'away' : 'home') : fielding
+  const [team, setTeam] = useState<'away' | 'home'>(defaultTeam)
   const lineup = lineups[team]
   const benchList = bench[team]
   const benchById = new Map(benchList.map((p) => [p.id, p]))
