@@ -14,14 +14,14 @@ import { supabase } from './supabase'
 const ICE: RTCIceServer[] = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
 ]
-const channelName = (gameId: string) => `bpw:video:${gameId}`
+export const videoChannelName = (gameId: string) => `bpw:video:${gameId}`
 const HEARTBEAT_MS = 2000
 const LIVE_TIMEOUT_MS = 6000
 
 const rid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 
 type Sig =
-  | { kind: 'live'; from: string; ts: number }
+  | { kind: 'live'; from: string; ts: number; viewers?: number }
   | { kind: 'hello'; from: string }
   | { kind: 'bye'; from: string }
   | { kind: 'offer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
@@ -134,7 +134,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
 
   useEffect(() => {
     if (!gameId || !active) return
-    const ch = supabase.channel(channelName(gameId), { config: { broadcast: { self: false } } })
+    const ch = supabase.channel(videoChannelName(gameId), { config: { broadcast: { self: false } } })
     chan.current = ch
 
     const markLive = (from: string) => {
@@ -225,7 +225,8 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
       setIsBroadcasting(true)
       startTs.current = Date.now()
       setIsLive(true)
-      const beat = () => send({ kind: 'live', from: me.current, ts: startTs.current })
+      const beat = () =>
+        send({ kind: 'live', from: me.current, ts: startTs.current, viewers: pcs.current.size })
       beat()
       heartbeat.current = window.setInterval(beat, HEARTBEAT_MS)
     } catch (e) {
@@ -241,4 +242,48 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   }, [send, teardownBroadcast])
 
   return { isLive, isBroadcasting, incoming, local, viewers, error, goLive, stop }
+}
+
+export type BroadcastStatus = { live: boolean; viewers: number }
+
+// Passive monitor (no media, no signaling) for the scorer: listens for the
+// broadcaster's heartbeats so we can show whether a phone livestream is
+// happening and healthy. Drops to offline if heartbeats stop.
+export function useBroadcastStatus(gameId: string | undefined, active: boolean): BroadcastStatus {
+  const [live, setLive] = useState(false)
+  const [viewers, setViewers] = useState(0)
+  const bc = useRef<string | null>(null)
+  const timer = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    if (!gameId || !active) {
+      setLive(false)
+      setViewers(0)
+      return
+    }
+    const ch = supabase.channel(videoChannelName(gameId), { config: { broadcast: { self: false } } })
+    ch.on('broadcast', { event: 'sig' }, ({ payload }) => {
+      const m = payload as Sig
+      if (m?.kind === 'live') {
+        bc.current = m.from
+        setLive(true)
+        setViewers(m.viewers ?? 0)
+        window.clearTimeout(timer.current)
+        timer.current = window.setTimeout(() => {
+          setLive(false)
+          setViewers(0)
+        }, LIVE_TIMEOUT_MS)
+      } else if (m?.kind === 'bye' && m.from === bc.current) {
+        setLive(false)
+        setViewers(0)
+        window.clearTimeout(timer.current)
+      }
+    }).subscribe()
+    return () => {
+      window.clearTimeout(timer.current)
+      supabase.removeChannel(ch)
+    }
+  }, [gameId, active])
+
+  return { live, viewers }
 }

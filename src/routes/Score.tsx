@@ -7,6 +7,7 @@ import { VideoSetup } from '@/components/VideoSetup'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { ArrowUpRightIcon } from '@/components/Icons'
 import { buildRecapSummary, generateRecap } from '@/lib/recap'
+import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
 import { computeBattingLines } from '@/lib/stats'
@@ -33,6 +34,8 @@ export default function Score() {
   const [showShare, setShowShare] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
+  // Live health of the phone broadcast (for the indicator in the header).
+  const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
   // Scoring mode is chosen at game start and locked for the game (Full default).
   const [simple, setSimple] = useState(() => localStorage.getItem(`bpw_mode_${gameId}`) === 'quick')
   const setMode = (quick: boolean) => {
@@ -82,9 +85,14 @@ export default function Score() {
           {game && game.video_source !== 'none' && (
             <button
               onClick={() => setShowVideo(true)}
-              className="font-athletic text-sm font-semibold uppercase tracking-wide text-gold"
+              className="inline-flex items-center gap-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-gold"
             >
-              Video
+              {game.video_source === 'phone_whip' && (
+                <span
+                  className={`h-2 w-2 rounded-full ${bstatus.live ? 'animate-pulse bg-board-green' : 'bg-gold/40'}`}
+                />
+              )}
+              {bstatus.live ? `Live · ${bstatus.viewers}` : 'Video'}
             </button>
           )}
           <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">

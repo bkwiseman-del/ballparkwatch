@@ -6,6 +6,7 @@ import { HeaderWordmark } from '@/components/Logo'
 import { downloadCsv, parseRosterCsv, rosterTemplateCsv } from '@/lib/csv'
 import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
+import { VideoSetup } from '@/components/VideoSetup'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -93,6 +94,7 @@ function GamesView({
   onError: (m: string) => void
 }) {
   const [creating, setCreating] = useState(false)
+  const [videoGame, setVideoGame] = useState<Game | null>(null)
 
   return (
     <section>
@@ -140,13 +142,21 @@ function GamesView({
                     {game.scheduled_at ? ` · ${formatWhen(game.scheduled_at)}` : ''}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Link
                     to={`/lineup/${game.id}`}
                     className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
                   >
                     Lineup
                   </Link>
+                  {game.video_source !== 'none' && (
+                    <button
+                      onClick={() => setVideoGame(game)}
+                      className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                    >
+                      Video
+                    </button>
+                  )}
                   <Link
                     to={`/score/${game.id}`}
                     className="bg-board-green px-4 py-2 font-display text-sm text-cream"
@@ -168,6 +178,10 @@ function GamesView({
           <EmptyHint>No games yet — tap “New Game” to schedule one.</EmptyHint>
         )}
       </ul>
+
+      {videoGame && (
+        <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => onChange()} />
+      )}
     </section>
   )
 }
