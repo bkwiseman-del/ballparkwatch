@@ -840,15 +840,23 @@ function BattingTable({
   // Keep batters in first-appearance order isn't available here; sort by AB desc
   // then hits desc as a reasonable batting summary.
   const sorted = lines.slice().sort((a, b) => b.ab - a.ab || b.h - a.h)
+  const COLS = ['AB', 'H', '2B', '3B', 'HR', 'BB', 'K', 'AVG']
   return (
     <div>
       <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title}</h3>
-      <table className="w-full border-collapse">
+      {/* table-fixed + a shared colgroup → both teams' stat columns line up. */}
+      <table className="w-full table-fixed border-collapse">
+        <colgroup>
+          <col className="w-[36%]" />
+          {COLS.map((c) => (
+            <col key={c} className="w-[8%]" />
+          ))}
+        </colgroup>
         <thead>
           <tr className="border-b border-cream/20 font-athletic text-[11px] text-muted-green">
             <th className="py-1.5 text-left font-normal">Batter</th>
-            {['AB', 'H', '2B', '3B', 'HR', 'BB', 'K', 'AVG'].map((h) => (
-              <th key={h} className="px-1.5 py-1.5 text-center font-normal">
+            {COLS.map((h) => (
+              <th key={h} className="px-1 py-1.5 text-center font-normal">
                 {h}
               </th>
             ))}
@@ -857,7 +865,7 @@ function BattingTable({
         <tbody className="divide-y divide-cream/10">
           {sorted.map((l) => (
             <tr key={l.playerId} className="font-data text-[13px]">
-              <td className="py-1.5 pr-2 text-cream">{l.name}</td>
+              <td className="truncate py-1.5 pr-2 text-cream">{l.name}</td>
               <Num n={l.ab} />
               <Num n={l.h} bold />
               <Num n={l.doubles} />
@@ -865,7 +873,7 @@ function BattingTable({
               <Num n={l.hr} />
               <Num n={l.bb} />
               <Num n={l.k} />
-              <td className="px-1.5 py-1.5 text-center tabular text-muted-green">{formatAvg(l.avg)}</td>
+              <td className="px-1 py-1.5 text-center tabular text-muted-green">{formatAvg(l.avg)}</td>
             </tr>
           ))}
         </tbody>
@@ -876,7 +884,7 @@ function BattingTable({
 
 function Num({ n, bold = false }: { n: number; bold?: boolean }) {
   return (
-    <td className={`px-1.5 py-1.5 text-center tabular ${bold ? 'font-bold text-cream' : 'text-cream/85'}`}>
+    <td className={`px-1 py-1.5 text-center tabular ${bold ? 'font-bold text-cream' : 'text-cream/85'}`}>
       {n}
     </td>
   )
