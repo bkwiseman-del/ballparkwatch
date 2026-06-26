@@ -6,7 +6,7 @@ import { ScorebugBar } from '@/components/Scorebug'
 import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type SprayViz } from '@/components/FieldDiamond'
 import { HeaderWordmark } from '@/components/Logo'
 import { resolveCode, type ScoreboardState } from '@/lib/scoreboard'
-import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
+import { INITIAL_LIVE, occupancy, project, type GameEventRow, type LiveGame } from '@/lib/engine'
 import {
   buildPlayByPlay,
   computeBattingLines,
@@ -110,18 +110,10 @@ export default function Watch() {
   }, [gameId])
 
   // Refresh game info (lineups, status, video) — picks up substitutions/realignment.
-  // When there's no stat delay, also reconcile the live score from the snapshot
-  // (the authoritative, upsert-on-every-event projection) so a missed broadcast
-  // self-heals. Delayed games skip this so we don't bypass the delay buffer.
   const loadGame = useCallback(async () => {
     if (!gameId) return
     const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
-    if (!data) return
-    const g = data as PublicGame
-    setInfo(g)
-    if ((g.stat_delay_ms ?? 0) === 0 && g.snapshot) {
-      setLive({ ...INITIAL_LIVE, ...g.snapshot })
-    }
+    if (data) setInfo(data as PublicGame)
   }, [gameId])
 
   useEffect(() => {
@@ -132,18 +124,18 @@ export default function Watch() {
       if (cancelled) return
       if (error) return setError(error.message)
       if (!data) return setError('Game not found')
-      const g = data as PublicGame
-      setInfo(g)
-      setLive({ ...INITIAL_LIVE, ...(g.snapshot ?? {}) })
+      setInfo(data as PublicGame)
     })
     loadEvents()
 
+    // A scored play broadcasts; we reload the event log (delayed for video games)
+    // and re-project from it — the events are the source of truth, so the score
+    // is always right even if the cached snapshot goes stale.
     const ch = supabase.channel(gameChannelName(gameId))
-    ch.on('broadcast', { event: 'state' }, ({ payload }) => {
+    ch.on('broadcast', { event: 'state' }, () => {
       const apply = () => {
-        setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
-        loadEvents() // refresh plays/box when the operator scores
-        loadGame() // refresh lineups/status (catches subs)
+        loadEvents()
+        loadGame()
       }
       const d = delayRef.current
       if (d > 0) {
@@ -161,6 +153,13 @@ export default function Watch() {
       delayTimers.current = []
     }
   }, [gameId, loadEvents, loadGame])
+
+  // The live scorebug state is projected from the event log (source of truth),
+  // not the cached snapshot. Events arrive delayed for video games, so this
+  // stays in sync with the configured delay.
+  useEffect(() => {
+    setLive(project(events))
+  }, [events])
 
   // Keep the live delay in sync with the game's configured stat_delay_ms.
   useEffect(() => {

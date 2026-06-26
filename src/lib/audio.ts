@@ -120,21 +120,24 @@ class AudioManager {
   // staggered one after another (e.g. pitch, then the crack + cheer).
   playFx(steps: string[][]) {
     if (!this.enabled || !this.ctx) return
+    const FX_CLIP = 0.55 // play just the salient front of each short FX
     let when = this.ctx.currentTime
     for (const layers of steps) {
-      let step = 0
+      let adv = 0
       for (const name of layers) {
         const buf = this.fx[name]
         if (!buf) continue
+        const isCheer = name === 'cheer'
+        const dur = isCheer ? buf.duration : Math.min(buf.duration, FX_CLIP)
         const src = this.ctx.createBufferSource()
         src.buffer = buf
         const g = this.ctx.createGain()
-        g.gain.value = name === 'cheer' ? CHEER_VOLUME : FX_VOLUME
+        g.gain.value = isCheer ? CHEER_VOLUME : FX_VOLUME
         src.connect(g).connect(this.ctx.destination)
-        src.start(when)
-        step = Math.max(step, Math.min(buf.duration, 0.4)) // advance by the short sounds
+        src.start(when, 0, dur) // start at `when`, play only `dur` seconds
+        if (!isCheer) adv = Math.max(adv, dur) // sequence by the short FX, not the long cheer
       }
-      when += step || 0.3
+      when += (adv || 0.3) + 0.06 // next step starts after this one finishes
     }
   }
 

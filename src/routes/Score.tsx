@@ -30,6 +30,7 @@ export default function Score() {
   const [strikePopup, setStrikePopup] = useState(false)
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
+  const [endHalf, setEndHalf] = useState(false)
   const [showSub, setShowSub] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
@@ -210,9 +211,21 @@ export default function Score() {
             <button onClick={() => setShowSub(true)} className="font-athletic text-xs font-bold uppercase text-ink">
               ⇄ SUB
             </button>
+            {playing && (
+              <>
+                <span className="h-4 w-px bg-ink/25" />
+                <button
+                  onClick={() => setEndHalf(true)}
+                  className="font-athletic text-xs font-bold uppercase text-ink"
+                  title="End this half-inning early (run limit reached)"
+                >
+                  END ½
+                </button>
+              </>
+            )}
             <span className="h-4 w-px bg-ink/25" />
             <button onClick={() => setEndPopup(true)} className="font-athletic text-xs font-bold uppercase text-barn-red">
-              END ▸
+              END GAME
             </button>
           </div>
         </div>
@@ -248,6 +261,18 @@ export default function Score() {
           onConfirm={(reason) => {
             act('game_end', { reason })
             setEndPopup(false)
+          }}
+        />
+      )}
+      {endHalf && (
+        <ConfirmPopup
+          title="End half-inning?"
+          body={`End the ${live.half === 'top' ? 'top' : 'bottom'} of the ${live.inning}${ordSuffix(live.inning)} now (run limit reached). The other team comes up to bat.`}
+          confirmLabel="End half ▸"
+          onCancel={() => setEndHalf(false)}
+          onConfirm={() => {
+            act('inning_change')
+            setEndHalf(false)
           }}
         />
       )}
@@ -472,6 +497,41 @@ function StitchedBall() {
 }
 
 const END_REASONS = ['Time limit reached', 'Mercy rule', 'Weather / forfeit', 'Other']
+
+function ordSuffix(n: number): string {
+  const t = n % 100
+  if (t >= 11 && t <= 13) return 'th'
+  return ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'
+}
+
+function ConfirmPopup({
+  title,
+  body,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+}: {
+  title: string
+  body: string
+  confirmLabel: string
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Overlay onClose={onCancel}>
+      <p className="font-display text-2xl text-ink">{title}</p>
+      <p className="mt-2 font-data text-sm leading-relaxed text-muted-tan">{body}</p>
+      <div className="mt-5 flex gap-2">
+        <button onClick={onConfirm} className="flex-1 bg-gold py-3 font-display text-ink">
+          {confirmLabel}
+        </button>
+        <button onClick={onCancel} className="border-2 border-ink px-4 py-3 font-display text-ink">
+          Cancel
+        </button>
+      </div>
+    </Overlay>
+  )
+}
 
 function EndGamePopup({
   onCancel,

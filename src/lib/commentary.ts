@@ -126,7 +126,7 @@ type Line = { text: string; kind: VoiceKind }
 
 function voiceFor(
   ev: GameEventRow,
-  _before: LiveGame,
+  before: LiveGame,
   after: LiveGame,
   play: Map<number, string>,
   lineups: Lineups,
@@ -135,6 +135,12 @@ function voiceFor(
   const out: (Line | null)[] = []
   const playLine = (t: string | undefined): Line | null => (t ? { text: t, kind: 'play' } : null)
   const plate = () => plateLines(after, lineups)
+  const scored = after.awayScore + after.homeScore > before.awayScore + before.homeScore
+  // After a play that scored, announce the score, then the next batter.
+  const afterPlay = (): Line[] => [
+    ...(scored ? [{ text: scoreSummary(after), kind: 'info' as VoiceKind }] : []),
+    ...plateLines(after, lineups),
+  ]
 
   switch (ev.event_type) {
     case 'game_start':
@@ -156,10 +162,10 @@ function voiceFor(
       out.push({ text: 'Fouled away.', kind: 'pitch' })
       break
     case 'walk':
-      out.push({ text: 'Ball four — he takes his base.', kind: 'info' }, ...plate())
+      out.push({ text: 'Ball four — he takes his base.', kind: 'info' }, ...afterPlay())
       break
     case 'hit_by_pitch':
-      out.push(playLine(text) ?? { text: 'Hit by the pitch — he takes his base.', kind: 'info' }, ...plate())
+      out.push(playLine(text) ?? { text: 'Hit by the pitch — he takes his base.', kind: 'info' }, ...afterPlay())
       break
     case 'strikeout':
       out.push({ text: 'Strike three, he is out!', kind: 'info' }, ...plate())
@@ -170,12 +176,12 @@ function voiceFor(
     case 'home_run':
     case 'error':
     case 'fielders_choice':
-      out.push(playLine(text), ...plate())
+      out.push(playLine(text), ...afterPlay())
       break
     case 'groundout':
     case 'flyout':
     case 'lineout':
-      out.push(playLine(text), ...plate())
+      out.push(playLine(text), ...afterPlay())
       break
     case 'stolen_base':
     case 'caught_stealing':
@@ -183,7 +189,14 @@ function voiceFor(
     case 'picked_off':
       out.push(playLine(text))
       break
-    // inning_change is handled in freshCues (it needs runs-this-half).
+    case 'inning_change':
+      // Start of a new half-inning. (The end-of-half recap fires separately on
+      // the 3rd out — see freshCues.)
+      out.push(
+        { text: `It's the ${after.half === 'top' ? 'top' : 'bottom'} of the ${ord(after.inning)}.`, kind: 'info' },
+        ...plate(),
+      )
+      break
     case 'game_end':
       out.push({ text: `That's the ballgame! ${scoreSummary(after)}`, kind: 'info' })
       break
