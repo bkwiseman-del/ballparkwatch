@@ -519,15 +519,24 @@ function ConfirmPopup({
 }) {
   return (
     <Overlay onClose={onCancel}>
-      <p className="font-display text-2xl text-ink">{title}</p>
-      <p className="mt-2 font-data text-sm leading-relaxed text-muted-tan">{body}</p>
-      <div className="mt-5 flex gap-2">
-        <button onClick={onConfirm} className="flex-1 bg-gold py-3 font-display text-ink">
-          {confirmLabel}
-        </button>
-        <button onClick={onCancel} className="border-2 border-ink px-4 py-3 font-display text-ink">
-          Cancel
-        </button>
+      <div className="w-[330px] border-[3px] border-ink bg-cream text-ink shadow-hard">
+        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
+          <span className="font-display text-lg text-cream">{title}</span>
+          <button onClick={onCancel} className="font-athletic text-cream">
+            ✕
+          </button>
+        </div>
+        <div className="p-4">
+          <p className="font-data text-sm leading-relaxed text-muted-tan">{body}</p>
+          <div className="mt-4 flex gap-2">
+            <button onClick={onConfirm} className="flex-1 bg-gold py-3 font-display text-ink">
+              {confirmLabel}
+            </button>
+            <button onClick={onCancel} className="border-2 border-ink px-4 py-3 font-display text-ink">
+              Cancel
+            </button>
+          </div>
+        </div>
       </div>
     </Overlay>
   )
