@@ -168,6 +168,7 @@ export default function Score() {
           gameId={gameId}
           onStartNext={() => act('inning_change')}
           onEndEarly={() => setEndPopup(true)}
+          onSub={() => setShowSub(true)}
         />
       )}
 
@@ -359,12 +360,14 @@ function BetweenInnings({
   gameId,
   onStartNext,
   onEndEarly,
+  onSub,
 }: {
   live: LiveGame
   lineups: { away: Player[]; home: Player[] }
   gameId: string | undefined
   onStartNext: () => void
   onEndEarly: () => void
+  onSub: () => void
 }) {
   // The team batting in the NEXT half.
   const nextTop = live.half === 'bottom'
@@ -399,11 +402,17 @@ function BetweenInnings({
         <button onClick={onStartNext} className="bg-gold py-4 font-display text-lg text-ink">
           {nextLabel}
         </button>
-        <Link
-          to={`/lineup/${gameId}`}
+        <button
+          onClick={onSub}
           className="border-2 border-muted-green py-3 text-center font-athletic text-sm font-semibold uppercase tracking-wide text-cream"
         >
-          Substitution / Lineup
+          Substitution / Positions
+        </button>
+        <Link
+          to={`/lineup/${gameId}`}
+          className="font-athletic text-xs uppercase tracking-wide text-muted-green underline"
+        >
+          Edit full lineup
         </Link>
         <button
           onClick={onEndEarly}
