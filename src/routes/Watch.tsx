@@ -19,6 +19,7 @@ import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from 
 import { gameChannelName } from '@/lib/realtime'
 import { parseYouTubeId } from '@/lib/youtube'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
+import { PhoneVideo } from '@/components/PhoneVideo'
 import type { Recap } from '@/lib/types'
 
 type PublicGame = {
@@ -243,6 +244,8 @@ export default function Watch() {
             <ScorebugBar state={board} />
           </div>
         </div>
+      ) : info.video_source === 'phone_whip' ? (
+        <PhoneVideo gameId={gameId} board={board} />
       ) : (
         <ScorePanel state={board} />
       )}
