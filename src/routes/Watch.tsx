@@ -6,7 +6,7 @@ import { ScorebugBar } from '@/components/Scorebug'
 import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type SprayViz } from '@/components/FieldDiamond'
 import { HeaderWordmark } from '@/components/Logo'
 import { resolveCode, type ScoreboardState } from '@/lib/scoreboard'
-import { INITIAL_LIVE, occupancy, project, type GameEventRow, type LiveGame } from '@/lib/engine'
+import { INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from '@/lib/engine'
 import {
   buildPlayByPlay,
   computeBattingLines,
@@ -158,15 +158,19 @@ export default function Watch() {
     }
   }, [gameId, loadEvents, loadGame])
 
-  // Seed the scorebug from the event log on first load (so we never show a stale
-  // cached snapshot), and self-heal from it if broadcasts go quiet for a while.
-  // While broadcasts flow, the payload above is authoritative.
+  // Seed and self-heal the scorebug from the scorer's OWN persisted projection
+  // (the game_state snapshot, written transactionally with every play) — never a
+  // viewer-side re-projection, which could compute a state the scorer never showed
+  // (the recurring "viewer is a play ahead/behind the scorer" bug). So the viewer
+  // can only ever mirror the scorer. The realtime broadcast is authoritative while
+  // it flows; this covers first load and a scorer whose broadcasts go briefly quiet.
   useEffect(() => {
-    if (!events.length) return
+    const snap = info?.snapshot
+    if (!snap || snap.status == null) return
     if (lastApply.current === 0 || Date.now() - lastApply.current > 12000) {
-      setLive(project(events))
+      setLive({ ...INITIAL_LIVE, ...snap })
     }
-  }, [events])
+  }, [info?.snapshot])
 
   // Keep the live delay in sync with the game's configured stat_delay_ms.
   useEffect(() => {

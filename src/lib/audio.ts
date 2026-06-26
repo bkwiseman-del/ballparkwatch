@@ -44,7 +44,11 @@ class AudioManager {
       const bufs = await Promise.all(entries.map(([, url]) => this.load(url)))
       entries.forEach(([k], i) => {
         const b = bufs[i]
-        if (b) this.fx[k] = b // full buffers — playFx staggers the starts, no content is cut
+        // Strip leading silence so every FX starts at its attack. The source clips
+        // have wildly different lead-ins (pitch ~0.56s, slide ~1.06s, catch ~0s);
+        // without this the staggered starts in playFx don't line up — e.g. pitch's
+        // pop would land on top of catch. No trailing content is cut.
+        if (b) this.fx[k] = this.trimLead(b)
       })
       this.crowdBuffer = await this.load(CROWD_FILE)
       this.enabled = true
@@ -74,6 +78,32 @@ class AudioManager {
     } catch {
       return null
     }
+  }
+
+  // Drop leading near-silence so a clip starts at its attack (keeps a tiny 5ms
+  // pre-roll). Returns the original buffer if it's effectively silent.
+  private trimLead(buf: AudioBuffer): AudioBuffer {
+    if (!this.ctx) return buf
+    const threshold = 0.03
+    const n = buf.length
+    let start = n
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const d = buf.getChannelData(ch)
+      for (let i = 0; i < n; i++) {
+        if (Math.abs(d[i]) > threshold) {
+          if (i < start) start = i
+          break
+        }
+      }
+    }
+    if (start >= n) return buf // all silence — leave it
+    start = Math.max(0, start - Math.floor(0.005 * buf.sampleRate))
+    if (start <= 0) return buf
+    const out = this.ctx.createBuffer(buf.numberOfChannels, n - start, buf.sampleRate)
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      out.getChannelData(ch).set(buf.getChannelData(ch).subarray(start))
+    }
+    return out
   }
 
   // Crowd ambience loop — on for no-video games, off when live video is present.
