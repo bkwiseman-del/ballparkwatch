@@ -5,6 +5,7 @@ import { useAuth } from '@/auth/AuthProvider'
 import { HeaderWordmark } from '@/components/Logo'
 import { downloadCsv, parseRosterCsv, rosterTemplateCsv } from '@/lib/csv'
 import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
+import { CameraIcon, UploadIcon } from '@/components/Icons'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -658,9 +659,10 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
           <button
             onClick={() => scanRef.current?.click()}
             disabled={scanning}
-            className="bg-board-green px-3 py-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-cream disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 bg-board-green px-3 py-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-cream disabled:opacity-60"
           >
-            {scanning ? 'Reading lineup…' : '📷 Scan lineup'}
+            <CameraIcon className="h-4 w-4" />
+            {scanning ? 'Reading lineup…' : 'Scan lineup'}
           </button>
           <span className="font-data text-[11px] text-muted-tan">
             Screenshot or photo · we’ll auto-fill, you confirm
@@ -682,9 +684,10 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
           />
           <button
             onClick={() => fileRef.current?.click()}
-            className="border-2 border-ink px-3 py-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-ink"
+            className="inline-flex items-center gap-1.5 border-2 border-ink px-3 py-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-ink"
           >
-            ⬆ Upload CSV
+            <UploadIcon className="h-4 w-4" />
+            Upload CSV
           </button>
           <button
             onClick={() => downloadCsv('roster-template.csv', rosterTemplateCsv())}

@@ -17,6 +17,10 @@
     margin: 0;
     @apply bg-cream text-ink font-data antialiased;
     -webkit-tap-highlight-color: transparent;
+    /* Keep the flat look: force text (not color-emoji) presentation for any
+       glyph that has both forms (arrows, stars, checks). iOS/Safari 17.4+ and
+       Chrome honor this; older engines already default these to text. */
+    font-variant-emoji: text;
   }
 
   /* Dark mode = the night-game scoreboard. */

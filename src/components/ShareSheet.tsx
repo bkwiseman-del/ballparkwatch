@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
+import { ArrowUpRightIcon } from '@/components/Icons'
 
 // Share the no-account viewer link: native share sheet, copy, or a QR code to
 // scan at the field.
@@ -88,9 +89,9 @@ export function ShareSheet({
             href={url}
             target="_blank"
             rel="noreferrer"
-            className="font-athletic text-xs uppercase tracking-wide text-board-green underline"
+            className="inline-flex items-center gap-1 font-athletic text-xs uppercase tracking-wide text-board-green underline"
           >
-            Open viewer ↗
+            Open viewer <ArrowUpRightIcon className="h-3.5 w-3.5" />
           </a>
         </div>
       </div>

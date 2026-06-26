@@ -4,6 +4,7 @@ import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ShareSheet } from '@/components/ShareSheet'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
+import { ArrowUpRightIcon } from '@/components/Icons'
 import { resolveCode } from '@/lib/scoreboard'
 import { computeBattingLines } from '@/lib/stats'
 import {
@@ -72,8 +73,8 @@ export default function Score() {
           ← Setup
         </Link>
         <span className="font-athletic text-xs uppercase tracking-[.16em] text-muted-green">Scorer</span>
-        <button onClick={() => setShowShare(true)} className="font-athletic text-sm font-semibold uppercase tracking-wide text-gold">
-          Share ↗
+        <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">
+          Share <ArrowUpRightIcon className="h-3.5 w-3.5" />
         </button>
       </header>
 
