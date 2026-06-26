@@ -132,6 +132,15 @@ export default function Watch() {
     delayRef.current = info?.stat_delay_ms ?? 0
   }, [info?.stat_delay_ms])
 
+  // Poll game info so status (scheduled → live → final), the video link, and
+  // lineup changes reach an already-open viewer even before any play is scored.
+  // The live score itself rides the instant (delayed) broadcast path.
+  useEffect(() => {
+    if (!gameId) return
+    const id = window.setInterval(loadGame, 10000)
+    return () => window.clearInterval(id)
+  }, [gameId, loadGame])
+
   // Briefly animate the spray when a *new* located play arrives (not on load).
   useEffect(() => {
     if (events.length === 0) return
@@ -159,7 +168,7 @@ export default function Watch() {
   }, [events])
 
   // When a half ends (3 outs), show the final play for a beat before the standby.
-  const halfEnded = info?.status === 'live' && (live.outs ?? 0) >= 3
+  const halfEnded = live.status === 'live' && (live.outs ?? 0) >= 3
   useEffect(() => {
     if (!halfEnded) {
       setShowStandby(false)
@@ -184,7 +193,7 @@ export default function Watch() {
   }
 
   // Between half-innings: the scorer is at its between-innings screen (3 outs).
-  const between = info!.status === 'live' && (live.outs ?? 0) >= 3
+  const between = live.status === 'live' && (live.outs ?? 0) >= 3
 
   // Project the current lineups (starters + substitutions) for both teams.
   const subs = extractSubs(events)
@@ -210,26 +219,33 @@ export default function Watch() {
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5">
         <HeaderWordmark />
-        {info.status === 'live' ? (
+        {live.status === 'live' ? (
           <span className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
             <span className="font-athletic text-sm font-semibold tracking-[.18em] text-barn-red">LIVE</span>
           </span>
         ) : (
           <span className="font-athletic text-sm tracking-[.18em] text-muted-green">
-            {info.status === 'final' ? 'FINAL' : 'STARTING SOON'}
+            {live.status === 'final' ? 'FINAL' : 'STARTING SOON'}
           </span>
         )}
       </header>
 
-      {/* live video (external camera → YouTube) above the scorebug */}
-      {ytId && <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />}
-
-      {/* score panel — full width */}
-      <ScorePanel state={board} />
+      {/* Live video with the scorebug overlaid like a broadcast bug. The overlay
+          is non-interactive so taps reach the video controls underneath. */}
+      {ytId ? (
+        <div className="relative">
+          <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+            <ScorePanel state={board} />
+          </div>
+        </div>
+      ) : (
+        <ScorePanel state={board} />
+      )}
 
       {/* batter / pitcher strip (hidden between innings) */}
-      {info.status === 'live' && !between && <BatterPitcherStrip lineups={lineups} live={live} events={events} />}
+      {live.status === 'live' && !between && <BatterPitcherStrip lineups={lineups} live={live} events={events} />}
 
       {/* tab bar */}
       <div className="flex border-y-2 border-gold bg-[#122019]">

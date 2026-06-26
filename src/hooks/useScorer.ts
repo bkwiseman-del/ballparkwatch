@@ -31,6 +31,7 @@ export function useScorer(gameId: string | undefined) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const statusRef = useRef<string | null>(null)
 
   // Initial load + open the broadcast channel.
   useEffect(() => {
@@ -109,6 +110,14 @@ export function useScorer(gameId: string | undefined) {
       )
       if (snapshotErr.error) setError(snapshotErr.error.message)
       channelRef.current?.send({ type: 'broadcast', event: 'state', payload: next })
+
+      // Keep the games.status column truthful (scheduled → live → final) so the
+      // viewer badge and the Setup games list reflect reality. One write per
+      // transition, not per pitch.
+      if (next.status !== statusRef.current) {
+        statusRef.current = next.status
+        await supabase.from('games').update({ status: next.status }).eq('id', gameId)
+      }
     },
     [gameId],
   )
