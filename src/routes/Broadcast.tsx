@@ -79,12 +79,22 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
                 />
               </label>
             )}
-            <button
-              onClick={v.switchCamera}
-              className="border-2 border-cream/40 py-2 font-display text-cream"
-            >
-              Flip camera
-            </button>
+            {v.cameras.length > 1 && (
+              <label className="flex items-center gap-3 font-athletic text-xs uppercase tracking-wide">
+                <span>Camera</span>
+                <select
+                  value={v.cameraId ?? ''}
+                  onChange={(e) => v.selectCamera(e.target.value)}
+                  className="flex-1 border-2 border-cream/40 bg-black/40 px-2 py-1.5 font-data text-sm text-cream"
+                >
+                  {v.cameras.map((c) => (
+                    <option key={c.deviceId} value={c.deviceId} className="text-ink">
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         </div>
       ) : (

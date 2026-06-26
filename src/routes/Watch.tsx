@@ -247,7 +247,7 @@ export default function Watch() {
   )
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col bg-night-green text-cream min-[760px]:max-w-3xl">
+    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col bg-night-green text-cream min-[760px]:max-w-3xl lg:max-w-6xl">
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />

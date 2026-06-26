@@ -28,8 +28,8 @@ type Sig =
   | { kind: 'answer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'ice'; from: string; to: string; candidate: RTCIceCandidateInit }
 
-export type Facing = 'environment' | 'user'
 export type ZoomRange = { min: number; max: number; step: number }
+export type CameraInfo = { deviceId: string; label: string }
 
 export type PhoneVideo = {
   isLive: boolean // someone (possibly us) is broadcasting
@@ -38,23 +38,24 @@ export type PhoneVideo = {
   local: MediaStream | null // our own camera (when broadcasting)
   viewers: number // connected viewers (broadcaster side)
   error: string | null
-  facing: Facing // which camera is in use
+  cameras: CameraInfo[] // available cameras (e.g. iPhone wide / ultrawide / front)
+  cameraId: string | null // the active camera's deviceId
   zoom: number
   zoomRange: ZoomRange | null // null when the camera/browser doesn't expose zoom
   goLive: () => Promise<void>
-  switchCamera: () => Promise<void>
+  selectCamera: (deviceId: string) => Promise<void>
   setZoom: (z: number) => void
   stop: () => void
 }
 
-// 16:9 video constraints for a given camera.
-function videoConstraints(facing: Facing): MediaTrackConstraints {
-  return {
-    facingMode: { ideal: facing },
-    width: { ideal: 1280 },
-    height: { ideal: 720 },
-    aspectRatio: { ideal: 16 / 9 },
-  }
+// Ask for a roughly-720p stream. iOS Safari often ignores aspectRatio and hands
+// back 4:3 regardless, so we don't over-constrain — the viewer shows whatever
+// shape comes back at its natural ratio rather than letterboxing it.
+function videoConstraints(opts: { deviceId?: string } = {}): MediaTrackConstraints {
+  const base: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } }
+  return opts.deviceId
+    ? { ...base, deviceId: { exact: opts.deviceId } }
+    : { ...base, facingMode: 'environment' }
 }
 
 export function usePhoneVideo(gameId: string | undefined, active: boolean): PhoneVideo {
@@ -64,14 +65,19 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   const [local, setLocal] = useState<MediaStream | null>(null)
   const [viewers, setViewers] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [facing, setFacing] = useState<Facing>('environment')
+  const [cameras, setCameras] = useState<CameraInfo[]>([])
+  const [cameraId, setCameraId] = useState<string | null>(null)
   const [zoom, setZoomState] = useState(1)
   const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null)
 
   const me = useRef(rid())
   const chan = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const pcs = useRef<Map<string, RTCPeerConnection>>(new Map())
-  const localRef = useRef<MediaStream | null>(null)
+  const localRef = useRef<MediaStream | null>(null) // the 16:9 canvas output we broadcast
+  const camStreamRef = useRef<MediaStream | null>(null) // raw camera (any aspect)
+  const camVideoRef = useRef<HTMLVideoElement | null>(null) // hidden <video> of the camera
+  const canvasRef = useRef<HTMLCanvasElement | null>(null) // 16:9 crop surface
+  const rafRef = useRef<number | undefined>(undefined)
   const bcastRef = useRef(false)
   const startTs = useRef(0)
   const curBc = useRef<string | null>(null) // current broadcaster id (viewer side)
@@ -98,9 +104,15 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     bcastRef.current = false
     setIsBroadcasting(false)
     window.clearInterval(heartbeat.current)
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    rafRef.current = undefined
     for (const id of [...pcs.current.keys()]) closePc(id)
     localRef.current?.getTracks().forEach((t) => t.stop())
+    camStreamRef.current?.getTracks().forEach((t) => t.stop())
     localRef.current = null
+    camStreamRef.current = null
+    camVideoRef.current = null
+    canvasRef.current = null
     setLocal(null)
     setViewers(0)
   }, [closePc])
@@ -243,17 +255,82 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     }
   }, [])
 
+  // List available cameras. Labels are only populated after camera permission
+  // has been granted (i.e. after goLive), so we call this then.
+  const enumerate = useCallback(async () => {
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices()
+      const cams = devs
+        .filter((d) => d.kind === 'videoinput')
+        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Camera ${i + 1}` }))
+      setCameras(cams)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  // Point the hidden <video> at a camera stream (creating it on first use).
+  const attachCamera = useCallback((cam: MediaStream) => {
+    camStreamRef.current = cam
+    let v = camVideoRef.current
+    if (!v) {
+      v = document.createElement('video')
+      v.muted = true
+      v.playsInline = true
+      camVideoRef.current = v
+    }
+    v.srcObject = cam
+    v.play().catch(() => {})
+    const vt = cam.getVideoTracks()[0]
+    setCameraId(vt.getSettings().deviceId ?? null)
+    readZoom(vt)
+  }, [readZoom])
+
   const goLive = useCallback(async () => {
     setError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints('environment'),
+      const cam = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints(),
         audio: true,
       })
-      localRef.current = stream
-      setLocal(stream)
-      setFacing('environment')
-      readZoom(stream.getVideoTracks()[0])
+      attachCamera(cam)
+      enumerate()
+
+      // Crop whatever the camera gives us (often 4:3 on iOS) into a true 16:9
+      // canvas, and broadcast the canvas — guarantees a widescreen feed.
+      const canvas = document.createElement('canvas')
+      canvas.width = 1280
+      canvas.height = 720
+      canvasRef.current = canvas
+      const ctx = canvas.getContext('2d')!
+      const draw = () => {
+        const v = camVideoRef.current
+        if (v && v.videoWidth) {
+          const sw = v.videoWidth
+          const sh = v.videoHeight
+          const targetAR = 16 / 9
+          let sx = 0
+          let sy = 0
+          let scw = sw
+          let sch = sh
+          if (sw / sh > targetAR) {
+            scw = sh * targetAR
+            sx = (sw - scw) / 2
+          } else {
+            sch = sw / targetAR
+            sy = (sh - sch) / 2
+          }
+          ctx.drawImage(v, sx, sy, scw, sch, 0, 0, canvas.width, canvas.height)
+        }
+        rafRef.current = requestAnimationFrame(draw)
+      }
+      draw()
+
+      const out = (canvas as HTMLCanvasElement & { captureStream(fps?: number): MediaStream }).captureStream(30)
+      cam.getAudioTracks().forEach((t) => out.addTrack(t))
+      localRef.current = out
+      setLocal(out)
+
       setIncoming(null)
       for (const id of [...pcs.current.keys()]) closePc(id) // drop any viewer PCs we held
       bcastRef.current = true
@@ -267,34 +344,34 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not access the camera.')
     }
-  }, [send, closePc, readZoom])
+  }, [send, closePc, enumerate, attachCamera])
 
-  // Flip front/back: grab the other camera and hot-swap the video track on every
-  // peer connection (no renegotiation) plus the local preview.
-  const switchCamera = useCallback(async () => {
-    if (!bcastRef.current || !localRef.current) return
-    const next: Facing = facing === 'environment' ? 'user' : 'environment'
-    try {
-      const fresh = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(next) })
-      const newTrack = fresh.getVideoTracks()[0]
-      for (const pc of pcs.current.values()) {
-        const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-        if (sender) await sender.replaceTrack(newTrack)
+  // Switch to a specific camera by deviceId — lets iPhone users pick the wide /
+  // ultrawide / front lens. We only swap the source of the canvas pipeline, so
+  // the outgoing 16:9 track is unchanged (no peer renegotiation needed). Audio
+  // from the original capture is preserved.
+  const selectCamera = useCallback(
+    async (deviceId: string) => {
+      if (!bcastRef.current) return
+      try {
+        const fresh = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints({ deviceId }),
+        })
+        const newVideo = fresh.getVideoTracks()[0]
+        const audio = camStreamRef.current?.getAudioTracks() ?? []
+        camStreamRef.current?.getVideoTracks().forEach((t) => t.stop())
+        attachCamera(new MediaStream([newVideo, ...audio]))
+        enumerate()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not switch cameras.')
       }
-      const audio = localRef.current.getAudioTracks()
-      localRef.current.getVideoTracks().forEach((t) => t.stop())
-      const merged = new MediaStream([newTrack, ...audio])
-      localRef.current = merged
-      setLocal(merged)
-      setFacing(next)
-      readZoom(newTrack)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not switch cameras.')
-    }
-  }, [facing, readZoom])
+    },
+    [enumerate, attachCamera],
+  )
 
   const setZoom = useCallback((z: number) => {
-    const track = localRef.current?.getVideoTracks()[0]
+    // Zoom applies to the real camera track, not the canvas output.
+    const track = camStreamRef.current?.getVideoTracks()[0]
     if (!track) return
     setZoomState(z)
     // `zoom` isn't in the standard constraint typings.
@@ -318,11 +395,12 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     local,
     viewers,
     error,
-    facing,
+    cameras,
+    cameraId,
     zoom,
     zoomRange,
     goLive,
-    switchCamera,
+    selectCamera,
     setZoom,
     stop,
   }
