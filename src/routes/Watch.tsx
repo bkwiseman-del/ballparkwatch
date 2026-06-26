@@ -63,6 +63,21 @@ type ViewerEvent = GameEventRow & { batter_name: string | null }
 
 type Tab = 'field' | 'plays' | 'box' | 'stats'
 
+// True on desktop-width screens (≥1024px), where we use the two-column layout.
+function useIsDesktop() {
+  const [d, setD] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const fn = () => setD(mq.matches)
+    fn()
+    mq.addEventListener('change', fn)
+    return () => mq.removeEventListener('change', fn)
+  }, [])
+  return d
+}
+
 export default function Watch() {
   const { gameId } = useParams()
   const [info, setInfo] = useState<PublicGame | null>(null)
@@ -72,6 +87,7 @@ export default function Watch() {
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<SprayViz | null>(null)
   const [showStandby, setShowStandby] = useState(false)
+  const isDesktop = useIsDesktop()
   const loadingEvents = useRef(false)
   const prevMaxSeq = useRef<number | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
@@ -265,7 +281,28 @@ export default function Watch() {
 
       {live.status === 'final' ? (
         <FinalView board={board} events={events} recap={info.recap ?? null} />
+      ) : isDesktop ? (
+        /* Desktop: left = video + bug + Plays/Box/Stats; right = the live field. */
+        <div className="flex flex-1 items-stretch">
+          <div className="flex w-[58%] flex-col border-r-2 border-gold">
+            {videoBlock}
+            <DataTabs board={board} events={events} />
+          </div>
+          <div className="flex flex-1 flex-col">
+            {live.status === 'live' && !between && (
+              <BatterPitcherStrip lineups={lineups} live={live} events={events} />
+            )}
+            <div className="flex-1 p-6">
+              {between && showStandby ? (
+                <Standby lineups={lineups} live={live} away={board.away} home={board.home} />
+              ) : (
+                <FieldTab lineups={lineups} live={live} events={events} spray={flash} />
+              )}
+            </div>
+          </div>
+        </div>
       ) : (
+        /* Phone: single column, all four tabs. */
         <>
           {videoBlock}
 
@@ -317,7 +354,7 @@ function FinalView({
 }) {
   const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
       <Bunting />
 
@@ -440,6 +477,34 @@ function LineScore({ box, awayCode, homeCode }: { box: BoxScore; awayCode: strin
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// Desktop left-column data tabs (Plays / Box / Stats). Field lives on the right.
+function DataTabs({ board, events }: { board: ScoreboardState; events: ViewerEvent[] }) {
+  const [tab, setTab] = useState<'plays' | 'box' | 'stats'>('plays')
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="flex border-y-2 border-gold bg-[#122019]">
+        {(['plays', 'box', 'stats'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="relative flex-1 py-3 font-athletic text-xs font-semibold uppercase tracking-[.08em]"
+          >
+            <span className={tab === t ? 'text-cream' : 'text-muted-green'}>{t}</span>
+            {tab === t && (
+              <span className="absolute bottom-0 left-1/2 h-[3px] w-[30px] -translate-x-1/2 bg-gold" />
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 p-6">
+        {tab === 'plays' && <PlaysTab events={events} />}
+        {tab === 'box' && <BoxTab board={board} events={events} />}
+        {tab === 'stats' && <StatsTab board={board} events={events} />}
+      </div>
     </div>
   )
 }
