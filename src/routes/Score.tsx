@@ -6,6 +6,8 @@ import { ShareSheet } from '@/components/ShareSheet'
 import { VideoSetup } from '@/components/VideoSetup'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { ArrowUpRightIcon } from '@/components/Icons'
+import { buildRecapSummary, generateRecap } from '@/lib/recap'
+import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
 import { computeBattingLines } from '@/lib/stats'
 import {
@@ -14,10 +16,11 @@ import {
   type Dest,
   type EventPayload,
   type EventType,
+  type GameEventRow,
   type LiveGame,
   type Resolution,
 } from '@/lib/engine'
-import type { Player, Team } from '@/lib/types'
+import type { Player, Recap, Team } from '@/lib/types'
 
 export default function Score() {
   const { gameId } = useParams()
@@ -169,12 +172,14 @@ export default function Score() {
         </div>
       )}
       {isFinal && (
-        <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 text-center">
-          <p className="font-display text-4xl text-gold">FINAL</p>
-          <p className="mt-2 font-athletic uppercase tracking-[.14em] text-muted-green">
-            {board.away.code} {live.awayScore} · {board.home.code} {live.homeScore}
-          </p>
-        </div>
+        <FinalRecap
+          events={s.events}
+          teams={teams}
+          gameId={gameId}
+          nameOf={(id) => (id ? nameOf(id) : null)}
+          initial={game?.recap ?? null}
+          scoreLine={`${board.away.code} ${live.awayScore} · ${board.home.code} ${live.homeScore}`}
+        />
       )}
       {halfOver && (
         <BetweenInnings
@@ -1129,6 +1134,79 @@ function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-full items-center justify-center p-6 text-center font-athletic text-muted-green">
       {children}
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------- final recap */
+
+function FinalRecap({
+  events,
+  teams,
+  gameId,
+  nameOf,
+  initial,
+  scoreLine,
+}: {
+  events: GameEventRow[]
+  teams: { away: Team; home: Team } | null
+  gameId: string | undefined
+  nameOf: (id: string | null | undefined) => string | null
+  initial: Recap | null
+  scoreLine: string
+}) {
+  const [recap, setRecap] = useState<Recap | null>(initial)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function generate() {
+    if (!teams || !gameId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const summary = buildRecapSummary(events, teams, nameOf)
+      const r = await generateRecap(summary)
+      const withTs: Recap = { ...r, generated_at: new Date().toISOString() }
+      const { error } = await supabase.from('games').update({ recap: withTs }).eq('id', gameId)
+      if (error) throw new Error(error.message)
+      setRecap(withTs)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Recap failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col items-center overflow-y-auto px-4 py-8 text-center">
+      <p className="font-display text-4xl text-gold">FINAL</p>
+      <p className="mt-2 font-athletic uppercase tracking-[.14em] text-muted-green">{scoreLine}</p>
+
+      {recap ? (
+        <div className="mt-6 w-full max-w-md border-2 border-gold bg-black/20 p-4 text-left">
+          <p className="font-display text-xl leading-tight text-gold">{recap.headline}</p>
+          <p className="mt-2 whitespace-pre-line font-data text-sm leading-relaxed text-cream">
+            {recap.body}
+          </p>
+          <button
+            onClick={generate}
+            disabled={busy}
+            className="mt-3 font-athletic text-xs uppercase tracking-wide text-muted-green underline disabled:opacity-60"
+          >
+            {busy ? 'Rewriting…' : 'Regenerate'}
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={generate}
+          disabled={busy || !teams}
+          className="mt-6 bg-gold px-6 py-3 font-display text-ink disabled:opacity-60"
+        >
+          {busy ? 'Writing recap…' : 'Generate recap'}
+        </button>
+      )}
+
+      {err && <p className="mt-3 font-data text-sm text-barn-red">{err}</p>}
     </div>
   )
 }

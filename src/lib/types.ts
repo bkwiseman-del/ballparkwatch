@@ -46,6 +46,8 @@ export type LineupEntry = {
   is_starter: boolean
 }
 
+export type Recap = { headline: string; body: string; generated_at?: string }
+
 export type Game = {
   id: string
   owner_id: string
@@ -56,6 +58,7 @@ export type Game = {
   video_source: VideoSource
   video_config: Record<string, unknown>
   stat_delay_ms: number
+  recap: Recap | null
   slug: string
   share_token: string
   created_at: string

@@ -19,6 +19,7 @@ import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from 
 import { gameChannelName } from '@/lib/realtime'
 import { parseYouTubeId } from '@/lib/youtube'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
+import type { Recap } from '@/lib/types'
 
 type PublicGame = {
   id: string
@@ -26,6 +27,7 @@ type PublicGame = {
   video_source: string
   video_config?: Record<string, unknown>
   stat_delay_ms?: number
+  recap?: Recap | null
   away: { name: string; code: string | null }
   home: { name: string; code: string | null }
   snapshot: Partial<LiveGame>
@@ -245,6 +247,9 @@ export default function Watch() {
         <ScorePanel state={board} />
       )}
 
+      {/* post-game recap */}
+      {live.status === 'final' && info.recap && <RecapCard recap={info.recap} />}
+
       {/* batter / pitcher strip (hidden between innings) */}
       {live.status === 'live' && !between && <BatterPitcherStrip lineups={lineups} live={live} events={events} />}
 
@@ -276,6 +281,20 @@ export default function Watch() {
         {tab === 'box' && <BoxTab board={board} events={events} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
       </div>
+    </div>
+  )
+}
+
+function RecapCard({ recap }: { recap: Recap }) {
+  return (
+    <div className="border-b-2 border-gold bg-[#122019] px-4 py-4">
+      <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.16em] text-gold">
+        Game recap
+      </p>
+      <p className="mt-1 font-display text-xl leading-tight text-cream">{recap.headline}</p>
+      <p className="mt-2 whitespace-pre-line font-data text-sm leading-relaxed text-cream/90">
+        {recap.body}
+      </p>
     </div>
   )
 }
