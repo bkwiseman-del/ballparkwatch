@@ -1,0 +1,15 @@
+// Stars-and-stripes fan-rosette bunting from the design spec — red/white/red/
+// white concentric scallops with a navy star canton, hung from a navy bar. Used
+// at the top of the cover, Starting Soon, and Final screens. Inlined as raw SVG
+// to keep the spec's exact path data.
+const SVG = `<svg width="100%" height="66" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="usbunt" patternUnits="userSpaceOnUse" width="120" height="66"><path d="M 3 6 A 57 57 0 0 0 117 6 Z" fill="#B22234"/><path d="M 13 6 A 47 47 0 0 0 107 6 Z" fill="#FBF6E9"/><path d="M 23 6 A 37 37 0 0 0 97 6 Z" fill="#B22234"/><path d="M 33 6 A 27 27 0 0 0 87 6 Z" fill="#FBF6E9"/><path d="M 43 6 A 17 17 0 0 0 77 6 Z" fill="#1A2A4A"/><line x1="60" y1="6" x2="115.9" y2="17.1" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="112.7" y2="27.8" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="107.4" y2="37.7" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="100.3" y2="46.3" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="91.7" y2="53.4" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="81.8" y2="58.7" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="71.1" y2="61.9" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="60.0" y2="63.0" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="48.9" y2="61.9" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="38.2" y2="58.7" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="28.3" y2="53.4" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="19.7" y2="46.3" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="12.6" y2="37.7" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="7.3" y2="27.8" stroke="rgba(0,0,0,.10)" stroke-width="1"/><line x1="60" y1="6" x2="4.1" y2="17.1" stroke="rgba(0,0,0,.10)" stroke-width="1"/><polygon points="69.4,9.1 70.0,10.9 71.9,10.9 70.4,12.1 70.9,13.9 69.4,12.8 67.8,13.9 68.3,12.1 66.9,10.9 68.7,10.9" fill="#FBF6E9"/><polygon points="65.5,12.9 66.1,14.7 67.9,14.7 66.5,15.9 67.0,17.6 65.5,16.6 63.9,17.6 64.4,15.9 63.0,14.7 64.8,14.7" fill="#FBF6E9"/><polygon points="60.0,14.4 60.7,16.1 62.5,16.2 61.0,17.3 61.5,19.1 60.0,18.1 58.5,19.1 59.0,17.3 57.5,16.2 59.4,16.1" fill="#FBF6E9"/><polygon points="54.5,13.0 55.2,14.7 57.0,14.7 55.6,15.9 56.1,17.7 54.5,16.6 53.0,17.7 53.5,15.9 52.1,14.7 53.9,14.7" fill="#FBF6E9"/><polygon points="50.6,9.2 51.3,10.9 53.1,11.0 51.7,12.1 52.2,13.9 50.6,12.9 49.1,13.9 49.6,12.1 48.2,11.0 50.0,10.9" fill="#FBF6E9"/><rect x="-1" y="0" width="122" height="9" fill="#1A2A4A"/></pattern></defs><rect width="100%" height="66" fill="url(#usbunt)"/></svg>`
+
+export function Bunting({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`block w-full leading-[0] ${className}`}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: SVG }}
+    />
+  )
+}

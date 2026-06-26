@@ -21,6 +21,7 @@ import { gameChannelName } from '@/lib/realtime'
 import { parseYouTubeId } from '@/lib/youtube'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
+import { Bunting } from '@/components/Bunting'
 import type { Recap } from '@/lib/types'
 
 type PublicGame = {
@@ -317,8 +318,11 @@ function FinalView({
   const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
   return (
     <div className="flex flex-1 flex-col">
+      {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
+      <Bunting />
+
       {/* FINAL hero */}
-      <div className="border-b-2 border-gold bg-[#122019] px-4 py-6 text-center">
+      <div className="border-b-2 border-gold bg-[#122019] px-4 pb-6 pt-5 text-center">
         <p className="font-display text-2xl tracking-[.3em] text-barn-red">FINAL</p>
         <div className="mt-3 flex items-center justify-center gap-4 font-display text-3xl min-[760px]:text-4xl">
           <span className="text-cream">
