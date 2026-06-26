@@ -11,12 +11,46 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 const ELEVEN_KEY = Deno.env.get('ELEVENLABS_API_KEY')
 const VOICE_ID = Deno.env.get('ELEVENLABS_VOICE_ID')
+const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const BUCKET = 'bpw-audio'
-const MODEL = 'eleven_turbo_v2_5' // low-latency, good for live
+const MODEL = 'eleven_turbo_v2_5' // low-latency TTS, good for live
+const TEXT_MODEL = 'claude-haiku-4-5' // fast/cheap rewrites for high-volume lines
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY)
+
+// Turn a terse play / structured recap into natural broadcast speech. Pitches
+// and info lines are already natural, so they pass through untouched.
+async function announcerText(text: string, kind?: string): Promise<string> {
+  if (!ANTHROPIC_KEY || (kind !== 'play' && kind !== 'summary')) return text
+  const system =
+    kind === 'summary'
+      ? 'You are an upbeat youth-baseball broadcaster. Turn this end-of-inning recap into two short, natural spoken sentences. Keep every fact (runs, score, who is up next). Warm and positive. Output only the sentences — no quotes, no emojis.'
+      : 'You are an upbeat youth-baseball play-by-play announcer. Rewrite this terse play into ONE natural, energetic spoken sentence (max ~18 words). Keep the facts (who did what, who scored). Positive in tone. Output only the sentence — no quotes, no emojis.'
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        max_tokens: 150,
+        system,
+        messages: [{ role: 'user', content: text }],
+      }),
+    })
+    if (!r.ok) return text
+    const d = await r.json()
+    const block = (d.content ?? []).find((b: { type: string }) => b.type === 'text')
+    return (block?.text ?? '').trim() || text
+  } catch {
+    return text
+  }
+}
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -29,13 +63,13 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   if (!ELEVEN_KEY || !VOICE_ID) return json({ error: 'Commentary is not configured.' }, 500)
 
-  let body: { gameId?: string; seq?: number; text?: string }
+  let body: { gameId?: string; seq?: string | number; text?: string; kind?: string }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid request body.' }, 400)
   }
-  const { gameId, seq, text } = body
+  const { gameId, seq, text, kind } = body
   if (!gameId || seq == null || !text?.trim()) return json({ error: 'Missing gameId/seq/text.' }, 400)
 
   const path = `commentary/${gameId}/${seq}.mp3`
@@ -49,6 +83,9 @@ Deno.serve(async (req) => {
     /* fall through to generate */
   }
 
+  // Natural broadcast phrasing for plays/summaries.
+  const speak = (await announcerText(text.trim(), kind)).slice(0, 600)
+
   // Generate TTS.
   let tts: Response
   try {
@@ -56,7 +93,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { 'xi-api-key': ELEVEN_KEY, 'content-type': 'application/json', accept: 'audio/mpeg' },
       body: JSON.stringify({
-        text: text.trim().slice(0, 500),
+        text: speak,
         model_id: MODEL,
         voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.3 },
       }),

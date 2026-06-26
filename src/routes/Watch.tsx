@@ -24,8 +24,8 @@ import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
 import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
-import { audio, fxForEvent } from '@/lib/audio'
-import { freshCommentary } from '@/lib/commentary'
+import { audio } from '@/lib/audio'
+import { freshCues } from '@/lib/commentary'
 import type { Recap } from '@/lib/types'
 
 type PublicGame = {
@@ -219,37 +219,34 @@ export default function Watch() {
         }
       }
 
-      // sound fx + voice commentary for the new action
-      const newest = freshAll[freshAll.length - 1]
-      if (audio.isEnabled() && newest) {
-        const fx = fxForEvent(newest.event_type)
-        if (fx) audio.playFx(fx)
-        if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
-
-        // GameChanger-style play-by-play: batter up, balls/strikes, the play,
-        // outs, inning summaries. Generated (cached) then queued so they don't
-        // overlap. Only when sound is on, to avoid wasted TTS.
-        if (gameId) {
-          const nameOf = (id: string | null | undefined) =>
-            (id && info?.players?.[id]?.name) || null
-          const lns = {
-            away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-            home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-          }
-          const lines = freshCommentary(events, baseline, nameOf, lns)
-          ;(async () => {
-            for (const ln of lines) {
+      // GameChanger-style audio: FX (pitch → catch / hit) then play-by-play —
+      // batter up, balls/strikes, the play, outs, inning summaries — all queued
+      // so nothing overlaps. Only when commentary is on, to avoid wasted TTS.
+      if (audio.isEnabled() && gameId) {
+        const nameOf = (id: string | null | undefined) =>
+          (id && info?.players?.[id]?.name) || null
+        const lns = {
+          away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+          home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+        }
+        const cues = freshCues(events, baseline, nameOf, lns)
+        if (cues.some((c) => c.type === 'fx' && c.name === 'hit')) audio.swellCrowd()
+        ;(async () => {
+          for (const c of cues) {
+            if (c.type === 'fx') {
+              audio.enqueueFx(c.name)
+            } else {
               try {
                 const { data } = await supabase.functions.invoke('commentary', {
-                  body: { gameId, seq: ln.key, text: ln.text },
+                  body: { gameId, seq: c.key, text: c.text, kind: c.kind },
                 })
-                if (data?.url) audio.enqueueCommentary(data.url)
+                if (data?.url) audio.enqueueVoice(data.url)
               } catch {
                 /* skip this line */
               }
             }
-          })()
-        }
+          }
+        })()
       }
     }
   }, [events, gameId, info])
@@ -319,7 +316,7 @@ export default function Watch() {
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => {
               if (soundOn) {
@@ -330,10 +327,13 @@ export default function Watch() {
                 setSoundOn(true)
               }
             }}
-            aria-label={soundOn ? 'Mute sound' : 'Turn on sound'}
-            className="text-gold"
+            aria-label={soundOn ? 'Turn off AI commentary' : 'Turn on AI commentary'}
+            className={`inline-flex items-center gap-1.5 border px-2 py-1 font-athletic text-[11px] font-semibold uppercase tracking-wide ${
+              soundOn ? 'border-gold bg-gold text-ink' : 'border-cream/40 text-cream/70'
+            }`}
           >
-            {soundOn ? <SoundOnIcon className="h-5 w-5" /> : <SoundOffIcon className="h-5 w-5" />}
+            {soundOn ? <SoundOnIcon className="h-4 w-4" /> : <SoundOffIcon className="h-4 w-4" />}
+            Commentary
           </button>
           {live.status === 'live' ? (
             <span className="flex items-center gap-2">
