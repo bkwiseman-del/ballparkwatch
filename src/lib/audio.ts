@@ -14,7 +14,7 @@ const FX_FILES: Record<string, string> = {
 }
 const ORGAN_CUE = '@organ' // queue sentinel: play the organ stinger, not a TTS url
 const CROWD_FILE = '/sfx/crowd.m4a'
-const CROWD_BASE = 0.18
+const CROWD_BASE = 0.34 // ambient bed; clearly audible but under commentary/FX
 const FX_VOLUME = 0.7
 const CHEER_VOLUME = 0.8
 
@@ -235,7 +235,7 @@ class AudioManager {
             this.voiceCache.set(url, loaded)
           }
         }
-        this.rampCrowd(CROWD_BASE * 0.3)
+        this.rampCrowd(CROWD_BASE * 0.55)
         await this.playAndWait(buf ?? null, 1)
         this.rampCrowd(CROWD_BASE)
       }

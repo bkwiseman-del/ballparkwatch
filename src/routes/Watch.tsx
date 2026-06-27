@@ -201,7 +201,11 @@ export default function Watch() {
   // viewer interacts. Unlock the AudioContext on the first tap anywhere so the
   // organ + welcome fire as soon as the game starts.
   useEffect(() => {
-    if (!soundOn || audio.isEnabled()) return
+    if (!soundOn) return
+    if (audio.isEnabled()) {
+      setAudioReady(true) // already unlocked (e.g. remount) — don't wait for a tap
+      return
+    }
     const unlock = async () => {
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('touchend', unlock)
