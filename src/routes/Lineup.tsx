@@ -107,7 +107,7 @@ export default function Lineup() {
   if (!game || !away || !home) return <Centered>Game not found</Centered>
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-cream text-ink">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-cream text-ink">
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
         <HeaderWordmark />
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
