@@ -96,6 +96,7 @@ export default function Watch() {
   // Commentary on by default so it plays the moment the game starts. Audio still
   // needs a user gesture to unlock (browser autoplay policy) — see the effect below.
   const [soundOn, setSoundOn] = useState(true)
+  const [audioReady, setAudioReady] = useState(false) // true once the AudioContext is unlocked
   const isDesktop = useIsDesktop()
   const eventsReq = useRef(0)
   const lastApply = useRef(0)
@@ -112,7 +113,16 @@ export default function Watch() {
     const my = ++eventsReq.current
     const { data, error } = await supabase.rpc('get_public_events', { p_game_id: gameId })
     if (my !== eventsReq.current) return // superseded by a newer load
-    if (!error && data) setEvents(data as ViewerEvent[])
+    if (!error && data) {
+      const rows = data as ViewerEvent[]
+      // Baseline the play/audio trigger on the FIRST load — to the max seq present
+      // (0 if none yet). Otherwise, when a viewer is sitting on Starting Soon with
+      // no events, game_start (the first event to arrive) would be treated as the
+      // baseline and skipped, so the organ/welcome never fire.
+      if (prevMaxSeq.current === null)
+        prevMaxSeq.current = rows.length ? Math.max(...rows.map((e) => e.seq)) : 0
+      setEvents(rows)
+    }
   }, [gameId])
 
   // Refresh game info (lineups, status, video) — picks up substitutions/realignment.
@@ -192,10 +202,11 @@ export default function Watch() {
   // organ + welcome fire as soon as the game starts.
   useEffect(() => {
     if (!soundOn || audio.isEnabled()) return
-    const unlock = () => {
-      audio.enable()
+    const unlock = async () => {
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('touchend', unlock)
+      await audio.enable()
+      setAudioReady(true)
     }
     window.addEventListener('pointerdown', unlock)
     window.addEventListener('touchend', unlock)
@@ -214,11 +225,12 @@ export default function Watch() {
     }
   }, [live.status])
 
-  // Crowd ambience loops only for no-video games; with live video the video's
-  // own audio is the ambience, so we run just commentary + sound FX over it.
+  // Crowd ambience loops only for no-video games; with live video the video's own
+  // audio is the ambience. Depends on audioReady so the loop starts the moment the
+  // context unlocks (setCrowd is a no-op while audio is still locked).
   useEffect(() => {
-    audio.setCrowd(soundOn && !hasVideo)
-  }, [soundOn, hasVideo])
+    audio.setCrowd(soundOn && audioReady && !hasVideo)
+  }, [soundOn, hasVideo, audioReady])
 
   // Poll game info so status (scheduled → live → final), the video link, and
   // lineup changes reach an already-open viewer even before any play is scored.
@@ -235,13 +247,11 @@ export default function Watch() {
   }, [gameId, loadGame, loadEvents])
 
   // Briefly animate the spray when a *new* located play arrives (not on load).
+  // prevMaxSeq is baselined in loadEvents on first load, so the first real events
+  // after that (incl. game_start from a pre-game viewer) fire here.
   useEffect(() => {
-    if (events.length === 0) return
-    const maxSeq = Math.max(...events.map((e) => e.seq))
-    if (prevMaxSeq.current === null) {
-      prevMaxSeq.current = maxSeq // baseline the first load — don't replay history
-      return
-    }
+    if (prevMaxSeq.current === null) return // initial load hasn't baselined yet
+    const maxSeq = events.length ? Math.max(...events.map((e) => e.seq)) : 0
     if (maxSeq > prevMaxSeq.current) {
       const baseline = prevMaxSeq.current
       prevMaxSeq.current = maxSeq
@@ -372,13 +382,15 @@ export default function Watch() {
               the final summary. */}
           {live.status === 'live' && (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (soundOn) {
                   audio.disable()
                   setSoundOn(false)
+                  setAudioReady(false)
                 } else {
-                  audio.enable()
                   setSoundOn(true)
+                  await audio.enable()
+                  setAudioReady(true)
                 }
               }}
               aria-label={soundOn ? 'Turn off AI commentary' : 'Turn on AI commentary'}
