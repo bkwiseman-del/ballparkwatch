@@ -716,7 +716,7 @@ function LineScore({ box, awayCode, homeCode }: { box: BoxScore; awayCode: strin
     <div className="mt-5 overflow-x-auto">
       <table className="w-full border-2 border-gold text-center font-data text-sm tabular">
         <thead>
-          <tr className="bg-[#122019] text-[11px] uppercase tracking-wide text-muted-green">
+          <tr className="bg-[var(--surface)] text-[11px] uppercase tracking-wide text-muted-green">
             <th className="px-2 py-1.5 text-left" />
             {cols.map((c) => (
               <th key={c} className="px-2 py-1.5">
@@ -1157,9 +1157,9 @@ function StatsTab({
 function Stat3({ label, a, h }: { label: string; a: number; h: number }) {
   return (
     <>
-      <div className="bg-[var(--surface)] px-2 py-1.5 text-muted-green">{label}</div>
-      <div className="bg-[var(--surface)] px-2 py-1.5 text-center tabular text-cream">{a}</div>
-      <div className="bg-[var(--surface)] px-2 py-1.5 text-center tabular text-cream">{h}</div>
+      <div className="bg-[var(--surface)] px-2 py-1.5 font-athletic text-muted-green">{label}</div>
+      <div className="bg-[var(--surface)] px-2 py-1.5 text-center font-athletic tabular text-cream">{a}</div>
+      <div className="bg-[var(--surface)] px-2 py-1.5 text-center font-athletic tabular text-cream">{h}</div>
     </>
   )
 }
