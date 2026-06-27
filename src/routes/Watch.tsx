@@ -11,10 +11,13 @@ import {
   buildPlayByPlay,
   computeBattingLines,
   computeBoxScore,
-  formatAvg,
+  computePitchingLines,
+  formatIp,
   type BattingLine,
   type BoxScore,
+  type PitchingLine,
   type PlayKind,
+  type StartPositions,
 } from '@/lib/stats'
 import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
 import { gameChannelName } from '@/lib/realtime'
@@ -360,6 +363,17 @@ export default function Watch() {
   }
   const lineups: LiveLineups = { away: resolveTeam('away'), home: resolveTeam('home') }
 
+  // Player name resolver (last name, jersey fallback) + starting positions, for
+  // the box score / pitching tables.
+  const nameById = (id: string): string => {
+    const pl = info?.players?.[id]
+    return displayName(pl?.name) || (pl?.jersey ? `#${pl.jersey}` : '—')
+  }
+  const startPositions: StartPositions = {
+    away: Object.fromEntries((info?.lineups?.away ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
+    home: Object.fromEntries((info?.lineups?.home ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
+  }
+
   // External-camera games stream to YouTube; embed it if we have a usable link.
   const ytId =
     info.video_source === 'youtube'
@@ -446,13 +460,20 @@ export default function Watch() {
           }}
         />
       ) : live.status === 'final' ? (
-        <FinalView board={board} events={events} recap={info.recap ?? null} location={info.location ?? null} />
+        <FinalView
+          board={board}
+          events={events}
+          recap={info.recap ?? null}
+          location={info.location ?? null}
+          startPos={startPositions}
+          nameOf={nameById}
+        />
       ) : isDesktop ? (
         /* Desktop: left = video + bug + Plays/Box/Stats; right = the live field. */
         <div className="flex flex-1 items-stretch">
           <div className="flex w-[58%] flex-col border-r-2 border-gold">
             {videoBlock}
-            <DataTabs board={board} events={events} />
+            <DataTabs board={board} events={events} startPos={startPositions} nameOf={nameById} />
           </div>
           <div className="flex flex-1 flex-col">
             {live.status === 'live' && !between && (
@@ -499,7 +520,7 @@ export default function Watch() {
                 <FieldTab lineups={lineups} live={live} events={events} spray={flash} />
               ))}
             {tab === 'plays' && <PlaysTab events={events} />}
-            {tab === 'box' && <BoxTab board={board} events={events} />}
+            {tab === 'box' && <BoxTab board={board} events={events} startPos={startPositions} nameOf={nameById} />}
             {tab === 'stats' && <StatsTab board={board} events={events} />}
           </div>
         </>
@@ -613,11 +634,15 @@ function FinalView({
   events,
   recap,
   location,
+  startPos,
+  nameOf,
 }: {
   board: ScoreboardState
   events: ViewerEvent[]
   recap: Recap | null
   location: string | null
+  startPos: StartPositions
+  nameOf: (id: string) => string
 }) {
   const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
   return (
@@ -663,7 +688,7 @@ function FinalView({
 
       <div className="flex-1 p-4 min-[760px]:p-6">
         {tab === 'recap' && <RecapFinal recap={recap} events={events} board={board} />}
-        {tab === 'box' && <BoxTab board={board} events={events} />}
+        {tab === 'box' && <BoxTab board={board} events={events} startPos={startPos} nameOf={nameOf} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
         {tab === 'plays' && <PlaysTab events={events} />}
       </div>
@@ -750,7 +775,17 @@ function LineScore({ box, awayCode, homeCode }: { box: BoxScore; awayCode: strin
 }
 
 // Desktop left-column data tabs (Plays / Box / Stats). Field lives on the right.
-function DataTabs({ board, events }: { board: ScoreboardState; events: ViewerEvent[] }) {
+function DataTabs({
+  board,
+  events,
+  startPos,
+  nameOf,
+}: {
+  board: ScoreboardState
+  events: ViewerEvent[]
+  startPos: StartPositions
+  nameOf: (id: string) => string
+}) {
   const [tab, setTab] = useState<'plays' | 'box' | 'stats'>('plays')
   return (
     <div className="flex flex-1 flex-col">
@@ -770,7 +805,7 @@ function DataTabs({ board, events }: { board: ScoreboardState; events: ViewerEve
       </div>
       <div className="flex-1 p-6">
         {tab === 'plays' && <PlaysTab events={events} />}
-        {tab === 'box' && <BoxTab board={board} events={events} />}
+        {tab === 'box' && <BoxTab board={board} events={events} startPos={startPos} nameOf={nameOf} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
       </div>
     </div>
@@ -974,13 +1009,17 @@ function PlaysTab({ events }: { events: ViewerEvent[] }) {
 function BoxTab({
   board,
   events,
+  startPos,
+  nameOf,
 }: {
   board: { away: { code: string; name?: string }; home: { code: string; name?: string } }
   events: ViewerEvent[]
+  startPos: StartPositions
+  nameOf: (id: string) => string
 }) {
   const box = computeBoxScore(events)
-  const map = nameMap(events)
-  const bats = computeBattingLines(events, (id) => map.get(id) ?? null)
+  const bats = computeBattingLines(events, (id) => nameOf(id))
+  const pitch = computePitchingLines(events, startPos, (id) => nameOf(id))
   const innings = Array.from({ length: box.innings }, (_, i) => i + 1)
   const Row = ({ code, t, accent }: { code: string; t: typeof box.away; accent?: boolean }) => (
     <tr>
@@ -1019,40 +1058,42 @@ function BoxTab({
 
       <BattingTable title={board.away.name ?? board.away.code} lines={bats.away} />
       <BattingTable title={board.home.name ?? board.home.code} lines={bats.home} accent />
+
+      {(pitch.away.length > 0 || pitch.home.length > 0) && (
+        <>
+          <PitchingTable title={`${board.away.name ?? board.away.code} — Pitching`} lines={pitch.away} />
+          <PitchingTable title={`${board.home.name ?? board.home.code} — Pitching`} lines={pitch.home} accent />
+        </>
+      )}
     </div>
   )
 }
 
-function BattingTable({
-  title,
-  lines,
-  accent = false,
-}: {
-  title: string
-  lines: BattingLine[]
-  accent?: boolean
-}) {
+const BAT_COLS = ['AB', 'R', 'H', 'RBI', '2B', '3B', 'HR', 'BB', 'K'] as const
+
+function BattingTable({ title, lines, accent = false }: { title: string; lines: BattingLine[]; accent?: boolean }) {
   if (lines.length === 0) return null
-  // Keep batters in first-appearance order isn't available here; sort by AB desc
-  // then hits desc as a reasonable batting summary.
   const sorted = lines.slice().sort((a, b) => b.ab - a.ab || b.h - a.h)
-  const COLS = ['AB', 'H', '2B', '3B', 'HR', 'BB', 'K', 'AVG']
+  const sum = (f: (l: BattingLine) => number) => sorted.reduce((t, l) => t + f(l), 0)
+  const cell = (l: BattingLine, c: (typeof BAT_COLS)[number]) =>
+    c === 'AB' ? l.ab : c === 'R' ? l.r : c === 'H' ? l.h : c === 'RBI' ? l.rbi
+      : c === '2B' ? l.doubles : c === '3B' ? l.triples : c === 'HR' ? l.hr : c === 'BB' ? l.bb : l.k
+  const total = (c: (typeof BAT_COLS)[number]) => sum((l) => cell(l, c))
   return (
     <div>
       <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title}</h3>
-      {/* table-fixed + a shared colgroup → both teams' stat columns line up. */}
-      <table className="w-full table-fixed border-collapse">
+      <table className="w-full table-fixed border-collapse text-[13px]">
         <colgroup>
-          <col className="w-[36%]" />
-          {COLS.map((c) => (
+          <col className="w-[28%]" />
+          {BAT_COLS.map((c) => (
             <col key={c} className="w-[8%]" />
           ))}
         </colgroup>
         <thead>
           <tr className="border-b border-cream/20 font-athletic text-[11px] text-muted-green">
             <th className="py-1.5 text-left font-normal">Batter</th>
-            {COLS.map((h) => (
-              <th key={h} className="px-1 py-1.5 text-center font-normal">
+            {BAT_COLS.map((h) => (
+              <th key={h} className="px-0.5 py-1.5 text-center font-normal">
                 {h}
               </th>
             ))}
@@ -1060,18 +1101,78 @@ function BattingTable({
         </thead>
         <tbody className="divide-y divide-cream/10">
           {sorted.map((l) => (
-            <tr key={l.playerId} className="font-data text-[13px]">
+            <tr key={l.playerId} className="font-data">
               <td className="truncate py-1.5 pr-2 text-cream">{l.name}</td>
-              <Num n={l.ab} />
-              <Num n={l.h} bold />
-              <Num n={l.doubles} />
-              <Num n={l.triples} />
-              <Num n={l.hr} />
-              <Num n={l.bb} />
-              <Num n={l.k} />
-              <td className="px-1 py-1.5 text-center tabular text-muted-green">{formatAvg(l.avg)}</td>
+              {BAT_COLS.map((c) => (
+                <Num key={c} n={cell(l, c)} bold={c === 'H'} />
+              ))}
             </tr>
           ))}
+          <tr className="border-t-2 border-cream/25 font-athletic font-semibold text-cream">
+            <td className="py-1.5 pr-2 uppercase tracking-wide">Team</td>
+            {BAT_COLS.map((c) => (
+              <Num key={c} n={total(c)} bold />
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const PITCH_COLS = ['IP', 'H', 'R', 'ER', 'BB', 'K'] as const
+
+function PitchingTable({ title, lines, accent = false }: { title: string; lines: PitchingLine[]; accent?: boolean }) {
+  if (lines.length === 0) return null
+  const tot = {
+    outs: lines.reduce((t, l) => t + l.outs, 0),
+    h: lines.reduce((t, l) => t + l.h, 0),
+    r: lines.reduce((t, l) => t + l.r, 0),
+    er: lines.reduce((t, l) => t + l.er, 0),
+    bb: lines.reduce((t, l) => t + l.bb, 0),
+    k: lines.reduce((t, l) => t + l.k, 0),
+  }
+  return (
+    <div>
+      <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title}</h3>
+      <table className="w-full table-fixed border-collapse text-[13px]">
+        <colgroup>
+          <col className="w-[34%]" />
+          {PITCH_COLS.map((c) => (
+            <col key={c} className="w-[11%]" />
+          ))}
+        </colgroup>
+        <thead>
+          <tr className="border-b border-cream/20 font-athletic text-[11px] text-muted-green">
+            <th className="py-1.5 text-left font-normal">Pitcher</th>
+            {PITCH_COLS.map((h) => (
+              <th key={h} className="px-0.5 py-1.5 text-center font-normal">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-cream/10">
+          {lines.map((l) => (
+            <tr key={l.playerId} className="font-data">
+              <td className="truncate py-1.5 pr-2 text-cream">{l.name}</td>
+              <td className="px-0.5 py-1.5 text-center tabular text-cream/85">{formatIp(l.outs)}</td>
+              <Num n={l.h} />
+              <Num n={l.r} />
+              <Num n={l.er} />
+              <Num n={l.bb} />
+              <Num n={l.k} />
+            </tr>
+          ))}
+          <tr className="border-t-2 border-cream/25 font-athletic font-semibold text-cream">
+            <td className="py-1.5 pr-2 uppercase tracking-wide">Team</td>
+            <td className="px-0.5 py-1.5 text-center tabular">{formatIp(tot.outs)}</td>
+            <Num n={tot.h} bold />
+            <Num n={tot.r} bold />
+            <Num n={tot.er} bold />
+            <Num n={tot.bb} bold />
+            <Num n={tot.k} bold />
+          </tr>
         </tbody>
       </table>
     </div>
