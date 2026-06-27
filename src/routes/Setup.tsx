@@ -7,6 +7,7 @@ import { downloadCsv, parseRosterCsv, rosterTemplateCsv } from '@/lib/csv'
 import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
 import { VideoSetup } from '@/components/VideoSetup'
+import { ShareSheet } from '@/components/ShareSheet'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -110,6 +111,7 @@ function GamesView({
   const [creating, setCreating] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [watchGame, setWatchGame] = useState<Game | null>(null)
+  const [shareGame, setShareGame] = useState<Game | null>(null)
   const [showPast, setShowPast] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [eAway, setEAway] = useState('')
@@ -268,6 +270,12 @@ function GamesView({
                         Score ▸
                       </Link>
                       <button
+                        onClick={() => setShareGame(game)}
+                        className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                      >
+                        Share
+                      </button>
+                      <button
                         onClick={() => setWatchGame(game)}
                         className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
                       >
@@ -320,6 +328,16 @@ function GamesView({
           onClose={() => setWatchGame(null)}
         />
       )}
+
+      {shareGame && (
+        <ShareSheet
+          url={`${window.location.origin}/watch/${shareGame.id}`}
+          title={`${teams.find((t) => t.id === shareGame.away_team_id)?.name ?? 'Away'} at ${
+            teams.find((t) => t.id === shareGame.home_team_id)?.name ?? 'Home'
+          }`}
+          onClose={() => setShareGame(null)}
+        />
+      )}
     </section>
   )
 }
@@ -328,6 +346,16 @@ function GamesView({
 // stays inside the PWA (opening it directly gets trapped in the iOS shell). For a
 // finished game /watch renders the full final view (recap + box + stats + plays).
 function LiveWatchModal({ gameId, title, onClose }: { gameId: string; title: string; onClose: () => void }) {
+  // The Setup screen sets the body cream; while this dark viewer modal is open,
+  // make the body dark so the iOS bottom safe-area strip behind it isn't cream.
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = '#15281b'
+    return () => {
+      document.body.style.backgroundColor = prev
+    }
+  }, [])
+
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-night-green">
       <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
@@ -385,7 +413,9 @@ function CreateGameCard({
       owner_id: userId,
       away_team_id: away,
       home_team_id: home,
-      scheduled_at: when || null,
+      // datetime-local is a naive local string; convert to a real instant so it
+      // isn't misread as UTC (which showed 11 AM as 7 AM to viewers).
+      scheduled_at: when ? new Date(when).toISOString() : null,
       location: location.trim() || null,
       video_source: video,
       video_config: video === 'youtube' && ytUrl.trim() ? { youtube_url: ytUrl.trim() } : {},

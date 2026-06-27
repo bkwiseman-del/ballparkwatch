@@ -205,6 +205,15 @@ export default function Watch() {
     }
   }, [soundOn])
 
+  // Match the page (and the desktop side margins + iOS safe-area strips) to the
+  // screen being shown: navy for the Starting Soon cover, night-green otherwise.
+  useEffect(() => {
+    document.body.style.backgroundColor = live.status === 'scheduled' ? '#1A2A4A' : '#15281b'
+    return () => {
+      document.body.style.backgroundColor = ''
+    }
+  }, [live.status])
+
   // Crowd ambience loops only for no-video games; with live video the video's
   // own audio is the ambience, so we run just commentary + sound FX over it.
   useEffect(() => {
@@ -483,36 +492,38 @@ function StartingSoon({
   const sub = [location, date].filter(Boolean).join(' · ')
 
   return (
-    <div className="relative flex flex-1 flex-col items-center justify-center gap-6 bg-ink px-6 text-center">
+    <div className="relative flex flex-1 flex-col items-center justify-center bg-ink px-6 text-center">
       <div className="absolute inset-x-0 top-0">
         <Bunting />
       </div>
 
-      <p className="font-athletic text-xs font-semibold uppercase tracking-[.28em] text-[#a9b4c9]">
-        First Pitch
-      </p>
+      <div className="flex flex-col items-center gap-5 border-2 border-gold bg-black/15 px-8 py-9 shadow-hard">
+        <p className="font-athletic text-xs font-semibold uppercase tracking-[.28em] text-[#a9b4c9]">
+          First Pitch
+        </p>
 
-      <div>
-        <p className="font-display text-2xl leading-tight text-cream min-[760px]:text-3xl">{board.away.name}</p>
-        <p className="my-2 font-athletic text-xs uppercase tracking-[.32em] text-muted-green">— at —</p>
-        <p className="font-display text-2xl leading-tight text-gold min-[760px]:text-3xl">{board.home.name}</p>
-      </div>
-
-      {time ? (
         <div>
-          <p className="font-display text-4xl text-cream">{time}</p>
-          {sub && <p className="mt-1.5 font-data text-sm text-muted-green">{sub}</p>}
+          <p className="font-display text-2xl leading-tight text-cream min-[760px]:text-3xl">{board.away.name}</p>
+          <p className="my-2 font-athletic text-xs uppercase tracking-[.32em] text-muted-green">— at —</p>
+          <p className="font-display text-2xl leading-tight text-gold min-[760px]:text-3xl">{board.home.name}</p>
         </div>
-      ) : (
-        <>
-          <p className="font-display text-3xl tracking-[.2em] text-gold">STARTING SOON</p>
-          {sub && <p className="font-data text-sm text-muted-green">{sub}</p>}
-        </>
-      )}
 
-      <p className="font-athletic text-xs uppercase tracking-[.2em] text-[#7f8aa3]">
-        {hasVideo ? 'Waiting for stream' : 'Not live yet'}
-      </p>
+        {time ? (
+          <div>
+            <p className="font-display text-4xl text-cream">{time}</p>
+            {sub && <p className="mt-1.5 font-data text-sm text-muted-green">{sub}</p>}
+          </div>
+        ) : (
+          <>
+            <p className="font-display text-3xl tracking-[.2em] text-gold">STARTING SOON</p>
+            {sub && <p className="font-data text-sm text-muted-green">{sub}</p>}
+          </>
+        )}
+
+        <p className="font-athletic text-xs uppercase tracking-[.2em] text-[#7f8aa3]">
+          {hasVideo ? 'Waiting for stream' : 'Not live yet'}
+        </p>
+      </div>
     </div>
   )
 }
