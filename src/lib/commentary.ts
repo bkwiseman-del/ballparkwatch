@@ -220,14 +220,18 @@ function voiceFor(
 function inningRecap(state: LiveGame, runsThisHalf: number, lineups: Lineups, teams: Teams): string {
   const battingTop = state.half === 'top'
   const team = battingTop ? teams.away : teams.home
-  const half = `${battingTop ? 'top' : 'bottom'} of the ${ord(state.inning)}`
+  // Top half ending = the middle of the inning; bottom half ending = the inning is
+  // complete, so call it "the end of the Nth inning" (not "the bottom of the Nth").
+  const marker = battingTop
+    ? `That's the middle of the ${ord(state.inning)}.`
+    : `That's the end of the ${ord(state.inning)} inning.`
   const scored =
     runsThisHalf === 0
       ? `${team} were held scoreless`
       : `${team} put up ${runsThisHalf} run${runsThisHalf === 1 ? '' : 's'}`
   const next = nextHalfLeadoff(state, lineups)
   const score = `The score is now ${teams.away} ${state.awayScore}, ${teams.home} ${state.homeScore}.`
-  return `That's the end of the ${half}. ${scored} that half. ${score}${next ? ` Leading off next, ${next}.` : ''}`
+  return `${marker} ${scored} that half. ${score}${next ? ` Leading off next, ${next}.` : ''}`
 }
 
 // All audio cues for events newer than `sinceSeq`, in order.
