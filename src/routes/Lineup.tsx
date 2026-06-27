@@ -216,6 +216,24 @@ function TeamLineup({
     setOrder(next)
   }
 
+  // Pointer-based drag (HTML5 draggable doesn't fire on touch / iOS). The handle
+  // captures the pointer; as it moves over another row we reorder live.
+  function onHandleDown(e: React.PointerEvent, pid: string) {
+    e.preventDefault()
+    setDragId(pid)
+    ;(e.currentTarget as Element).setPointerCapture?.(e.pointerId)
+  }
+  function onHandleMove(e: React.PointerEvent, dragId: string | null) {
+    if (!dragId) return
+    const row = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest('[data-pid]')
+    const overId = (row as HTMLElement | null)?.dataset.pid
+    if (overId && overId !== dragId) move(order.indexOf(dragId), order.indexOf(overId))
+  }
+  function onHandleUp(e: React.PointerEvent) {
+    setDragId(null)
+    ;(e.currentTarget as Element).releasePointerCapture?.(e.pointerId)
+  }
+
   return (
     <section className="border-2 border-ink bg-cream-off">
       <div className={`px-4 py-2.5 ${accent ? 'bg-ink text-gold' : 'bg-white text-ink'} border-b-2 border-ink`}>
@@ -236,18 +254,18 @@ function TeamLineup({
           return (
             <li
               key={pid}
-              draggable
-              onDragStart={() => setDragId(pid)}
-              onDragOver={(e) => {
-                e.preventDefault()
-                if (dragId && dragId !== pid) move(order.indexOf(dragId), i)
-              }}
-              onDragEnd={() => setDragId(null)}
+              data-pid={pid}
               className={`flex items-center gap-2 px-3 py-2 ${i > 0 ? 'border-t border-ink/12' : ''} ${
-                dragId === pid ? 'opacity-50' : ''
-              }`}
+                dragId === pid ? 'bg-gold/15 opacity-60' : ''
+              } ${dragId ? 'select-none' : ''}`}
             >
-              <span className="cursor-grab select-none px-1 text-ink/30" title="Drag to reorder">
+              <span
+                onPointerDown={(e) => onHandleDown(e, pid)}
+                onPointerMove={(e) => onHandleMove(e, dragId)}
+                onPointerUp={onHandleUp}
+                className="-mx-1 cursor-grab touch-none select-none px-3 py-1 text-lg text-ink/40"
+                title="Drag to reorder"
+              >
                 ⠿
               </span>
               <span className="w-5 text-right font-athletic text-base font-bold text-ink">{i + 1}</span>
