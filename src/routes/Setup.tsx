@@ -876,6 +876,23 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
     else reload()
   }
 
+  async function deletePlayer(p: Player) {
+    if (!window.confirm(`Remove ${p.name} from ${team.name}? This can’t be undone.`)) return
+    const { error } = await supabase.from('players').delete().eq('id', p.id)
+    if (error) {
+      // game_events references players (no cascade), so a player who has batted
+      // in a saved game can't be deleted until that game is removed.
+      const fk = error.code === '23503' || /foreign key/i.test(error.message)
+      onError(
+        fk
+          ? `Can’t remove ${p.name} — they’ve appeared in a scored game. Delete that game first.`
+          : error.message,
+      )
+      return
+    }
+    reload()
+  }
+
   async function onFile(file: File) {
     setImportMsg(null)
     const text = await file.text()
@@ -964,6 +981,13 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
                 .filter(Boolean)
                 .join(' · ')}
             </span>
+            <button
+              onClick={() => deletePlayer(p)}
+              title={`Remove ${p.name}`}
+              className="font-athletic text-xs font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
+            >
+              Remove
+            </button>
           </li>
         ))}
         {players.length === 0 && (
