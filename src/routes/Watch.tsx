@@ -337,24 +337,28 @@ export default function Watch() {
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => {
-              if (soundOn) {
-                audio.disable()
-                setSoundOn(false)
-              } else {
-                audio.enable()
-                setSoundOn(true)
-              }
-            }}
-            aria-label={soundOn ? 'Turn off AI commentary' : 'Turn on AI commentary'}
-            className={`inline-flex items-center gap-1.5 border px-2 py-1 font-athletic text-[11px] font-semibold uppercase tracking-wide ${
-              soundOn ? 'border-gold bg-gold text-ink' : 'border-cream/40 text-cream/70'
-            }`}
-          >
-            {soundOn ? <SoundOnIcon className="h-4 w-4" /> : <SoundOffIcon className="h-4 w-4" />}
-            Commentary
-          </button>
+          {/* Commentary only matters during a live game — hide it pre-game and on
+              the final summary. */}
+          {live.status === 'live' && (
+            <button
+              onClick={() => {
+                if (soundOn) {
+                  audio.disable()
+                  setSoundOn(false)
+                } else {
+                  audio.enable()
+                  setSoundOn(true)
+                }
+              }}
+              aria-label={soundOn ? 'Turn off AI commentary' : 'Turn on AI commentary'}
+              className={`inline-flex items-center gap-1.5 border px-2 py-1 font-athletic text-[11px] font-semibold uppercase tracking-wide ${
+                soundOn ? 'border-gold bg-gold text-ink' : 'border-cream/40 text-cream/70'
+              }`}
+            >
+              {soundOn ? <SoundOnIcon className="h-4 w-4" /> : <SoundOffIcon className="h-4 w-4" />}
+              Commentary
+            </button>
+          )}
           {live.status === 'live' ? (
             <span className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
@@ -368,7 +372,9 @@ export default function Watch() {
         </div>
       </header>
 
-      {live.status === 'final' ? (
+      {live.status === 'scheduled' ? (
+        <StartingSoon board={board} lineups={lineups} />
+      ) : live.status === 'final' ? (
         <FinalView board={board} events={events} recap={info.recap ?? null} />
       ) : isDesktop ? (
         /* Desktop: left = video + bug + Plays/Box/Stats; right = the live field. */
@@ -427,6 +433,57 @@ export default function Watch() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// Pre-game cover (design spec): bunting, the matchup, and both starting lineups.
+function StartingSoon({ board, lineups }: { board: ScoreboardState; lineups: LiveLineups }) {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
+      <Bunting />
+      <div className="border-b-2 border-gold bg-[#122019] px-4 pb-6 pt-5 text-center">
+        <p className="font-display text-2xl tracking-[.3em] text-gold">STARTING SOON</p>
+        <div className="mt-3 flex items-center justify-center gap-4 font-display text-3xl min-[760px]:text-4xl">
+          <span className="text-cream">{board.away.code}</span>
+          <span className="text-muted-green">vs</span>
+          <span className="text-gold">{board.home.code}</span>
+        </div>
+        {(board.away.name || board.home.name) && (
+          <p className="mt-1.5 font-data text-xs text-muted-green">
+            {board.away.name} at {board.home.name}
+          </p>
+        )}
+        <p className="mt-3 font-data text-sm text-muted-green">First pitch coming up — hang tight.</p>
+      </div>
+      {(lineups.away.length > 0 || lineups.home.length > 0) && (
+        <div className="grid gap-6 p-4 min-[760px]:grid-cols-2">
+          <LineupCard title={board.away.name || board.away.code} slots={lineups.away} />
+          <LineupCard title={board.home.name || board.home.code} slots={lineups.home} accent />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LineupCard({ title, slots, accent = false }: { title?: string; slots: LiveSlot[]; accent?: boolean }) {
+  if (!slots.length) return null
+  return (
+    <div>
+      <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title ?? 'Lineup'}</h3>
+      <ol className="border-2 border-gold/30">
+        {slots.map((s, i) => (
+          <li
+            key={s.id}
+            className={`flex items-center gap-2 px-3 py-1.5 font-data text-sm ${i > 0 ? 'border-t border-cream/10' : ''}`}
+          >
+            <span className="w-4 text-right text-muted-green">{i + 1}</span>
+            <span className="w-6 text-right font-athletic font-bold text-barn-red">{s.jersey ?? '—'}</span>
+            <span className="flex-1 truncate text-cream">{s.name}</span>
+            {s.pos && <span className="font-athletic text-[10px] uppercase text-muted-green">{s.pos}</span>}
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }
