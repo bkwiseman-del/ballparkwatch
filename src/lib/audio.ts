@@ -142,22 +142,35 @@ class AudioManager {
   }
 
   // Crowd ambience loop — on for no-video games, off when live video is present.
-  setCrowd(on: boolean) {
+  // Async + self-healing: lazy-loads the buffer if the initial preload missed it
+  // and resumes a suspended context, so it reliably starts on the unlock tap.
+  async setCrowd(on: boolean) {
     this.crowdOn = on
-    if (!this.enabled || !this.ctx || !this.crowdBuffer) return
-    if (on && !this.crowdSource) {
-      const src = this.ctx.createBufferSource()
-      src.buffer = this.crowdBuffer
-      src.loop = true
-      const g = this.ctx.createGain()
-      g.gain.value = CROWD_BASE
-      src.connect(g).connect(this.ctx.destination)
-      src.start()
-      this.crowdSource = src
-      this.crowdGain = g
-    } else if (!on) {
+    if (!this.enabled || !this.ctx) return
+    if (!on) {
       this.stopCrowd()
+      return
     }
+    if (this.crowdSource) return // already looping
+    if (!this.crowdBuffer) this.crowdBuffer = await this.load(CROWD_FILE)
+    if (this.ctx.state === 'suspended') {
+      try {
+        await this.ctx.resume()
+      } catch {
+        /* ignore */
+      }
+    }
+    // State may have changed across the awaits.
+    if (!this.crowdOn || this.crowdSource || !this.crowdBuffer || !this.ctx) return
+    const src = this.ctx.createBufferSource()
+    src.buffer = this.crowdBuffer
+    src.loop = true
+    const g = this.ctx.createGain()
+    g.gain.value = CROWD_BASE
+    src.connect(g).connect(this.ctx.destination)
+    src.start()
+    this.crowdSource = src
+    this.crowdGain = g
   }
 
   private stopCrowd() {
