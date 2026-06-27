@@ -36,9 +36,9 @@ export const FIELDER_POS: Record<string, { x: number; y: number }> = {
   '2B': { x: 214, y: 196 },
   SS: { x: 126, y: 196 },
   '3B': { x: 68, y: 238 },
-  LF: { x: 90, y: 98 },
-  CF: { x: 170, y: 58 },
-  RF: { x: 250, y: 98 },
+  LF: { x: 95, y: 178 },
+  CF: { x: 170, y: 158 },
+  RF: { x: 245, y: 178 },
 }
 
 export function FieldDiamond({
@@ -71,13 +71,13 @@ export function FieldDiamond({
     ? (e: React.MouseEvent<SVGSVGElement>) => {
         const r = e.currentTarget.getBoundingClientRect()
         const x = 18 + ((e.clientX - r.left) / r.width) * 304
-        const y = 16 + ((e.clientY - r.top) / r.height) * 348
+        const y = 132 + ((e.clientY - r.top) / r.height) * 238
         onFieldTap({ x: Math.round(x), y: Math.round(y) })
       }
     : undefined
   return (
     <svg
-      viewBox="18 16 304 348"
+      viewBox="18 132 304 238"
       className={className}
       role="img"
       aria-label="Field"
