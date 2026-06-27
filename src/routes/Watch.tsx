@@ -295,11 +295,13 @@ export default function Watch() {
 
         if (gameId) {
           // Commentary is public too — speak first name + last initial only.
+          // Play descriptions use the last name ("Cook singles"); the batter intro
+          // ("now batting") uses the FULL name + number, so pass full names here.
           const nameOf = (id: string | null | undefined) =>
             id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null
           const lns = {
-            away: (info?.lineups?.away ?? []).map((s) => ({ name: displayName(s.name), jersey: s.jersey })),
-            home: (info?.lineups?.home ?? []).map((s) => ({ name: displayName(s.name), jersey: s.jersey })),
+            away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+            home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
           }
           const teamNames = {
             away: info?.away?.name ?? 'Away',

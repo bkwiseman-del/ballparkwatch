@@ -23,17 +23,27 @@ const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', 
 const ord = (n: number) => ORD[n] ?? `${n}th`
 const bw = (n: number) => (n === 0 ? 'oh' : (ONES[n] ?? String(n)))
 
-function nextBatterName(state: LiveGame, lineups: Lineups): string | null {
+// Spoken intro for a batter — as much as we know: "number 24 Waylon Cook",
+// "number 24", "Waylon Cook", or null.
+function announce(slot: Slot | undefined): string | null {
+  if (!slot) return null
+  const parts: string[] = []
+  if (slot.jersey) parts.push(`number ${slot.jersey}`)
+  if (slot.name?.trim()) parts.push(slot.name.trim())
+  return parts.length ? parts.join(' ') : null
+}
+
+function nextBatterSlot(state: LiveGame, lineups: Lineups): Slot | undefined {
   const key = state.half === 'top' ? 'away' : 'home'
   const order = lineups[key]
-  if (!order.length) return null
+  if (!order.length) return undefined
   const idx = (key === 'away' ? state.awayBatterIdx : state.homeBatterIdx) % order.length
-  return order[idx]?.name ?? null
+  return order[idx]
 }
 
 function batterUp(state: LiveGame, lineups: Lineups): string | null {
   if (state.outs >= 3) return null // inning's over; the recap covers who's next
-  const n = nextBatterName(state, lineups)
+  const n = announce(nextBatterSlot(state, lineups))
   return n ? `Now batting, ${n}.` : null
 }
 
@@ -43,7 +53,7 @@ function nextHalfLeadoff(state: LiveGame, lineups: Lineups): string | null {
   const order = lineups[nextKey]
   if (!order.length) return null
   const idx = (nextKey === 'away' ? state.awayBatterIdx : state.homeBatterIdx) % order.length
-  return order[idx]?.name ?? null
+  return announce(order[idx])
 }
 
 // The situation between batters: who's on base and how many outs.
