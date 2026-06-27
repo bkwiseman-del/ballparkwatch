@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
@@ -7,10 +7,6 @@ import { downloadCsv, parseRosterCsv, rosterTemplateCsv } from '@/lib/csv'
 import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
 import { VideoSetup } from '@/components/VideoSetup'
-import { Bunting } from '@/components/Bunting'
-import { computeBoxScore } from '@/lib/stats'
-import { resolveCode } from '@/lib/scoreboard'
-import type { GameEventRow } from '@/lib/engine'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -37,6 +33,17 @@ export default function Setup() {
   useEffect(() => {
     load()
   }, [load])
+
+  // iOS standalone paints the safe-area strips (incl. the home indicator) with the
+  // BODY background — which is the dark night-green — so a cream screen shows a green
+  // strip. Make the body cream while this (cream) screen is up; restore on leave.
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = '#F4ECD8'
+    return () => {
+      document.body.style.backgroundColor = prev
+    }
+  }, [])
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-cream text-ink">
@@ -102,7 +109,6 @@ function GamesView({
 }) {
   const [creating, setCreating] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
-  const [summaryGame, setSummaryGame] = useState<Game | null>(null)
   const [watchGame, setWatchGame] = useState<Game | null>(null)
   const [showPast, setShowPast] = useState(false)
 
@@ -170,10 +176,11 @@ function GamesView({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {isFinal ? (
-                    // A finished game: show the recap + line score in-app (opening
-                    // the /watch viewer would just get trapped in the iOS PWA).
+                    // A finished game: the full final view (recap + box + stats +
+                    // plays tabs) lives at /watch; show it in-app via the iframe
+                    // modal (opening it directly gets trapped in the iOS PWA).
                     <button
-                      onClick={() => setSummaryGame(game)}
+                      onClick={() => setWatchGame(game)}
                       className="bg-board-green px-4 py-2 font-display text-sm text-cream"
                     >
                       Game summary ▸
@@ -238,136 +245,35 @@ function GamesView({
         <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => onChange()} />
       )}
 
-      {summaryGame && (
-        <GameSummaryModal
-          game={summaryGame}
-          away={teams.find((t) => t.id === summaryGame.away_team_id) ?? null}
-          home={teams.find((t) => t.id === summaryGame.home_team_id) ?? null}
-          onClose={() => setSummaryGame(null)}
+      {watchGame && (
+        <LiveWatchModal
+          gameId={watchGame.id}
+          title={watchGame.status === 'final' ? 'Game Summary' : 'Live View'}
+          onClose={() => setWatchGame(null)}
         />
       )}
-
-      {watchGame && <LiveWatchModal gameId={watchGame.id} onClose={() => setWatchGame(null)} />}
     </section>
   )
 }
 
-// In-app live viewer for the scorer — embeds the public /watch page in an iframe
-// so it stays inside the PWA (opening it directly gets trapped in the iOS shell).
-function LiveWatchModal({ gameId, onClose }: { gameId: string; onClose: () => void }) {
+// In-app viewer for the scorer — embeds the public /watch page in an iframe so it
+// stays inside the PWA (opening it directly gets trapped in the iOS shell). For a
+// finished game /watch renders the full final view (recap + box + stats + plays).
+function LiveWatchModal({ gameId, title, onClose }: { gameId: string; title: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-night-green">
       <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
-        <span className="font-display text-lg text-cream">Live View</span>
+        <span className="font-display text-lg text-cream">{title}</span>
         <button onClick={onClose} className="font-athletic text-cream">
           Done
         </button>
       </div>
       <iframe
         src={`/watch/${gameId}`}
-        title="Live view"
+        title={title}
         allow="autoplay; encrypted-media; picture-in-picture; camera; microphone"
         className="min-h-0 w-full flex-1 border-0 bg-night-green"
       />
-    </div>
-  )
-}
-
-// In-app game summary (recap + final/line score) for a finished game. Kept inside
-// the PWA because the public /watch viewer gets trapped in the iOS standalone shell.
-function GameSummaryModal({
-  game,
-  away,
-  home,
-  onClose,
-}: {
-  game: Game
-  away: Team | null
-  home: Team | null
-  onClose: () => void
-}) {
-  const [box, setBox] = useState<ReturnType<typeof computeBoxScore> | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    supabase
-      .from('game_events')
-      .select('seq,event_type,payload,batter_id')
-      .eq('game_id', game.id)
-      .order('seq')
-      .then(({ data }) => {
-        if (!cancelled && data) setBox(computeBoxScore(data as GameEventRow[]))
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [game.id])
-
-  const awayCode = resolveCode(away?.code, away?.name)
-  const homeCode = resolveCode(home?.code, home?.name)
-
-  return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-night-green text-cream">
-      <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
-        <span className="font-display text-lg text-cream">Game Summary</span>
-        <button onClick={onClose} className="font-athletic text-cream">
-          Done
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <Bunting />
-
-        <div className="border-b-2 border-gold bg-[#122019] px-4 pb-6 pt-5 text-center">
-          <p className="font-display text-2xl tracking-[.3em] text-barn-red">FINAL</p>
-          <div className="mt-3 flex items-center justify-center gap-4 font-display text-3xl">
-            <span className="text-cream">
-              {awayCode} {box?.away.r ?? '—'}
-            </span>
-            <span className="text-muted-green">—</span>
-            <span className="text-gold">
-              {homeCode} {box?.home.r ?? '—'}
-            </span>
-          </div>
-          <p className="mt-1.5 font-data text-xs text-muted-green">
-            {away?.name ?? '?'} at {home?.name ?? '?'}
-          </p>
-        </div>
-
-        <div className="mx-auto w-full max-w-2xl p-4">
-          {game.recap ? (
-            <div className="mb-5 border-2 border-gold bg-black/20 p-4 text-left">
-              <p className="font-display text-xl leading-tight text-gold">{game.recap.headline}</p>
-              <p className="mt-2 whitespace-pre-line font-data text-sm leading-relaxed text-cream">
-                {game.recap.body}
-              </p>
-            </div>
-          ) : (
-            <p className="mb-5 font-data text-sm text-muted-green">No recap was generated for this game.</p>
-          )}
-
-          {box && (
-            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-px bg-cream/15 font-data text-sm">
-              {['', 'R', 'H', 'E'].map((h, i) => (
-                <div
-                  key={i}
-                  className="bg-night-green px-3 py-1.5 text-center font-athletic font-semibold text-muted-green"
-                >
-                  {h}
-                </div>
-              ))}
-              {([['away', awayCode, box.away], ['home', homeCode, box.home]] as const).map(([k, code, t]) => (
-                <Fragment key={k}>
-                  <div className="bg-night-green px-3 py-1.5 font-athletic text-cream">{code}</div>
-                  <div className="bg-night-green px-3 py-1.5 text-center tabular text-cream">{t.r}</div>
-                  <div className="bg-night-green px-3 py-1.5 text-center tabular text-cream">{t.h}</div>
-                  <div className="bg-night-green px-3 py-1.5 text-center tabular text-cream">{t.e}</div>
-                </Fragment>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

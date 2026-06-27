@@ -22,6 +22,16 @@ export default function Lineup() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  // Cream screen: paint the body cream so iOS doesn't show the dark night-green in
+  // the safe-area strips (the home indicator area). Restore on leave.
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = '#F4ECD8'
+    return () => {
+      document.body.style.backgroundColor = prev
+    }
+  }, [])
+
   useEffect(() => {
     if (!gameId) return
     ;(async () => {
