@@ -238,7 +238,7 @@ function GamesView({
                   {game.status === 'scheduled' && (
                     <button
                       onClick={() => startEdit(game)}
-                      className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                      className="px-2 py-2 font-athletic text-xs font-semibold uppercase tracking-wide text-ink/45 underline hover:text-ink"
                     >
                       Edit
                     </button>
