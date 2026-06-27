@@ -126,6 +126,10 @@ export default function Score() {
             <FieldDiamond
               bases={live.bases}
               nameOf={nameOf}
+              fielders={(live.half === 'top' ? s.lineups.home : s.lineups.away).map((p) => ({
+                pos: p.position ?? p.default_position,
+                name: p.name,
+              }))}
               onRunnerTap={(base, id) => setRunnerAction({ base, id })}
               batterLabel={s.currentBatter ? shortName(s.currentBatter) : null}
               className="h-full max-h-full w-full max-w-[340px]"
@@ -591,8 +595,9 @@ function EndGamePopup({
 
 /* ---------------------------------------------------------- substitutions */
 
-const SUB_POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
-// The nine fielding spots are one-per-lineup; DH/EH may repeat.
+// BENCH = still in the batting order, just not in the field this rotation.
+const SUB_POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH', 'BENCH']
+// The nine fielding spots are one-per-lineup; DH/EH/BENCH may repeat.
 const UNIQUE_SUB_POSITIONS = new Set(['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'])
 
 function SubstitutionFlow({

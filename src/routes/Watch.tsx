@@ -305,7 +305,8 @@ export default function Watch() {
       .map((s) => ({ playerId: s.id, position: s.pos }))
     return projectSlots(initial, subs, key).map((s) => {
       const pl = info!.players?.[s.playerId]
-      return { id: s.playerId, name: pl?.name ?? '—', jersey: pl?.jersey ?? null, pos: s.position }
+      // Public viewer shows first name + last initial only.
+      return { id: s.playerId, name: privacyName(pl?.name), jersey: pl?.jersey ?? null, pos: s.position }
     })
   }
   const lineups: LiveLineups = { away: resolveTeam('away'), home: resolveTeam('home') }
@@ -683,7 +684,7 @@ function Standby({
         <div className="w-full max-w-xs border-t border-gold/30 pt-4">
           <p className="mb-1 font-athletic text-[10px] uppercase tracking-[.16em] text-muted-green">Due up</p>
           <p className="font-data text-sm text-cream">
-            {due.map((p) => `${p.jersey ?? ''} ${p.name.split(' ').pop()}`).join(' · ')}
+            {due.map((p) => `${p.jersey ?? ''} ${p.name}`).join(' · ')}
           </p>
         </div>
       )}
@@ -709,9 +710,18 @@ function ordinalNum(n: number): string {
 
 /* ---------------------------------------------------------------- tabs */
 
+// Privacy: the scorer enters full names, but the public viewer only ever shows
+// first name + last initial (e.g. "Carson S."), like GameChanger.
+function privacyName(full: string | null | undefined): string {
+  if (!full) return '—'
+  const parts = full.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`
+}
+
 function nameMap(events: ViewerEvent[]) {
   const m = new Map<string, string>()
-  for (const e of events) if (e.batter_id && e.batter_name) m.set(e.batter_id, e.batter_name)
+  for (const e of events) if (e.batter_id && e.batter_name) m.set(e.batter_id, privacyName(e.batter_name))
   return m
 }
 
@@ -730,20 +740,18 @@ function FieldTab({
   const plays = buildPlayByPlay(events, (id) => (id ? map.get(id) ?? null : null))
   const latest = plays[0]
 
-  // last name for runner chips
-  const runnerName = (id: string) => {
-    const n = map.get(id)
-    return n ? (n.trim().split(/\s+/).pop() ?? n) : null
-  }
+  // runner chips: the already-privatized name ("First L.")
+  const runnerName = (id: string) => map.get(id) ?? null
 
-  // defense + current batter from the projected lineups
+  // defense + current batter from the projected lineups (names already privatized).
+  // Field chips are tight, so show just the first name there.
   const fieldingKey = live.half === 'top' ? 'home' : 'away'
   const battingKey = live.half === 'top' ? 'away' : 'home'
-  const fielders = lineups[fieldingKey].map((p) => ({ pos: p.pos, name: p.name }))
+  const fielders = lineups[fieldingKey].map((p) => ({ pos: p.pos, name: p.name.split(' ')[0] }))
   const order = lineups[battingKey]
   const idx = battingKey === 'away' ? live.awayBatterIdx : live.homeBatterIdx
   const batter = order.length ? order[idx % order.length] : null
-  const batterLabel = batter ? (batter.name.trim().split(/\s+/).pop() ?? batter.name).toUpperCase() : null
+  const batterLabel = batter ? batter.name.toUpperCase() : null
 
   return (
     <div>

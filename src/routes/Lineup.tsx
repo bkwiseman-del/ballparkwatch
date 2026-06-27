@@ -4,8 +4,9 @@ import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
 import type { Game, LineupEntry, Player, Team } from '@/lib/types'
 
-const POSITIONS_LIST = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
-// The nine fielding spots can each be held by only one player; DH/EH can repeat.
+// BENCH = bats (continuous order) but isn't in the field this rotation.
+const POSITIONS_LIST = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH', 'BENCH']
+// The nine fielding spots can each be held by only one player; DH/EH/BENCH repeat.
 const UNIQUE_POSITIONS = new Set(['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'])
 
 export default function Lineup() {
@@ -117,8 +118,9 @@ export default function Lineup() {
       <div className="mx-auto max-w-3xl px-4 py-5">
         <h1 className="mb-1 font-display text-2xl">Lineups &amp; Positions</h1>
         <p className="mb-5 font-data text-sm text-muted-tan">
-          Tap players to add them in batting order (drag ⠿ or ▲▼ to reorder, ✕ to remove). Set each
-          player's defensive position with the dropdown — adjust any time, including between innings.
+          Add everyone who’s playing to the batting order (drag ⠿ or ▲▼ to reorder). In a continuous
+          order everyone bats — a player sitting on defense stays in the order with position{' '}
+          <b>BENCH</b>. Leave a player out of the order only if they’re not here today.
         </p>
 
         {error && (
@@ -291,13 +293,14 @@ function TeamLineup({
         )}
       </ol>
 
-      {/* Bench — roster players sitting out (continuous batting order: everyone in
-          the order bats each time through; benched players don't bat). */}
+      {/* Not in the batting order — players not playing today (absent). In a
+          continuous batting order EVERYONE present bats; a player who's only
+          sitting on defense stays in the order with position BENCH. */}
       {available.length > 0 && (
         <div className="border-t-2 border-ink p-3">
           <div className="mb-2 flex items-center justify-between">
             <p className="font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-              Bench · won’t bat — tap to add
+              Not playing today — tap to add
             </p>
             <button
               onClick={() => setOrder([...order, ...available.map((p) => p.id)])}
