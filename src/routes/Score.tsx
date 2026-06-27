@@ -1329,7 +1329,16 @@ function FinalRecap({
     setBusy(true)
     setErr(null)
     try {
-      const summary = buildRecapSummary(events, teams, nameOf)
+      // Build the recap from the SAVED event log, not the in-memory copy — the
+      // latter can be missing plays if the local state ever drifted, which is how
+      // a 6-0 game got recapped as a 0-0 tie. The DB is the source of truth.
+      const { data: rows } = await supabase
+        .from('game_events')
+        .select('seq,event_type,payload,batter_id')
+        .eq('game_id', gameId)
+        .order('seq')
+      const log = (rows as GameEventRow[] | null)?.length ? (rows as GameEventRow[]) : events
+      const summary = buildRecapSummary(log, teams, nameOf)
       const r = await generateRecap(summary)
       const withTs: Recap = { ...r, generated_at: new Date().toISOString() }
       const { error } = await supabase.from('games').update({ recap: withTs }).eq('id', gameId)
