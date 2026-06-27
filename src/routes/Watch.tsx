@@ -241,11 +241,12 @@ export default function Watch() {
           audio.enqueueOrgan()
 
         if (gameId) {
+          // Commentary is public too — speak first name + last initial only.
           const nameOf = (id: string | null | undefined) =>
-            (id && info?.players?.[id]?.name) || null
+            id && info?.players?.[id]?.name ? privacyName(info.players[id].name) : null
           const lns = {
-            away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-            home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+            away: (info?.lineups?.away ?? []).map((s) => ({ name: privacyName(s.name), jersey: s.jersey })),
+            home: (info?.lineups?.home ?? []).map((s) => ({ name: privacyName(s.name), jersey: s.jersey })),
           }
           const teamNames = {
             away: info?.away?.name ?? 'Away',
