@@ -100,11 +100,17 @@ export function useScorer(gameId: string | undefined) {
       // Reconcile the DB with the local write-ahead log: replay any plays that
       // were scored locally but never reached the server (force-quit / dropped
       // write). We only replay the unconfirmed *tail* (seq beyond the DB max),
-      // so we never resurrect plays that were legitimately undone.
+      // so we never resurrect plays that were legitimately undone. Only for a LIVE
+      // game — a scheduled (or reset) or final game shouldn't have its old local
+      // backup replayed, which would un-reset it.
       const dbRows = (evs ?? []) as GameEventRow[]
       let rows = dbRows
       const maxDbSeq = dbRows.at(-1)?.seq ?? 0
-      const pending = readWal(gameId).filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
+      const pending =
+        g.status === 'live'
+          ? readWal(gameId).filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
+          : []
+      if (g.status !== 'live') writeWal(gameId, dbRows) // keep the local backup in sync with the reset
       if (pending.length) {
         const intended = [...dbRows, ...pending]
         const inserts = pending.map((p) => {
