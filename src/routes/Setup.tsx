@@ -235,14 +235,6 @@ function GamesView({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {game.status === 'scheduled' && (
-                    <button
-                      onClick={() => startEdit(game)}
-                      className="px-2 py-2 font-athletic text-xs font-semibold uppercase tracking-wide text-ink/45 underline hover:text-ink"
-                    >
-                      Edit
-                    </button>
-                  )}
                   {isFinal ? (
                     // A finished game: the full final view (recap + box + stats +
                     // plays tabs) lives at /watch; show it in-app via the iframe
@@ -282,6 +274,14 @@ function GamesView({
                         Watch
                       </button>
                     </>
+                  )}
+                  {game.status === 'scheduled' && (
+                    <button
+                      onClick={() => startEdit(game)}
+                      className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-ink"
+                    >
+                      Edit
+                    </button>
                   )}
                   <button
                     onClick={() => deleteGame(game)}
