@@ -279,7 +279,7 @@ function TeamLineup({
               <button
                 onClick={() => setOrder(order.filter((x) => x !== pid))}
                 className="px-1.5 font-athletic text-barn-red"
-                title="Remove"
+                title="Move to bench (won't bat)"
               >
                 ✕
               </button>
@@ -291,18 +291,27 @@ function TeamLineup({
         )}
       </ol>
 
-      {/* Available roster */}
+      {/* Bench — roster players sitting out (continuous batting order: everyone in
+          the order bats each time through; benched players don't bat). */}
       {available.length > 0 && (
         <div className="border-t-2 border-ink p-3">
-          <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-            Add to order
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+              Bench · won’t bat — tap to add
+            </p>
+            <button
+              onClick={() => setOrder([...order, ...available.map((p) => p.id)])}
+              className="font-athletic text-xs font-semibold uppercase tracking-wide text-board-green underline"
+            >
+              Add all
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
             {available.map((p) => (
               <button
                 key={p.id}
                 onClick={() => setOrder([...order, p.id])}
-                className="border-2 border-ink bg-white px-2.5 py-1.5 font-data text-sm"
+                className="border-2 border-dashed border-ink/50 bg-white px-2.5 py-1.5 font-data text-sm text-muted-tan"
               >
                 <b className="text-barn-red">{p.jersey_number ?? '—'}</b> {p.name}
               </button>
