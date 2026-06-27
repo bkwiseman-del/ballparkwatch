@@ -36,9 +36,9 @@ export const FIELDER_POS: Record<string, { x: number; y: number }> = {
   '2B': { x: 214, y: 196 },
   SS: { x: 126, y: 196 },
   '3B': { x: 68, y: 238 },
-  LF: { x: 95, y: 178 },
-  CF: { x: 170, y: 158 },
-  RF: { x: 245, y: 178 },
+  LF: { x: 92, y: 160 },
+  CF: { x: 170, y: 140 },
+  RF: { x: 248, y: 160 },
 }
 
 export function FieldDiamond({
@@ -71,13 +71,13 @@ export function FieldDiamond({
     ? (e: React.MouseEvent<SVGSVGElement>) => {
         const r = e.currentTarget.getBoundingClientRect()
         const x = 18 + ((e.clientX - r.left) / r.width) * 304
-        const y = 132 + ((e.clientY - r.top) / r.height) * 238
+        const y = 112 + ((e.clientY - r.top) / r.height) * 258
         onFieldTap({ x: Math.round(x), y: Math.round(y) })
       }
     : undefined
   return (
     <svg
-      viewBox="18 132 304 238"
+      viewBox="18 112 304 258"
       className={className}
       role="img"
       aria-label="Field"
@@ -87,10 +87,10 @@ export function FieldDiamond({
       <rect x="0" y="0" width="340" height="410" fill="#2C5234" />
 
       {/* outfield (fair territory fan) */}
-      <path d="M170 330 L40 200 A176 176 0 0 1 300 200 Z" fill="#326139" />
+      <path d="M170 330 L40 190 A182 182 0 0 1 300 190 Z" fill="#326139" />
       {/* foul lines */}
-      <line x1="170" y1="330" x2="44" y2="204" stroke="#e9ddc2" strokeWidth="2.5" />
-      <line x1="170" y1="330" x2="296" y2="204" stroke="#e9ddc2" strokeWidth="2.5" />
+      <line x1="170" y1="330" x2="44" y2="194" stroke="#e9ddc2" strokeWidth="2.5" />
+      <line x1="170" y1="330" x2="296" y2="194" stroke="#e9ddc2" strokeWidth="2.5" />
 
       {/* infield dirt + grass */}
       <polygon points="170,330 244,256 170,182 96,256" fill="#b07a3e" />
