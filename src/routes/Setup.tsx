@@ -116,12 +116,16 @@ function GamesView({
   const [editId, setEditId] = useState<string | null>(null)
   const [eAway, setEAway] = useState('')
   const [eHome, setEHome] = useState('')
+  const [eWhen, setEWhen] = useState('')
+  const [eLoc, setELoc] = useState('')
   const favorites = teams.filter((t) => t.is_favorite)
 
   function startEdit(game: Game) {
     setEditId(game.id)
     setEAway(game.away_team_id)
     setEHome(game.home_team_id)
+    setEWhen(toLocalInput(game.scheduled_at))
+    setELoc(game.location ?? '')
   }
 
   async function saveEdit(game: Game) {
@@ -129,7 +133,12 @@ function GamesView({
     if (eAway === eHome) return onError('Away and home must be different teams.')
     const { error } = await supabase
       .from('games')
-      .update({ away_team_id: eAway, home_team_id: eHome })
+      .update({
+        away_team_id: eAway,
+        home_team_id: eHome,
+        scheduled_at: eWhen ? new Date(eWhen).toISOString() : null,
+        location: eLoc.trim() || null,
+      })
       .eq('id', game.id)
     if (error) return onError(error.message)
     // If a team was actually replaced (not just home/away swapped), its lineup no
@@ -210,6 +219,30 @@ function GamesView({
                   </button>
                   <TeamSelect label="Home" value={eHome} onChange={setEHome} teams={teams} favorites={favorites} accent />
                 </div>
+                <label className="mb-3 block">
+                  <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+                    Date & time (optional)
+                  </span>
+                  <div className="flex w-full items-center border-2 border-ink bg-white px-3 py-2 focus-within:border-board-green">
+                    <input
+                      type="datetime-local"
+                      value={eWhen}
+                      onChange={(e) => setEWhen(e.target.value)}
+                      className="min-w-0 flex-1 bg-transparent font-data text-ink outline-none"
+                    />
+                  </div>
+                </label>
+                <label className="mb-3 block">
+                  <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+                    Location (optional)
+                  </span>
+                  <input
+                    value={eLoc}
+                    onChange={(e) => setELoc(e.target.value)}
+                    placeholder="e.g. Cedar Park · Field 2"
+                    className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+                  />
+                </label>
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(game)} className="bg-gold px-4 py-2 font-display text-sm text-ink">
                     Save
@@ -1226,6 +1259,14 @@ function videoLabel(v: VideoSource): string {
 function formatWhen(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+// Stored instant (UTC ISO) → a local "YYYY-MM-DDTHH:mm" value for datetime-local.
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function makeSlug(away?: string, home?: string): string {
