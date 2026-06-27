@@ -36,7 +36,8 @@ async function announcerText(text: string, kind?: string): Promise<string> {
   if (!ANTHROPIC_KEY || kind !== 'play') return text
   const rules =
     ' CRITICAL — restate ONLY what is in the input. "first", "second", "third" are BASES, never outs. ' +
-    'Do NOT add or guess the number of outs, the count, or the score, and do NOT say the inning or half is over, the side is retired, "to end the inning", or "for the Nth out" — unless that exact information is already in the input. Never invent facts.'
+    'Do NOT add or guess the number of outs, the count, or the score, and do NOT say the inning or half is over, the side is retired, "to end the inning", or "for the Nth out" — unless that exact information is already in the input. ' +
+    'A runner only SCORES if the input literally contains the word "scores". "to first/second/third" means a runner advanced to that base — it is NOT a run; never say anyone scored, reached home, or crossed the plate unless the input says "scores". Never invent facts.'
   const system =
     'You are an upbeat youth-baseball play-by-play announcer. Rewrite this terse play into ONE natural, energetic spoken sentence (max ~18 words). Keep the facts (who did what, who scored). Positive in tone. Output only the sentence — no quotes, no emojis.' +
     rules
@@ -58,7 +59,13 @@ async function announcerText(text: string, kind?: string): Promise<string> {
     if (!r.ok) return text
     const d = await r.json()
     const block = (d.content ?? []).find((b: { type: string }) => b.type === 'text')
-    return (block?.text ?? '').trim() || text
+    const speak = (block?.text ?? '').trim()
+    if (!speak) return text
+    // Deterministic guard: if the rewrite invents a run (scoring language) that the
+    // input never mentioned, discard it and use the exact play text.
+    const invents = /scor|crosses the plate|reaches home|touch.?em all|across the plate/i
+    if (invents.test(speak) && !/scor/i.test(text)) return text
+    return speak
   } catch {
     return text
   }
