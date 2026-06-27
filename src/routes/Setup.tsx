@@ -538,14 +538,17 @@ function TeamSelect({
       <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
         {label}
       </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full border-2 px-3 py-2 font-display outline-none ${
-          accent ? 'border-ink bg-ink text-gold' : 'border-ink bg-white text-ink'
-        }`}
-      >
-        <option value="">Select…</option>
+      {/* appearance-none so iOS uses our square styling on BOTH (a light-bg select
+          otherwise keeps iOS's native rounded corners); caret added back manually. */}
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full appearance-none rounded-none border-2 px-3 py-2 pr-8 font-display outline-none ${
+            accent ? 'border-ink bg-ink text-gold' : 'border-ink bg-white text-ink'
+          }`}
+        >
+          <option value="">Select…</option>
         {favorites.length > 0 && (
           <optgroup label="My Teams">
             {favorites.map((t) => (
@@ -555,16 +558,25 @@ function TeamSelect({
             ))}
           </optgroup>
         )}
-        {others.length > 0 && (
-          <optgroup label="Other teams">
-            {others.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
+          {others.length > 0 && (
+            <optgroup label="Other teams">
+              {others.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs ${
+            accent ? 'text-gold' : 'text-ink'
+          }`}
+        >
+          ▾
+        </span>
+      </div>
     </label>
   )
 }
