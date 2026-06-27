@@ -111,6 +111,34 @@ function GamesView({
   const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [watchGame, setWatchGame] = useState<Game | null>(null)
   const [showPast, setShowPast] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [eAway, setEAway] = useState('')
+  const [eHome, setEHome] = useState('')
+  const favorites = teams.filter((t) => t.is_favorite)
+
+  function startEdit(game: Game) {
+    setEditId(game.id)
+    setEAway(game.away_team_id)
+    setEHome(game.home_team_id)
+  }
+
+  async function saveEdit(game: Game) {
+    if (!eAway || !eHome) return onError('Pick both teams.')
+    if (eAway === eHome) return onError('Away and home must be different teams.')
+    const { error } = await supabase
+      .from('games')
+      .update({ away_team_id: eAway, home_team_id: eHome })
+      .eq('id', game.id)
+    if (error) return onError(error.message)
+    // If a team was actually replaced (not just home/away swapped), its lineup no
+    // longer applies — clear the game's lineups so they're rebuilt. A pure swap
+    // keeps the same team_ids, so lineups stay valid.
+    const before = [game.away_team_id, game.home_team_id].sort().join()
+    const after = [eAway, eHome].sort().join()
+    if (before !== after) await supabase.from('lineup_entries').delete().eq('game_id', game.id)
+    setEditId(null)
+    onChange()
+  }
 
   async function deleteGame(game: Game) {
     if (!window.confirm('Delete this game and all its plays, stats, and recap? This can’t be undone.'))
@@ -162,6 +190,38 @@ function GamesView({
           const away = teams.find((t) => t.id === game.away_team_id)
           const home = teams.find((t) => t.id === game.home_team_id)
           const isFinal = game.status === 'final'
+          if (editId === game.id) {
+            return (
+              <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
+                <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                  <TeamSelect label="Away" value={eAway} onChange={setEAway} teams={teams} favorites={favorites} />
+                  <button
+                    onClick={() => {
+                      const a = eAway
+                      setEAway(eHome)
+                      setEHome(a)
+                    }}
+                    title="Swap home/away"
+                    className="mb-1.5 border-2 border-ink px-2 py-2 font-display text-ink"
+                  >
+                    ⇄
+                  </button>
+                  <TeamSelect label="Home" value={eHome} onChange={setEHome} teams={teams} favorites={favorites} accent />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => saveEdit(game)} className="bg-gold px-4 py-2 font-display text-sm text-ink">
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditId(null)}
+                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </li>
+            )
+          }
           return (
             <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -175,6 +235,14 @@ function GamesView({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {game.status === 'scheduled' && (
+                    <button
+                      onClick={() => startEdit(game)}
+                      className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                    >
+                      Edit
+                    </button>
+                  )}
                   {isFinal ? (
                     // A finished game: the full final view (recap + box + stats +
                     // plays tabs) lives at /watch; show it in-app via the iframe
