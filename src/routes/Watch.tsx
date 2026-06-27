@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { ScorePanel } from '@/components/ScorePanel'
@@ -381,7 +381,14 @@ export default function Watch() {
   return (
     <div
       className="mx-auto flex min-h-full w-full max-w-lg flex-col text-cream min-[760px]:max-w-3xl lg:max-w-6xl"
-      style={{ backgroundColor: live.status === 'live' ? '#15281b' : '#1A2A4A' }}
+      // --surface is the page color (green live / navy final); data cells use it so
+      // they match the screen instead of being hard-coded green.
+      style={
+        {
+          backgroundColor: live.status === 'live' ? '#15281b' : '#1A2A4A',
+          '--surface': live.status === 'live' ? '#15281b' : '#1A2A4A',
+        } as CSSProperties
+      }
     >
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
@@ -1107,7 +1114,10 @@ function StatsTab({
         </h3>
         <div className="grid grid-cols-3 gap-px bg-cream/15 font-data text-sm">
           {['', board.away.code, board.home.code].map((c, i) => (
-            <div key={i} className="bg-night-green px-2 py-1.5 text-center font-athletic font-semibold text-muted-green">
+            <div
+              key={i}
+              className="bg-[var(--surface)] px-2 py-1.5 text-center font-athletic font-semibold text-muted-green"
+            >
               {c}
             </div>
           ))}
@@ -1147,9 +1157,9 @@ function StatsTab({
 function Stat3({ label, a, h }: { label: string; a: number; h: number }) {
   return (
     <>
-      <div className="bg-night-green px-2 py-1.5 text-muted-green">{label}</div>
-      <div className="bg-night-green px-2 py-1.5 text-center tabular text-cream">{a}</div>
-      <div className="bg-night-green px-2 py-1.5 text-center tabular text-cream">{h}</div>
+      <div className="bg-[var(--surface)] px-2 py-1.5 text-muted-green">{label}</div>
+      <div className="bg-[var(--surface)] px-2 py-1.5 text-center tabular text-cream">{a}</div>
+      <div className="bg-[var(--surface)] px-2 py-1.5 text-center tabular text-cream">{h}</div>
     </>
   )
 }
