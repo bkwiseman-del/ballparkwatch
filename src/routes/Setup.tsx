@@ -100,6 +100,7 @@ function GamesView({
   const [creating, setCreating] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [summaryGame, setSummaryGame] = useState<Game | null>(null)
+  const [watchGame, setWatchGame] = useState<Game | null>(null)
   const [showPast, setShowPast] = useState(false)
 
   async function deleteGame(game: Game) {
@@ -152,13 +153,6 @@ function GamesView({
           const away = teams.find((t) => t.id === game.away_team_id)
           const home = teams.find((t) => t.id === game.home_team_id)
           const isFinal = game.status === 'final'
-          const watchUrl = `${window.location.origin}/watch/${game.id}`
-          // iOS keeps same-origin <a target=_blank> inside the standalone PWA
-          // webview; window.open breaks out to the real browser.
-          const openWatch = (e: React.MouseEvent) => {
-            e.preventDefault()
-            window.open(watchUrl, '_blank', 'noopener,noreferrer')
-          }
           return (
             <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -203,15 +197,12 @@ function GamesView({
                       >
                         Score ▸
                       </Link>
-                      <a
-                        href={watchUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={openWatch}
+                      <button
+                        onClick={() => setWatchGame(game)}
                         className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
                       >
                         Watch
-                      </a>
+                      </button>
                     </>
                   )}
                   <button
@@ -252,7 +243,30 @@ function GamesView({
           onClose={() => setSummaryGame(null)}
         />
       )}
+
+      {watchGame && <LiveWatchModal gameId={watchGame.id} onClose={() => setWatchGame(null)} />}
     </section>
+  )
+}
+
+// In-app live viewer for the scorer — embeds the public /watch page in an iframe
+// so it stays inside the PWA (opening it directly gets trapped in the iOS shell).
+function LiveWatchModal({ gameId, onClose }: { gameId: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex flex-col bg-night-green">
+      <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
+        <span className="font-display text-lg text-cream">Live View</span>
+        <button onClick={onClose} className="font-athletic text-cream">
+          Done
+        </button>
+      </div>
+      <iframe
+        src={`/watch/${gameId}`}
+        title="Live view"
+        allow="autoplay; encrypted-media; picture-in-picture; camera; microphone"
+        className="min-h-0 w-full flex-1 border-0 bg-night-green"
+      />
+    </div>
   )
 }
 
@@ -479,7 +493,10 @@ function CreateGameCard({
           type="datetime-local"
           value={when}
           onChange={(e) => setWhen(e.target.value)}
-          className="box-border block w-full min-w-0 max-w-full appearance-none border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+          // box-border + min-w-0 keep it from overflowing; keep the native
+          // appearance (appearance-none makes an empty iOS field collapse narrow
+          // until tapped).
+          className="box-border block w-full min-w-0 max-w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
         />
       </label>
 
