@@ -7,6 +7,7 @@ import { VideoSetup } from '@/components/VideoSetup'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { ArrowUpRightIcon } from '@/components/Icons'
 import { buildRecapSummary, generateRecap } from '@/lib/recap'
+import { privacyName } from '@/lib/names'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
@@ -191,7 +192,7 @@ export default function Score() {
           events={s.events}
           teams={teams}
           gameId={gameId}
-          nameOf={(id) => (id ? nameOf(id) : null)}
+          nameOf={(id) => (id ? privacyName(s.playersById.get(id)?.name) : null)}
           initial={game?.recap ?? null}
           scoreLine={`${board.away.code} ${live.awayScore} · ${board.home.code} ${live.homeScore}`}
         />

@@ -25,6 +25,7 @@ import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
 import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
 import { audio } from '@/lib/audio'
+import { privacyName } from '@/lib/names'
 import { freshCues, fxCues } from '@/lib/commentary'
 import type { Recap } from '@/lib/types'
 
@@ -221,9 +222,10 @@ export default function Watch() {
   }, [soundOn])
 
   // Match the page (and the desktop side margins + iOS safe-area strips) to the
-  // screen being shown: navy for the Starting Soon cover, night-green otherwise.
+  // screen being shown: navy for the Starting Soon cover and the Final screen,
+  // night-green for the live scoreboard.
   useEffect(() => {
-    document.body.style.backgroundColor = live.status === 'scheduled' ? '#1A2A4A' : '#15281b'
+    document.body.style.backgroundColor = live.status === 'live' ? '#15281b' : '#1A2A4A'
     return () => {
       document.body.style.backgroundColor = ''
     }
@@ -583,12 +585,12 @@ function FinalView({
 }) {
   const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
       <Bunting />
 
       {/* FINAL hero */}
-      <div className="border-b-2 border-gold bg-[#122019] px-4 pb-6 pt-5 text-center">
+      <div className="border-b-2 border-gold bg-ink px-4 pb-6 pt-5 text-center">
         <p className="font-display text-2xl tracking-[.3em] text-barn-red">FINAL</p>
         <div className="mt-3 flex items-center justify-center gap-4 font-display text-3xl min-[760px]:text-4xl">
           <span className="text-cream">
@@ -608,7 +610,7 @@ function FinalView({
       </div>
 
       {/* sub-tabs */}
-      <div className="flex border-b-2 border-gold bg-[#122019]">
+      <div className="flex border-b-2 border-gold bg-ink">
         {(['recap', 'box', 'stats', 'plays'] as const).map((t) => (
           <button
             key={t}
@@ -851,15 +853,6 @@ function ordinalNum(n: number): string {
 }
 
 /* ---------------------------------------------------------------- tabs */
-
-// Privacy: the scorer enters full names, but the public viewer only ever shows
-// first name + last initial (e.g. "Carson S."), like GameChanger.
-function privacyName(full: string | null | undefined): string {
-  if (!full) return '—'
-  const parts = full.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0]
-  return `${parts[0]} ${parts[parts.length - 1][0]}.`
-}
 
 function nameMap(events: ViewerEvent[]) {
   const m = new Map<string, string>()

@@ -84,6 +84,14 @@ function scoreSummary(s: LiveGame, teams: Teams): string {
   return `${h > a ? teams.home : teams.away} leads it, ${Math.max(a, h)} to ${Math.min(a, h)}.`
 }
 
+// Game-over phrasing: a winner WINS (not "leads").
+function finalSummary(s: LiveGame, teams: Teams): string {
+  const a = s.awayScore
+  const h = s.homeScore
+  if (a === h) return `It ends in a ${a}–${a} tie.`
+  return `${h > a ? teams.home : teams.away} wins, ${Math.max(a, h)} to ${Math.min(a, h)}.`
+}
+
 function fullCount(s: LiveGame): boolean {
   return s.balls === 3 && s.strikes === 2
 }
@@ -209,7 +217,7 @@ function voiceFor(
       )
       break
     case 'game_end':
-      out.push({ text: `That's the ballgame! ${scoreSummary(after, teams)}`, kind: 'info' })
+      out.push({ text: `That's the ballgame! ${finalSummary(after, teams)}`, kind: 'info' })
       break
   }
   return out.filter((l): l is Line => !!l && l.text.trim().length > 0)

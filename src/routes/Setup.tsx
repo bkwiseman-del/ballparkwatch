@@ -358,9 +358,9 @@ function GamesView({
         <LiveWatchModal
           gameId={watchGame.id}
           title={watchGame.status === 'final' ? 'Game Summary' : 'Live View'}
-          // Match the body (iOS safe-area strips) to the viewer screen: a scheduled
-          // game shows the navy Starting Soon cover; otherwise the dark scoreboard.
-          bodyBg={watchGame.status === 'scheduled' ? '#1A2A4A' : '#15281b'}
+          // Match the body (iOS safe-area strips) to the viewer screen: scheduled
+          // (navy Starting Soon) and final (navy summary) are navy; live is green.
+          bodyBg={watchGame.status === 'live' ? '#15281b' : '#1A2A4A'}
           onClose={() => setWatchGame(null)}
         />
       )}
