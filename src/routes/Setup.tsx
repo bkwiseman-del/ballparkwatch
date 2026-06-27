@@ -36,7 +36,7 @@ export default function Setup() {
 
   return (
     <div className="min-h-full bg-cream text-ink">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-gold bg-ink px-4 py-2.5 text-cream">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
         <HeaderWordmark />
         <button
           onClick={signOut}
@@ -95,6 +95,14 @@ function GamesView({
 }) {
   const [creating, setCreating] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
+  const [showPast, setShowPast] = useState(false)
+
+  // Keep the list short: upcoming/live games first, then just the few most recent
+  // finals; the rest are tucked behind a "past games" toggle.
+  const RECENT_FINALS = 3
+  const active = games.filter((g) => g.status !== 'final')
+  const finals = games.filter((g) => g.status === 'final')
+  const visibleGames = [...active, ...(showPast ? finals : finals.slice(0, RECENT_FINALS))]
 
   return (
     <section>
@@ -127,7 +135,7 @@ function GamesView({
       )}
 
       <ul className="mt-4 flex flex-col gap-3">
-        {games.map((game) => {
+        {visibleGames.map((game) => {
           const away = teams.find((t) => t.id === game.away_team_id)
           const home = teams.find((t) => t.id === game.home_team_id)
           return (
@@ -178,6 +186,15 @@ function GamesView({
           <EmptyHint>No games yet — tap “New Game” to schedule one.</EmptyHint>
         )}
       </ul>
+
+      {finals.length > RECENT_FINALS && (
+        <button
+          onClick={() => setShowPast((v) => !v)}
+          className="mt-3 w-full border-2 border-ink/30 py-2 font-athletic text-sm font-semibold uppercase tracking-wide text-muted-tan"
+        >
+          {showPast ? 'Hide past games' : `Show all past games (${finals.length})`}
+        </button>
+      )}
 
       {videoGame && (
         <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => onChange()} />

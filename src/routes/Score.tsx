@@ -592,6 +592,8 @@ function EndGamePopup({
 /* ---------------------------------------------------------- substitutions */
 
 const SUB_POSITIONS = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
+// The nine fielding spots are one-per-lineup; DH/EH may repeat.
+const UNIQUE_SUB_POSITIONS = new Set(['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'])
 
 function SubstitutionFlow({
   scorer,
@@ -677,6 +679,10 @@ function SubstitutionFlow({
           {lineup.map((p, i) => {
             const benchId = repl[p.id]
             const shown = benchId ? benchById.get(benchId) : p
+            // Fielding positions already held by OTHER players in this lineup.
+            const takenElsewhere = new Set(
+              lineup.filter((o) => o.id !== p.id).map((o) => pos[o.id]).filter(Boolean),
+            )
             return (
               <div key={p.id} className={`${i > 0 ? 'border-t border-cream/12' : ''}`}>
                 <div className="flex items-center gap-2 px-2 py-2">
@@ -694,11 +700,15 @@ function SubstitutionFlow({
                     className="border border-cream/30 bg-night-green px-1 py-1 font-athletic text-xs text-cream"
                   >
                     <option value="">—</option>
-                    {SUB_POSITIONS.map((x) => (
-                      <option key={x} value={x}>
-                        {x}
-                      </option>
-                    ))}
+                    {SUB_POSITIONS.map((x) => {
+                      const taken = UNIQUE_SUB_POSITIONS.has(x) && takenElsewhere.has(x)
+                      return (
+                        <option key={x} value={x} disabled={taken}>
+                          {x}
+                          {taken ? ' • taken' : ''}
+                        </option>
+                      )
+                    })}
                   </select>
                   {benchId ? (
                     <button

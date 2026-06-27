@@ -5,6 +5,8 @@ import { HeaderWordmark } from '@/components/Logo'
 import type { Game, LineupEntry, Player, Team } from '@/lib/types'
 
 const POSITIONS_LIST = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'EH']
+// The nine fielding spots can each be held by only one player; DH/EH can repeat.
+const UNIQUE_POSITIONS = new Set(['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'])
 
 export default function Lineup() {
   const { gameId } = useParams()
@@ -210,6 +212,13 @@ function TeamLineup({
       <ol className="flex flex-col">
         {order.map((pid, i) => {
           const p = byId.get(pid)
+          // Fielding positions already held by OTHER players in this lineup.
+          const takenElsewhere = new Set(
+            order
+              .filter((o) => o !== pid)
+              .map((o) => positions[o] ?? byId.get(o)?.default_position ?? '')
+              .filter(Boolean),
+          )
           return (
             <li
               key={pid}
@@ -239,11 +248,15 @@ function TeamLineup({
                 title="Defensive position"
               >
                 <option value="">POS</option>
-                {POSITIONS_LIST.map((pos) => (
-                  <option key={pos} value={pos}>
-                    {pos}
-                  </option>
-                ))}
+                {POSITIONS_LIST.map((pos) => {
+                  const taken = UNIQUE_POSITIONS.has(pos) && takenElsewhere.has(pos)
+                  return (
+                    <option key={pos} value={pos} disabled={taken}>
+                      {pos}
+                      {taken ? ' • taken' : ''}
+                    </option>
+                  )
+                })}
               </select>
               <span className="flex flex-col leading-none">
                 <button
