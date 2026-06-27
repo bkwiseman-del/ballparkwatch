@@ -25,7 +25,7 @@ import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
 import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
 import { audio } from '@/lib/audio'
-import { privacyName } from '@/lib/names'
+import { displayName } from '@/lib/names'
 import { freshCues, fxCues } from '@/lib/commentary'
 import type { Recap } from '@/lib/types'
 
@@ -290,10 +290,10 @@ export default function Watch() {
         if (gameId) {
           // Commentary is public too — speak first name + last initial only.
           const nameOf = (id: string | null | undefined) =>
-            id && info?.players?.[id]?.name ? privacyName(info.players[id].name) : null
+            id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null
           const lns = {
-            away: (info?.lineups?.away ?? []).map((s) => ({ name: privacyName(s.name), jersey: s.jersey })),
-            home: (info?.lineups?.home ?? []).map((s) => ({ name: privacyName(s.name), jersey: s.jersey })),
+            away: (info?.lineups?.away ?? []).map((s) => ({ name: displayName(s.name), jersey: s.jersey })),
+            home: (info?.lineups?.home ?? []).map((s) => ({ name: displayName(s.name), jersey: s.jersey })),
           }
           const teamNames = {
             away: info?.away?.name ?? 'Away',
@@ -353,8 +353,9 @@ export default function Watch() {
       .map((s) => ({ playerId: s.id, position: s.pos }))
     return projectSlots(initial, subs, key).map((s) => {
       const pl = info!.players?.[s.playerId]
-      // Public viewer shows first name + last initial only.
-      return { id: s.playerId, name: privacyName(pl?.name), jersey: pl?.jersey ?? null, pos: s.position }
+      // Last name when present; fall back to the jersey for a number-only player.
+      const nm = displayName(pl?.name) || (pl?.jersey ? `#${pl.jersey}` : '—')
+      return { id: s.playerId, name: nm, jersey: pl?.jersey ?? null, pos: s.position }
     })
   }
   const lineups: LiveLineups = { away: resolveTeam('away'), home: resolveTeam('home') }
@@ -891,7 +892,7 @@ function ordinalNum(n: number): string {
 
 function nameMap(events: ViewerEvent[]) {
   const m = new Map<string, string>()
-  for (const e of events) if (e.batter_id && e.batter_name) m.set(e.batter_id, privacyName(e.batter_name))
+  for (const e of events) if (e.batter_id && e.batter_name) m.set(e.batter_id, displayName(e.batter_name))
   return m
 }
 

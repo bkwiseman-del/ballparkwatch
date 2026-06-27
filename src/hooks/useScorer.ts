@@ -26,6 +26,9 @@ type Lineups = { away: LineupPlayer[]; home: LineupPlayer[] }
 // network write) can't lose plays — on reopen we replay anything that never
 // reached the server. localStorage survives the app being killed; an in-flight
 // fetch does not.
+// Default field positions for a generated lineup's first nine.
+const GENERIC_FIELD = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF']
+
 const walKey = (gameId: string) => `bpw_wal_${gameId}`
 function readWal(gameId: string): GameEventRow[] {
   try {
@@ -182,6 +185,73 @@ export function useScorer(gameId: string | undefined) {
     [gameId],
   )
 
+  // Re-fetch rosters + lineups (after editing a player or filling a lineup).
+  const reloadRoster = useCallback(async () => {
+    if (!gameId) return
+    const { data: g } = await supabase
+      .from('games')
+      .select('away_team_id, home_team_id')
+      .eq('id', gameId)
+      .single()
+    if (!g) return
+    const [{ data: le }, { data: pls }] = await Promise.all([
+      supabase.from('lineup_entries').select('*').eq('game_id', gameId).order('batting_order'),
+      supabase.from('players').select('*').in('team_id', [g.away_team_id, g.home_team_id]),
+    ])
+    const byId = new Map(((pls ?? []) as Player[]).map((p) => [p.id, p]))
+    setPlayersById(byId)
+    const ordered = (teamId: string): LineupPlayer[] =>
+      ((le ?? []) as LineupEntry[])
+        .filter((e) => e.team_id === teamId)
+        .map((e) => {
+          const p = byId.get(e.player_id)
+          return p ? { ...p, position: e.position } : null
+        })
+        .filter((p): p is LineupPlayer => !!p)
+    setLineups({ away: ordered(g.away_team_id), home: ordered(g.home_team_id) })
+  }, [gameId])
+
+  // Edit a player's number/name on the fly (e.g. naming the other team's batters).
+  const editPlayer = useCallback(
+    async (id: string, patch: { name?: string; jersey_number?: string | null }) => {
+      const upd: Record<string, unknown> = {}
+      if (patch.name !== undefined) upd.name = patch.name.trim()
+      if (patch.jersey_number !== undefined) upd.jersey_number = patch.jersey_number?.trim() || null
+      const { error } = await supabase.from('players').update(upd).eq('id', id)
+      if (error) return setError(error.message)
+      await reloadRoster()
+    },
+    [reloadRoster],
+  )
+
+  // Drop in a generic batting order ("Player 1"…"Player 9") for a team that has no
+  // lineup, so a game can start (and be scored) without the other team's roster.
+  const fillGenericLineup = useCallback(
+    async (teamKey: 'away' | 'home', count = 9) => {
+      if (!game) return
+      const teamId = teamKey === 'away' ? game.away_team_id : game.home_team_id
+      const newPlayers = Array.from({ length: count }, (_, i) => ({
+        team_id: teamId,
+        name: `Player ${i + 1}`,
+        jersey_number: null as string | null,
+      }))
+      const { data: created, error } = await supabase.from('players').insert(newPlayers).select()
+      if (error || !created) return setError(error?.message ?? 'Could not add players.')
+      const entries = created.map((p, i) => ({
+        game_id: gameId,
+        team_id: teamId,
+        player_id: p.id,
+        batting_order: i + 1,
+        position: GENERIC_FIELD[i] ?? 'BENCH',
+        is_starter: true,
+      }))
+      const { error: leErr } = await supabase.from('lineup_entries').insert(entries)
+      if (leErr) return setError(leErr.message)
+      await reloadRoster()
+    },
+    [game, gameId, reloadRoster],
+  )
+
   // Project the CURRENT lineups (starters + substitutions applied in order).
   const subs = extractSubs(events)
   const projectTeam = (key: 'away' | 'home'): LineupPlayer[] => {
@@ -313,6 +383,8 @@ export function useScorer(gameId: string | undefined) {
     runnersOnBase,
     playersById,
     abPitches,
+    editPlayer,
+    fillGenericLineup,
   }
 }
 

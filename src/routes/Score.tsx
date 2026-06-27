@@ -7,7 +7,7 @@ import { VideoSetup } from '@/components/VideoSetup'
 import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { ArrowUpRightIcon } from '@/components/Icons'
 import { buildRecapSummary, generateRecap } from '@/lib/recap'
-import { privacyName } from '@/lib/names'
+import { displayName } from '@/lib/names'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
@@ -35,6 +35,7 @@ export default function Score() {
   const [showSub, setShowSub] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
+  const [editPlayer, setEditPlayer] = useState<Player | null>(null)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
   // Live health of the phone broadcast (for the indicator in the header).
   const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
@@ -110,7 +111,7 @@ export default function Score() {
       {error && <p className="bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>}
 
       {/* batter / pitcher strip */}
-      {playing && <BatterPitcherStrip scorer={s} gameId={gameId} />}
+      {playing && <BatterPitcherStrip scorer={s} gameId={gameId} onEdit={setEditPlayer} />}
 
       {/* live field — grows to fill the available space */}
       {playing && (
@@ -182,9 +183,25 @@ export default function Score() {
                 : 'Full play-by-play, baserunners, and stats.'}
             </p>
           </div>
-          <button onClick={() => act('game_start')} className="bg-gold px-8 py-4 font-display text-xl text-ink">
+          <button
+            onClick={async () => {
+              // Don't get stuck if a team has no lineup (common for the opponent) —
+              // drop in a generic batting order they can rename/renumber on the fly.
+              if (!s.lineups.away.length) await s.fillGenericLineup('away')
+              if (!s.lineups.home.length) await s.fillGenericLineup('home')
+              act('game_start')
+            }}
+            className="bg-gold px-8 py-4 font-display text-xl text-ink"
+          >
             START GAME ▸
           </button>
+          {(!s.lineups.away.length || !s.lineups.home.length) && (
+            <p className="max-w-xs font-data text-xs text-muted-tan">
+              No lineup for {!s.lineups.away.length ? teams?.away.name : teams?.home.name}? We’ll add
+              generic players (Player 1, 2, …) — tap a batter or use Substitution to set their number
+              and name as you go.
+            </p>
+          )}
         </div>
       )}
       {isFinal && (
@@ -192,7 +209,7 @@ export default function Score() {
           events={s.events}
           teams={teams}
           gameId={gameId}
-          nameOf={(id) => (id ? privacyName(s.playersById.get(id)?.name) : null)}
+          nameOf={(id) => (id ? displayName(s.playersById.get(id)?.name) : null)}
           initial={game?.recap ?? null}
           scoreLine={`${board.away.code} ${live.awayScore} · ${board.home.code} ${live.homeScore}`}
         />
@@ -295,6 +312,16 @@ export default function Score() {
           onClose={() => setRunnerAction(null)}
         />
       )}
+      {editPlayer && (
+        <PlayerEditPopup
+          player={editPlayer}
+          onSave={async (patch) => {
+            await s.editPlayer(editPlayer.id, patch)
+            setEditPlayer(null)
+          }}
+          onClose={() => setEditPlayer(null)}
+        />
+      )}
       {showSub && <SubstitutionFlow scorer={s} onClose={() => setShowSub(false)} />}
       {showShare && (
         <ShareSheet
@@ -328,9 +355,11 @@ export default function Score() {
 function BatterPitcherStrip({
   scorer,
   gameId,
+  onEdit,
 }: {
   scorer: ReturnType<typeof useScorer>
   gameId: string | undefined
+  onEdit: (p: Player) => void
 }) {
   const { currentBatter, onDeck, currentPitcher, currentPitcherPitches, events, playersById } = scorer
   if (!currentBatter) {
@@ -349,8 +378,10 @@ function BatterPitcherStrip({
   const pitches = currentPitcherPitches
   return (
     <div className="flex border-b-2 border-ink bg-cream text-ink">
-      <div className="flex-1 border-r border-ink/20 px-3 py-2">
-        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">At Bat</p>
+      <button onClick={() => onEdit(currentBatter)} className="flex-1 border-r border-ink/20 px-3 py-2 text-left">
+        <p className="flex items-center gap-1 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">
+          At Bat <span className="text-muted-tan">· tap to edit</span>
+        </p>
         <p className="font-display text-base leading-tight">
           <span className="text-barn-red">{currentBatter.jersey_number ?? '—'}</span> {currentBatter.name}
         </p>
@@ -358,9 +389,15 @@ function BatterPitcherStrip({
           {lineText}
           {onDeck ? ` · on deck: ${onDeck.jersey_number ? `${onDeck.jersey_number} ` : ''}${onDeck.name}` : ''}
         </p>
-      </div>
-      <div className="flex-1 px-3 py-2">
-        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">Pitching</p>
+      </button>
+      <button
+        onClick={() => currentPitcher && onEdit(currentPitcher)}
+        disabled={!currentPitcher}
+        className="flex-1 px-3 py-2 text-left"
+      >
+        <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">
+          Pitching{currentPitcher ? ' · tap to edit' : ''}
+        </p>
         <p className="font-display text-base leading-tight">
           {currentPitcher ? (
             <>
@@ -371,8 +408,66 @@ function BatterPitcherStrip({
           )}
         </p>
         {currentPitcher && <p className="font-data text-[11px] text-muted-tan">{pitches} pitches</p>}
-      </div>
+      </button>
     </div>
+  )
+}
+
+/* -------------------------------------------------------- quick player edit */
+
+function PlayerEditPopup({
+  player,
+  onSave,
+  onClose,
+}: {
+  player: Player
+  onSave: (patch: { name?: string; jersey_number?: string | null }) => void
+  onClose: () => void
+}) {
+  const [num, setNum] = useState(player.jersey_number ?? '')
+  const [name, setName] = useState(player.name ?? '')
+  return (
+    <Overlay onClose={onClose}>
+      <div className="w-[320px] border-[3px] border-ink bg-cream text-ink shadow-hard">
+        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
+          <span className="font-display text-lg text-cream">Edit player</span>
+          <button onClick={onClose} className="font-athletic text-cream">
+            ✕
+          </button>
+        </div>
+        <div className="flex flex-col gap-3 p-4">
+          <label className="block">
+            <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+              Number
+            </span>
+            <input
+              value={num}
+              onChange={(e) => setNum(e.target.value)}
+              inputMode="numeric"
+              placeholder="#"
+              className="w-full border-2 border-ink bg-white px-3 py-2 font-display text-lg outline-none focus:border-board-green"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+              Name (optional)
+            </span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Leave blank for number only"
+              className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+            />
+          </label>
+          <button
+            onClick={() => onSave({ name, jersey_number: num })}
+            className="bg-gold py-3 font-display text-ink"
+          >
+            Save ▸
+          </button>
+        </div>
+      </div>
+    </Overlay>
   )
 }
 
@@ -623,6 +718,7 @@ function SubstitutionFlow({
   const [pos, setPos] = useState<Record<string, string>>({})
   const [repl, setRepl] = useState<Record<string, string>>({})
   const [pickFor, setPickFor] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
 
   useEffect(() => {
     const init: Record<string, string> = {}
@@ -676,10 +772,16 @@ function SubstitutionFlow({
             </button>
           ))}
         </div>
-        <p className="mb-3 font-data text-xs text-muted-green">
-          Change a position with the dropdown, or tap <b>Replace</b> to bring in a bench player. Move
-          a fielder to P and another to their old spot for an on-field pitching change.
+        <p className="mb-2 font-data text-xs text-muted-green">
+          Tap a name to edit its number/name. Change a position with the dropdown, or tap{' '}
+          <b>Replace</b> to bring in a bench player.
         </p>
+        <button
+          onClick={() => setPos(Object.fromEntries(lineup.map((p) => [p.id, ''])))}
+          className="mb-3 border-2 border-cream/30 px-3 py-1.5 font-athletic text-xs font-semibold uppercase tracking-wide text-cream"
+        >
+          Clear all positions
+        </button>
 
         <div className="flex flex-col border-2 border-cream/20">
           {lineup.map((p, i) => {
@@ -696,10 +798,13 @@ function SubstitutionFlow({
                   <span className="w-6 text-right font-athletic text-base font-bold text-barn-red">
                     {shown?.jersey_number ?? '—'}
                   </span>
-                  <span className="flex-1 truncate font-data text-sm">
-                    {shown?.name}
+                  <button
+                    onClick={() => shown && setEditId(shown.id)}
+                    className="flex-1 truncate text-left font-data text-sm underline decoration-cream/30"
+                  >
+                    {shown?.name || `#${shown?.jersey_number ?? '—'}`}
                     {benchId && <span className="ml-1 font-athletic text-[9px] uppercase text-gold">in</span>}
-                  </span>
+                  </button>
                   <select
                     value={pos[p.id] ?? ''}
                     onChange={(e) => setPos((m) => ({ ...m, [p.id]: e.target.value }))}
@@ -769,6 +874,17 @@ function SubstitutionFlow({
           Confirm Sub ▸
         </button>
       </div>
+
+      {editId && scorer.playersById.get(editId) && (
+        <PlayerEditPopup
+          player={scorer.playersById.get(editId)!}
+          onSave={async (patch) => {
+            await scorer.editPlayer(editId, patch)
+            setEditId(null)
+          }}
+          onClose={() => setEditId(null)}
+        />
+      )}
     </div>
   )
 }

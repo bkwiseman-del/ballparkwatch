@@ -195,7 +195,14 @@ function PhoneBroadcastSection({ token, phone }: { token: string; phone: PhoneVi
         <div className="mb-4">
           <div className="border-2 border-ink bg-black">
             {phone.incoming ? (
-              <video ref={previewRef} autoPlay playsInline muted className="aspect-video w-full object-contain" />
+              <video
+                ref={previewRef}
+                autoPlay
+                playsInline
+                muted
+                controls
+                className="aspect-video w-full object-contain"
+              />
             ) : (
               <div className="flex aspect-video items-center justify-center font-data text-sm text-cream/70">
                 Connecting to the feed…
