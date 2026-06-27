@@ -179,12 +179,14 @@ function GamesView({
                   >
                     Score ▸
                   </Link>
-                  <Link
-                    to={`/watch/${game.id}`}
+                  <a
+                    href={`${window.location.origin}/watch/${game.id}`}
+                    target="_blank"
+                    rel="noreferrer"
                     className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
                   >
                     Watch
-                  </Link>
+                  </a>
                   <button
                     onClick={() => deleteGame(game)}
                     title="Delete game"
