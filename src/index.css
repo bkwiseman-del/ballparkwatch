@@ -13,6 +13,13 @@
     height: 100%;
   }
 
+  /* Kill the whole-page rubber-band bounce (esp. the installed PWA) so the header
+     doesn't bounce; scroll containers manage their own (contained) overscroll. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
   body {
     margin: 0;
     @apply bg-cream text-ink font-data antialiased;

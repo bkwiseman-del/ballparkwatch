@@ -39,8 +39,8 @@ export default function Setup() {
   }, [load])
 
   return (
-    <div className="min-h-full bg-cream text-ink">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-cream text-ink">
+      <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
         <HeaderWordmark />
         <button
           onClick={signOut}
@@ -50,7 +50,9 @@ export default function Setup() {
         </button>
       </header>
 
-      <div className="mx-auto max-w-3xl px-4 py-5">
+      {/* Only this area scrolls (and rubber-bands); the header stays put. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto max-w-3xl px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5">
         {/* Segmented tabs */}
         <div className="mb-6 inline-flex border-2 border-ink">
           {(['games', 'teams'] as Tab[]).map((t) => (
@@ -77,6 +79,7 @@ export default function Setup() {
         ) : (
           <TeamsView teams={teams} userId={user!.id} onChange={load} onError={setError} />
         )}
+        </div>
       </div>
     </div>
   )

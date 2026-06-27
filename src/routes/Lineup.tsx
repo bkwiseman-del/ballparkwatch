@@ -107,15 +107,16 @@ export default function Lineup() {
   if (!game || !away || !home) return <Centered>Game not found</Centered>
 
   return (
-    <div className="min-h-full bg-cream text-ink">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-gold bg-ink px-4 py-2.5 text-cream">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-cream text-ink">
+      <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
         <HeaderWordmark />
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
           ← Setup
         </Link>
       </header>
 
-      <div className="mx-auto max-w-3xl px-4 py-5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto max-w-3xl px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5">
         <h1 className="mb-1 font-display text-2xl">Lineups &amp; Positions</h1>
         <p className="mb-5 font-data text-sm text-muted-tan">
           Add everyone who’s playing to the batting order (drag ⠿ or ▲▼ to reorder). In a continuous
@@ -169,6 +170,7 @@ export default function Lineup() {
           >
             Go to Score
           </Link>
+        </div>
         </div>
       </div>
     </div>
