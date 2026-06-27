@@ -146,6 +146,14 @@ function GamesView({
         {visibleGames.map((game) => {
           const away = teams.find((t) => t.id === game.away_team_id)
           const home = teams.find((t) => t.id === game.home_team_id)
+          const isFinal = game.status === 'final'
+          const watchUrl = `${window.location.origin}/watch/${game.id}`
+          // iOS keeps same-origin <a target=_blank> inside the standalone PWA
+          // webview; window.open breaks out to the real browser.
+          const openWatch = (e: React.MouseEvent) => {
+            e.preventDefault()
+            window.open(watchUrl, '_blank', 'noopener,noreferrer')
+          }
           return (
             <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -159,34 +167,51 @@ function GamesView({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Link
-                    to={`/lineup/${game.id}`}
-                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                  >
-                    Lineup
-                  </Link>
-                  {game.video_source !== 'none' && (
-                    <button
-                      onClick={() => setVideoGame(game)}
-                      className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                  {isFinal ? (
+                    // A finished game: recap + box score live on the viewer's final
+                    // screen. No scoring/video/lineup to do anymore.
+                    <a
+                      href={watchUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={openWatch}
+                      className="bg-board-green px-4 py-2 font-display text-sm text-cream"
                     >
-                      Video
-                    </button>
+                      Game summary ▸
+                    </a>
+                  ) : (
+                    <>
+                      <Link
+                        to={`/lineup/${game.id}`}
+                        className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                      >
+                        Lineup
+                      </Link>
+                      {game.video_source !== 'none' && (
+                        <button
+                          onClick={() => setVideoGame(game)}
+                          className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                        >
+                          Video
+                        </button>
+                      )}
+                      <Link
+                        to={`/score/${game.id}`}
+                        className="bg-board-green px-4 py-2 font-display text-sm text-cream"
+                      >
+                        Score ▸
+                      </Link>
+                      <a
+                        href={watchUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={openWatch}
+                        className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                      >
+                        Watch
+                      </a>
+                    </>
                   )}
-                  <Link
-                    to={`/score/${game.id}`}
-                    className="bg-board-green px-4 py-2 font-display text-sm text-cream"
-                  >
-                    Score ▸
-                  </Link>
-                  <a
-                    href={`${window.location.origin}/watch/${game.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                  >
-                    Watch
-                  </a>
                   <button
                     onClick={() => deleteGame(game)}
                     title="Delete game"
