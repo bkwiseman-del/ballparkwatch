@@ -489,14 +489,15 @@ function CreateGameCard({
         <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
           Date & time (optional)
         </span>
-        {/* The wrapper owns the box; the input is a flex-1 min-w-0 child so the
-            native iOS datetime widget fills it exactly — no overflow, no collapse. */}
+        {/* The wrapper owns the box; the input is flex-1 min-w-0 so flexbox forces
+            the native iOS datetime widget to the wrapper width (no overflow), while
+            keeping its native appearance (appearance-none collapses it when empty). */}
         <div className="flex w-full items-center border-2 border-ink bg-white px-3 py-2 focus-within:border-board-green">
           <input
             type="datetime-local"
             value={when}
             onChange={(e) => setWhen(e.target.value)}
-            className="min-w-0 flex-1 appearance-none bg-transparent font-data text-ink outline-none"
+            className="min-w-0 flex-1 bg-transparent font-data text-ink outline-none"
           />
         </div>
       </label>
