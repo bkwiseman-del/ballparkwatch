@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { parseYouTubeId } from '@/lib/youtube'
-import { useBroadcastStatus, type BroadcastStatus } from '@/lib/phoneVideo'
+import { usePhoneVideo, type PhoneVideo } from '@/lib/phoneVideo'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import type { Game } from '@/lib/types'
 
@@ -23,7 +23,9 @@ export function VideoSetup({
 }) {
   const isYouTube = game.video_source === 'youtube'
   const isPhone = game.video_source === 'phone_whip'
-  const status = useBroadcastStatus(game.id, isPhone)
+  // Active viewer connection so the scorer can preview the live feed + remotely
+  // terminate it. (Only runs for phone games.)
+  const phone = usePhoneVideo(isPhone ? game.id : undefined, isPhone)
 
   const [url, setUrl] = useState(String(game.video_config?.youtube_url ?? ''))
   const [delayMs, setDelayMs] = useState(game.stat_delay_ms ?? 0)
@@ -80,7 +82,7 @@ export function VideoSetup({
 
       <div className="flex-1 overflow-y-auto p-4">
         {isPhone ? (
-          <PhoneBroadcastSection token={game.share_token} status={status} />
+          <PhoneBroadcastSection token={game.share_token} phone={phone} />
         ) : isYouTube ? (
           <>
             <section className="mb-6">
@@ -145,16 +147,22 @@ export function VideoSetup({
   )
 }
 
-function PhoneBroadcastSection({ token, status }: { token: string; status: BroadcastStatus }) {
+function PhoneBroadcastSection({ token, phone }: { token: string; phone: PhoneVideo }) {
   const link = `${window.location.origin}/broadcast/${token}`
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [confirmKill, setConfirmKill] = useState(false)
+  const previewRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
     QRCode.toDataURL(link, { margin: 1, width: 320, color: { dark: '#1A2A4A', light: '#F4ECD8' } })
       .then(setQr)
       .catch(() => setQr(null))
   }, [link])
+
+  useEffect(() => {
+    if (previewRef.current) previewRef.current.srcObject = phone.incoming
+  }, [phone.incoming])
 
   async function copy() {
     try {
@@ -170,17 +178,59 @@ function PhoneBroadcastSection({ token, status }: { token: string; status: Broad
     <section>
       {/* live health */}
       <div
-        className={`mb-4 flex items-center gap-2 border-2 px-3 py-2 ${
-          status.live ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
+        className={`mb-3 flex items-center gap-2 border-2 px-3 py-2 ${
+          phone.isLive ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
         }`}
       >
         <span
-          className={`h-2.5 w-2.5 rounded-full ${status.live ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
+          className={`h-2.5 w-2.5 rounded-full ${phone.isLive ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
         />
         <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
-          {status.live ? `Live · ${status.viewers} watching` : 'Not broadcasting'}
+          {phone.isLive ? `Live · ${phone.viewers} watching` : 'Not broadcasting'}
         </span>
       </div>
+
+      {/* live preview + remote terminate (only while a feed is up) */}
+      {phone.isLive && (
+        <div className="mb-4">
+          <div className="border-2 border-ink bg-black">
+            {phone.incoming ? (
+              <video ref={previewRef} autoPlay playsInline muted className="aspect-video w-full object-contain" />
+            ) : (
+              <div className="flex aspect-video items-center justify-center font-data text-sm text-cream/70">
+                Connecting to the feed…
+              </div>
+            )}
+          </div>
+          {confirmKill ? (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="flex-1 font-data text-xs text-barn-red">Stop the broadcaster’s feed?</span>
+              <button
+                onClick={() => setConfirmKill(false)}
+                className="border-2 border-ink px-3 py-1.5 font-display text-sm text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  phone.kill()
+                  setConfirmKill(false)
+                }}
+                className="bg-barn-red px-3 py-1.5 font-display text-sm text-cream"
+              >
+                Terminate ▸
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmKill(true)}
+              className="mt-2 w-full border-2 border-barn-red py-2 font-display text-sm text-barn-red"
+            >
+              Terminate feed
+            </button>
+          )}
+        </div>
+      )}
 
       <p className="mb-3 font-data text-[12px] text-muted-tan">
         Open this on the phone that will film the game. Only people you share it with can broadcast —

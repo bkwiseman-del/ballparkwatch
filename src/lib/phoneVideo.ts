@@ -36,6 +36,7 @@ type Sig =
   | { kind: 'live'; from: string; ts: number; viewers?: number }
   | { kind: 'hello'; from: string }
   | { kind: 'bye'; from: string }
+  | { kind: 'kill'; from: string } // scorer tells the broadcaster to stop filming
   | { kind: 'offer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'answer'; from: string; to: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'ice'; from: string; to: string; candidate: RTCIceCandidateInit }
@@ -58,6 +59,7 @@ export type PhoneVideo = {
   selectCamera: (deviceId: string) => Promise<void>
   setZoom: (z: number) => void
   stop: () => void
+  kill: () => void // scorer-side: remotely terminate the broadcaster
 }
 
 // Ask for a roughly-720p stream. iOS Safari often ignores aspectRatio and hands
@@ -227,10 +229,15 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
           } else {
             const isNew = curBc.current !== m.from || !pcs.current.has(m.from)
             markLive(m.from)
+            setViewers(m.viewers ?? 0) // viewer-side: show the broadcaster's reported count
             if (isNew) send({ kind: 'hello', from: me.current })
           }
           break
         }
+        case 'kill':
+          // The scorer remotely terminated the feed — if we're filming, stop.
+          if (bcastRef.current) teardownBroadcast()
+          break
         case 'hello':
           if (bcastRef.current) offerTo(m.from)
           break
@@ -419,6 +426,14 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     send({ kind: 'hello', from: me.current }) // rejoin as a viewer if someone else picks up
   }, [send, teardownBroadcast])
 
+  // Scorer-side: remotely terminate whoever is filming (a safety control).
+  const kill = useCallback(() => {
+    send({ kind: 'kill', from: me.current })
+    setIncoming(null)
+    setIsLive(false)
+    curBc.current = null
+  }, [send])
+
   return {
     isLive,
     isBroadcasting,
@@ -434,6 +449,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     selectCamera,
     setZoom,
     stop,
+    kill,
   }
 }
 
