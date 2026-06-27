@@ -234,12 +234,15 @@ export default function Watch() {
     }
   }, [live.status])
 
-  // Crowd ambience loops only for no-video games; with live video the video's own
-  // audio is the ambience. Depends on audioReady so the loop starts the moment the
-  // context unlocks (setCrowd is a no-op while audio is still locked).
+  // Crowd ambience plays whenever there's no ACTIVE video audio. The video block
+  // only renders during a live game, so pre-game (Starting Soon) and the final
+  // screen always get the crowd bed — otherwise tapping "Tap for sound" on the
+  // cover of a video game would play nothing. Depends on audioReady so the loop
+  // starts the moment the context unlocks.
+  const videoActive = live.status === 'live' && hasVideo
   useEffect(() => {
-    audio.setCrowd(soundOn && audioReady && !hasVideo)
-  }, [soundOn, hasVideo, audioReady])
+    audio.setCrowd(soundOn && audioReady && !videoActive)
+  }, [soundOn, videoActive, audioReady])
 
   // Poll game info so status (scheduled → live → final), the video link, and
   // lineup changes reach an already-open viewer even before any play is scored.
