@@ -147,7 +147,11 @@ function voiceFor(
 
   switch (ev.event_type) {
     case 'game_start':
-      out.push({ text: 'Play ball!', kind: 'info' }, ...plate())
+      out.push(
+        { text: `Welcome to today's game — ${teams.away} taking on ${teams.home}.`, kind: 'info' },
+        { text: 'Play ball!', kind: 'info' },
+        ...plate(),
+      )
       break
     case 'pitch_ball':
       out.push({

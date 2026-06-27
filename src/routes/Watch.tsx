@@ -34,6 +34,8 @@ type PublicGame = {
   video_source: string
   video_config?: Record<string, unknown>
   stat_delay_ms?: number
+  scheduled_at?: string | null
+  location?: string | null
   recap?: Recap | null
   away: { name: string; code: string | null }
   home: { name: string; code: string | null }
@@ -91,7 +93,9 @@ export default function Watch() {
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<SprayViz | null>(null)
   const [showStandby, setShowStandby] = useState(false)
-  const [soundOn, setSoundOn] = useState(false)
+  // Commentary on by default so it plays the moment the game starts. Audio still
+  // needs a user gesture to unlock (browser autoplay policy) — see the effect below.
+  const [soundOn, setSoundOn] = useState(true)
   const isDesktop = useIsDesktop()
   const eventsReq = useRef(0)
   const lastApply = useRef(0)
@@ -182,6 +186,24 @@ export default function Watch() {
     (info?.video_source === 'youtube' &&
       !!parseYouTubeId(String(info?.video_config?.youtube_url ?? ''))) ||
     (info?.video_source === 'phone_whip' && phoneStatus.live)
+
+  // Commentary is on by default, but the browser won't let audio play until the
+  // viewer interacts. Unlock the AudioContext on the first tap anywhere so the
+  // organ + welcome fire as soon as the game starts.
+  useEffect(() => {
+    if (!soundOn || audio.isEnabled()) return
+    const unlock = () => {
+      audio.enable()
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('touchend', unlock)
+    }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('touchend', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('touchend', unlock)
+    }
+  }, [soundOn])
 
   // Crowd ambience loops only for no-video games; with live video the video's
   // own audio is the ambience, so we run just commentary + sound FX over it.
@@ -373,9 +395,14 @@ export default function Watch() {
       </header>
 
       {live.status === 'scheduled' ? (
-        <StartingSoon board={board} lineups={lineups} />
+        <StartingSoon
+          board={board}
+          when={info.scheduled_at ?? null}
+          location={info.location ?? null}
+          hasVideo={info.video_source !== 'none'}
+        />
       ) : live.status === 'final' ? (
-        <FinalView board={board} events={events} recap={info.recap ?? null} />
+        <FinalView board={board} events={events} recap={info.recap ?? null} location={info.location ?? null} />
       ) : isDesktop ? (
         /* Desktop: left = video + bug + Plays/Box/Stats; right = the live field. */
         <div className="flex flex-1 items-stretch">
@@ -437,53 +464,55 @@ export default function Watch() {
   )
 }
 
-// Pre-game cover (design spec): bunting, the matchup, and both starting lineups.
-function StartingSoon({ board, lineups }: { board: ScoreboardState; lineups: LiveLineups }) {
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-      <Bunting />
-      <div className="border-b-2 border-gold bg-[#122019] px-4 pb-6 pt-5 text-center">
-        <p className="font-display text-2xl tracking-[.3em] text-gold">STARTING SOON</p>
-        <div className="mt-3 flex items-center justify-center gap-4 font-display text-3xl min-[760px]:text-4xl">
-          <span className="text-cream">{board.away.code}</span>
-          <span className="text-muted-green">vs</span>
-          <span className="text-gold">{board.home.code}</span>
-        </div>
-        {(board.away.name || board.home.name) && (
-          <p className="mt-1.5 font-data text-xs text-muted-green">
-            {board.away.name} at {board.home.name}
-          </p>
-        )}
-        <p className="mt-3 font-data text-sm text-muted-green">First pitch coming up — hang tight.</p>
-      </div>
-      {(lineups.away.length > 0 || lineups.home.length > 0) && (
-        <div className="grid gap-6 p-4 min-[760px]:grid-cols-2">
-          <LineupCard title={board.away.name || board.away.code} slots={lineups.away} />
-          <LineupCard title={board.home.name || board.home.code} slots={lineups.home} accent />
-        </div>
-      )}
-    </div>
-  )
-}
+// Pre-game cover (design spec): a navy screen with bunting, the matchup in full
+// names, the first-pitch time, and the location — vertically centered.
+function StartingSoon({
+  board,
+  when,
+  location,
+  hasVideo,
+}: {
+  board: ScoreboardState
+  when: string | null
+  location: string | null
+  hasVideo: boolean
+}) {
+  const d = when ? new Date(when) : null
+  const time = d ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null
+  const date = d ? d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : null
+  const sub = [location, date].filter(Boolean).join(' · ')
 
-function LineupCard({ title, slots, accent = false }: { title?: string; slots: LiveSlot[]; accent?: boolean }) {
-  if (!slots.length) return null
   return (
-    <div>
-      <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title ?? 'Lineup'}</h3>
-      <ol className="border-2 border-gold/30">
-        {slots.map((s, i) => (
-          <li
-            key={s.id}
-            className={`flex items-center gap-2 px-3 py-1.5 font-data text-sm ${i > 0 ? 'border-t border-cream/10' : ''}`}
-          >
-            <span className="w-4 text-right text-muted-green">{i + 1}</span>
-            <span className="w-6 text-right font-athletic font-bold text-barn-red">{s.jersey ?? '—'}</span>
-            <span className="flex-1 truncate text-cream">{s.name}</span>
-            {s.pos && <span className="font-athletic text-[10px] uppercase text-muted-green">{s.pos}</span>}
-          </li>
-        ))}
-      </ol>
+    <div className="relative flex flex-1 flex-col items-center justify-center gap-6 bg-ink px-6 text-center">
+      <div className="absolute inset-x-0 top-0">
+        <Bunting />
+      </div>
+
+      <p className="font-athletic text-xs font-semibold uppercase tracking-[.28em] text-[#a9b4c9]">
+        First Pitch
+      </p>
+
+      <div>
+        <p className="font-display text-2xl leading-tight text-cream min-[760px]:text-3xl">{board.away.name}</p>
+        <p className="my-2 font-athletic text-xs uppercase tracking-[.32em] text-muted-green">— at —</p>
+        <p className="font-display text-2xl leading-tight text-gold min-[760px]:text-3xl">{board.home.name}</p>
+      </div>
+
+      {time ? (
+        <div>
+          <p className="font-display text-4xl text-cream">{time}</p>
+          {sub && <p className="mt-1.5 font-data text-sm text-muted-green">{sub}</p>}
+        </div>
+      ) : (
+        <>
+          <p className="font-display text-3xl tracking-[.2em] text-gold">STARTING SOON</p>
+          {sub && <p className="font-data text-sm text-muted-green">{sub}</p>}
+        </>
+      )}
+
+      <p className="font-athletic text-xs uppercase tracking-[.2em] text-[#7f8aa3]">
+        {hasVideo ? 'Waiting for stream' : 'Not live yet'}
+      </p>
     </div>
   )
 }
@@ -493,10 +522,12 @@ function FinalView({
   board,
   events,
   recap,
+  location,
 }: {
   board: ScoreboardState
   events: ViewerEvent[]
   recap: Recap | null
+  location: string | null
 }) {
   const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
   return (
@@ -521,6 +552,7 @@ function FinalView({
             {board.away.name} at {board.home.name}
           </p>
         )}
+        {location && <p className="mt-0.5 font-data text-xs text-muted-green">{location}</p>}
       </div>
 
       {/* sub-tabs */}

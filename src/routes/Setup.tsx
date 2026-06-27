@@ -370,6 +370,7 @@ function CreateGameCard({
   const [away, setAway] = useState('')
   const [home, setHome] = useState(firstFav)
   const [when, setWhen] = useState('')
+  const [location, setLocation] = useState('')
   const [video, setVideo] = useState<VideoSource>('none')
   const [ytUrl, setYtUrl] = useState('')
   const [busy, setBusy] = useState(false)
@@ -385,6 +386,7 @@ function CreateGameCard({
       away_team_id: away,
       home_team_id: home,
       scheduled_at: when || null,
+      location: location.trim() || null,
       video_source: video,
       video_config: video === 'youtube' && ytUrl.trim() ? { youtube_url: ytUrl.trim() } : {},
       slug: makeSlug(aName, hName),
@@ -477,6 +479,19 @@ function CreateGameCard({
             className="min-w-0 flex-1 bg-transparent font-data text-ink outline-none"
           />
         </div>
+      </label>
+
+      {/* Location */}
+      <label className="mb-5 block">
+        <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+          Location (optional)
+        </span>
+        <input
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="e.g. Cedar Park · Field 2"
+          className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+        />
       </label>
 
       <div className="flex gap-2">

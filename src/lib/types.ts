@@ -54,6 +54,7 @@ export type Game = {
   home_team_id: string
   away_team_id: string
   scheduled_at: string | null
+  location: string | null
   status: GameStatus
   video_source: VideoSource
   video_config: Record<string, unknown>
