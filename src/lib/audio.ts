@@ -24,6 +24,7 @@ class AudioManager {
   private crowdBuffer: AudioBuffer | null = null
   private crowdSource: AudioBufferSourceNode | null = null
   private crowdGain: GainNode | null = null
+  private crowdStarting = false // guard against concurrent starts (double loops)
   private enabled = false
   private crowdOn = false
   private queue: string[] = [] // voice clip URLs only — FX play immediately
@@ -151,26 +152,38 @@ class AudioManager {
       this.stopCrowd()
       return
     }
-    if (this.crowdSource) return // already looping
-    if (!this.crowdBuffer) this.crowdBuffer = await this.load(CROWD_FILE)
-    if (this.ctx.state === 'suspended') {
-      try {
-        await this.ctx.resume()
-      } catch {
-        /* ignore */
+    if (this.crowdSource || this.crowdStarting) return // already looping / mid-start
+    this.crowdStarting = true
+    try {
+      if (!this.crowdBuffer) this.crowdBuffer = await this.load(CROWD_FILE)
+      if (this.ctx.state === 'suspended') {
+        try {
+          await this.ctx.resume()
+        } catch {
+          /* ignore */
+        }
       }
+      // State may have changed across the awaits.
+      if (!this.crowdOn || this.crowdSource || !this.crowdBuffer || !this.ctx) return
+      const buf = this.crowdBuffer
+      const src = this.ctx.createBufferSource()
+      src.buffer = buf
+      src.loop = true
+      // Loop a region a hair inside both ends. m4a/AAC adds encoder priming at the
+      // start and padding (silence) at the end; looping the whole buffer hits that
+      // silence and stutters/gaps each lap. Skipping the edges gives a clean seam.
+      const trim = buf.duration > 2 ? 0.15 : 0
+      src.loopStart = trim
+      src.loopEnd = buf.duration - trim
+      const g = this.ctx.createGain()
+      g.gain.value = CROWD_BASE
+      src.connect(g).connect(this.ctx.destination)
+      src.start(this.ctx.currentTime, trim) // begin inside the priming silence too
+      this.crowdSource = src
+      this.crowdGain = g
+    } finally {
+      this.crowdStarting = false
     }
-    // State may have changed across the awaits.
-    if (!this.crowdOn || this.crowdSource || !this.crowdBuffer || !this.ctx) return
-    const src = this.ctx.createBufferSource()
-    src.buffer = this.crowdBuffer
-    src.loop = true
-    const g = this.ctx.createGain()
-    g.gain.value = CROWD_BASE
-    src.connect(g).connect(this.ctx.destination)
-    src.start()
-    this.crowdSource = src
-    this.crowdGain = g
   }
 
   private stopCrowd() {
