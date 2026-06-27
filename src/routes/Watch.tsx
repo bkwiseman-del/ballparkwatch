@@ -1061,15 +1061,12 @@ function BoxTab({
         </tbody>
       </table>
 
+      {/* Each team's batting then its pitching, grouped together. */}
       <BattingTable title={board.away.name ?? board.away.code} lines={bats.away} />
-      <BattingTable title={board.home.name ?? board.home.code} lines={bats.home} accent />
+      <PitchingTable title={`${board.away.name ?? board.away.code} — Pitching`} lines={pitch.away} />
 
-      {(pitch.away.length > 0 || pitch.home.length > 0) && (
-        <>
-          <PitchingTable title={`${board.away.name ?? board.away.code} — Pitching`} lines={pitch.away} />
-          <PitchingTable title={`${board.home.name ?? board.home.code} — Pitching`} lines={pitch.home} accent />
-        </>
-      )}
+      <BattingTable title={board.home.name ?? board.home.code} lines={bats.home} accent />
+      <PitchingTable title={`${board.home.name ?? board.home.code} — Pitching`} lines={pitch.home} accent />
     </div>
   )
 }
