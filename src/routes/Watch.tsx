@@ -379,7 +379,10 @@ export default function Watch() {
   )
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col bg-night-green text-cream min-[760px]:max-w-3xl lg:max-w-6xl">
+    <div
+      className="mx-auto flex min-h-full w-full max-w-lg flex-col text-cream min-[760px]:max-w-3xl lg:max-w-6xl"
+      style={{ backgroundColor: live.status === 'live' ? '#15281b' : '#1A2A4A' }}
+    >
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
@@ -519,6 +522,26 @@ function StartingSoon({
   const date = d ? d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : null
   const sub = [location, date].filter(Boolean).join(' · ')
 
+  // Live countdown to first pitch (only when a time is set).
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    if (!d) return
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [d?.getTime()]) // eslint-disable-line react-hooks/exhaustive-deps
+  const countdown = (() => {
+    if (!d) return null
+    const ms = d.getTime() - nowMs
+    if (ms <= 0) return 'Starting any moment'
+    const total = Math.floor(ms / 1000)
+    const h = Math.floor(total / 3600)
+    const m = Math.floor((total % 3600) / 60)
+    const s = total % 60
+    if (h > 0) return `${h}h ${m}m`
+    if (m > 0) return `${m}m ${s}s`
+    return `${s}s`
+  })()
+
   return (
     <div className="relative flex flex-1 flex-col items-center justify-center bg-ink px-6 text-center">
       <div className="absolute inset-x-0 top-0">
@@ -540,6 +563,11 @@ function StartingSoon({
           <div>
             <p className="font-display text-4xl text-cream">{time}</p>
             {sub && <p className="mt-1.5 font-data text-sm text-muted-green">{sub}</p>}
+            {countdown && (
+              <p className="mt-2 font-athletic text-sm font-semibold uppercase tracking-[.16em] text-gold">
+                First pitch in {countdown}
+              </p>
+            )}
           </div>
         ) : (
           <>
