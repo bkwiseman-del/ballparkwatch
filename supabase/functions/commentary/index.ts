@@ -20,6 +20,12 @@ const TEXT_MODEL = 'claude-haiku-4-5' // fast/cheap rewrites for high-volume lin
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY)
 
+// Stable hex digest of a string — used to cache audio by its content.
+async function sha256(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 // Turn a terse play / structured recap into natural broadcast speech. Pitches
 // and info lines are already natural, so they pass through untouched.
 async function announcerText(text: string, kind?: string): Promise<string> {
@@ -78,7 +84,14 @@ Deno.serve(async (req) => {
   const { gameId, seq, text, kind } = body
   if (!gameId || seq == null || !text?.trim()) return json({ error: 'Missing gameId/seq/text.' }, 400)
 
-  const path = `commentary/${gameId}/${seq}.mp3`
+  // Cache by the CONTENT (voice + kind + exact text), not by game/play — so an
+  // identical line ("Strike one", "Now batting, Carson S.", a repeated play) is
+  // generated once and reused across every at-bat and every game. A cache hit here
+  // skips BOTH the Claude rewrite and the ElevenLabs call. Keyed on the raw input
+  // (pre-rewrite), so repeats of the same play reuse the first generation.
+  const raw = text.trim()
+  const key = await sha256(`${VOICE_ID}|${kind ?? ''}|${raw}`)
+  const path = `commentary/p/${key}.mp3`
   const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`
 
   // Cache hit?

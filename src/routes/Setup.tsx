@@ -97,6 +97,14 @@ function GamesView({
   const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [showPast, setShowPast] = useState(false)
 
+  async function deleteGame(game: Game) {
+    if (!window.confirm('Delete this game and all its plays, stats, and recap? This can’t be undone.'))
+      return
+    const { error } = await supabase.from('games').delete().eq('id', game.id)
+    if (error) onError(error.message)
+    else onChange()
+  }
+
   // Keep the list short: upcoming/live games first, then just the few most recent
   // finals; the rest are tucked behind a "past games" toggle.
   const RECENT_FINALS = 3
@@ -177,6 +185,13 @@ function GamesView({
                   >
                     Watch
                   </Link>
+                  <button
+                    onClick={() => deleteGame(game)}
+                    title="Delete game"
+                    className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             </li>
@@ -434,6 +449,23 @@ function TeamsView({
     else onChange()
   }
 
+  async function deleteTeam(team: Team) {
+    // A team can't be deleted while a game references it (FK), so guide the user.
+    const { count } = await supabase
+      .from('games')
+      .select('id', { count: 'exact', head: true })
+      .or(`away_team_id.eq.${team.id},home_team_id.eq.${team.id}`)
+    if (count && count > 0) {
+      onError(`Can’t delete ${team.name} — it’s in ${count} game${count === 1 ? '' : 's'}. Delete those games first.`)
+      return
+    }
+    if (!window.confirm(`Delete ${team.name} and its whole roster? This can’t be undone.`)) return
+    const { error } = await supabase.from('teams').delete().eq('id', team.id)
+    if (error) return onError(error.message)
+    if (selectedId === team.id) setSelectedId(null)
+    onChange()
+  }
+
   return (
     <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
       <section>
@@ -446,6 +478,7 @@ function TeamsView({
             selectedId={selectedId}
             onSelect={setSelectedId}
             onToggleFavorite={toggleFavorite}
+            onDelete={deleteTeam}
           />
         )}
         <TeamGroup
@@ -454,6 +487,7 @@ function TeamsView({
           selectedId={selectedId}
           onSelect={setSelectedId}
           onToggleFavorite={toggleFavorite}
+          onDelete={deleteTeam}
         />
         {teams.length === 0 && <EmptyHint>No teams yet — add your team below.</EmptyHint>}
 
@@ -479,12 +513,14 @@ function TeamGroup({
   selectedId,
   onSelect,
   onToggleFavorite,
+  onDelete,
 }: {
   title: string
   teams: Team[]
   selectedId: string | null
   onSelect: (id: string) => void
   onToggleFavorite: (t: Team) => void
+  onDelete: (t: Team) => void
 }) {
   if (teams.length === 0) return null
   return (
@@ -510,6 +546,13 @@ function TeamGroup({
             <button onClick={() => onSelect(t.id)} className="flex-1 py-3 pr-3 text-left">
               <span className="font-display text-lg">{t.name}</span>
               {t.season && <span className="ml-2 font-athletic text-muted-tan">{t.season}</span>}
+            </button>
+            <button
+              onClick={() => onDelete(t)}
+              title="Delete team"
+              className="px-3 py-3 font-athletic text-sm font-bold text-ink/30 hover:text-barn-red"
+            >
+              Delete
             </button>
           </li>
         ))}
