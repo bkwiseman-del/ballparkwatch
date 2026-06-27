@@ -425,6 +425,12 @@ export default function Watch() {
           when={info.scheduled_at ?? null}
           location={info.location ?? null}
           hasVideo={info.video_source !== 'none'}
+          audioReady={audioReady}
+          onEnableSound={async () => {
+            setSoundOn(true)
+            await audio.enable()
+            setAudioReady(true)
+          }}
         />
       ) : live.status === 'final' ? (
         <FinalView board={board} events={events} recap={info.recap ?? null} location={info.location ?? null} />
@@ -496,11 +502,15 @@ function StartingSoon({
   when,
   location,
   hasVideo,
+  audioReady,
+  onEnableSound,
 }: {
   board: ScoreboardState
   when: string | null
   location: string | null
   hasVideo: boolean
+  audioReady: boolean
+  onEnableSound: () => void
 }) {
   const d = when ? new Date(when) : null
   const time = d ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null
@@ -540,6 +550,21 @@ function StartingSoon({
           {hasVideo ? 'Waiting for stream' : 'Not live yet'}
         </p>
       </div>
+
+      {/* Audio needs a tap to unlock (browser policy) — make it obvious so sound
+          is ready before first pitch. */}
+      {audioReady ? (
+        <p className="mt-6 inline-flex items-center gap-1.5 font-athletic text-xs uppercase tracking-[.2em] text-[#7f8aa3]">
+          <SoundOnIcon className="h-4 w-4" /> Sound on
+        </p>
+      ) : (
+        <button
+          onClick={onEnableSound}
+          className="mt-6 inline-flex items-center gap-2 border-2 border-gold bg-gold px-5 py-2.5 font-display text-ink shadow-hard"
+        >
+          <SoundOnIcon className="h-5 w-5" /> Tap for sound
+        </button>
+      )}
     </div>
   )
 }
