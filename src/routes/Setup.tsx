@@ -358,6 +358,9 @@ function GamesView({
         <LiveWatchModal
           gameId={watchGame.id}
           title={watchGame.status === 'final' ? 'Game Summary' : 'Live View'}
+          // Match the body (iOS safe-area strips) to the viewer screen: a scheduled
+          // game shows the navy Starting Soon cover; otherwise the dark scoreboard.
+          bodyBg={watchGame.status === 'scheduled' ? '#1A2A4A' : '#15281b'}
           onClose={() => setWatchGame(null)}
         />
       )}
@@ -378,19 +381,30 @@ function GamesView({
 // In-app viewer for the scorer — embeds the public /watch page in an iframe so it
 // stays inside the PWA (opening it directly gets trapped in the iOS shell). For a
 // finished game /watch renders the full final view (recap + box + stats + plays).
-function LiveWatchModal({ gameId, title, onClose }: { gameId: string; title: string; onClose: () => void }) {
-  // The Setup screen sets the body cream; while this dark viewer modal is open,
-  // make the body dark so the iOS bottom safe-area strip behind it isn't cream.
+function LiveWatchModal({
+  gameId,
+  title,
+  bodyBg,
+  onClose,
+}: {
+  gameId: string
+  title: string
+  bodyBg: string
+  onClose: () => void
+}) {
+  // The Setup screen sets the body cream; while this viewer modal is open, match
+  // the body to the viewer screen so the iOS safe-area strips don't show cream
+  // (or a clashing color behind the navy Starting Soon cover).
   useEffect(() => {
     const prev = document.body.style.backgroundColor
-    document.body.style.backgroundColor = '#15281b'
+    document.body.style.backgroundColor = bodyBg
     return () => {
       document.body.style.backgroundColor = prev
     }
-  }, [])
+  }, [bodyBg])
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-night-green">
+    <div className="fixed inset-0 z-40 flex flex-col" style={{ backgroundColor: bodyBg }}>
       <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
         <span className="font-display text-lg text-cream">{title}</span>
         <button onClick={onClose} className="font-athletic text-cream">
