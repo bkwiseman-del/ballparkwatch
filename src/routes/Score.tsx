@@ -267,11 +267,11 @@ export default function Score() {
       {/* action zone — mode chosen at game start */}
       {playing &&
         (simple ? (
-          <div className="grid h-[42vh] flex-none grid-cols-2 grid-rows-2 gap-0.5 bg-ink">
-            <ActionBtn className="bg-board-green text-[28px]" onClick={onBall}>BALL</ActionBtn>
-            <ActionBtn className="bg-barn-red text-[28px]" onClick={onStrikeSimple}>STRIKE</ActionBtn>
-            <ActionBtn className="bg-cream !text-ink text-[28px]" onClick={onSimpleHit}>HIT</ActionBtn>
-            <ActionBtn className="border-2 border-gold text-[28px]" onClick={onSimpleOut}>OUT</ActionBtn>
+          <div className="grid flex-none grid-cols-2 gap-2.5 bg-ink p-3.5">
+            <ActionBtn className="h-[72px] bg-board-green text-2xl" onClick={onBall}>BALL</ActionBtn>
+            <ActionBtn className="h-[72px] bg-barn-red text-2xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
+            <ActionBtn className="h-[72px] bg-cream text-2xl !text-ink" onClick={onSimpleHit}>HIT</ActionBtn>
+            <ActionBtn className="h-[72px] border-2 border-gold text-2xl" onClick={onSimpleOut}>OUT</ActionBtn>
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 bg-ink p-3.5">
