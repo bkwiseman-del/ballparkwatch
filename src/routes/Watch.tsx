@@ -26,7 +26,8 @@ import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
-import { SoundOnIcon, SoundOffIcon } from '@/components/Icons'
+import { ShareSheet } from '@/components/ShareSheet'
+import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon } from '@/components/Icons'
 import { audio } from '@/lib/audio'
 import { displayName } from '@/lib/names'
 import { freshCues, fxCues } from '@/lib/commentary'
@@ -69,7 +70,7 @@ function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null
   return null
 }
 
-type ViewerEvent = GameEventRow & { batter_name: string | null }
+type ViewerEvent = GameEventRow & { batter_name: string | null; created_at?: string }
 
 type Tab = 'field' | 'plays' | 'box' | 'stats'
 
@@ -97,6 +98,7 @@ export default function Watch() {
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<SprayViz | null>(null)
   const [showStandby, setShowStandby] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   // Commentary on by default so it plays the moment the game starts. Audio still
   // needs a user gesture to unlock (browser autoplay policy) — see the effect below.
   const [soundOn, setSoundOn] = useState(true)
@@ -289,9 +291,12 @@ export default function Watch() {
       if (audio.isEnabled() && newest) {
         audio.playFx(fxCues(newest.event_type))
         if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
-        // Organ stinger at the top of an inning, ahead of the inning's commentary.
-        if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start'))
-          audio.enqueueOrgan()
+        // Inning-intro stinger ahead of the commentary: the "charge!" rally riff
+        // when the home team comes up (bottom half), the short organ otherwise.
+        if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) {
+          if (project(events).half === 'bottom') audio.enqueueCharge()
+          else audio.enqueueOrgan()
+        }
 
         if (gameId) {
           // Commentary is public too — speak first name + last initial only.
@@ -378,6 +383,8 @@ export default function Watch() {
     away: Object.fromEntries((info?.lineups?.away ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
     home: Object.fromEntries((info?.lineups?.home ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
   }
+  // First-pitch timestamp (the game_start event), for the running game clock.
+  const firstPitchAt = events.find((e) => e.event_type === 'game_start')?.created_at ?? null
 
   // External-camera games stream to YouTube; embed it if we have a usable link.
   const ytId =
@@ -414,6 +421,14 @@ export default function Watch() {
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
         <HeaderWordmark />
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowShare(true)}
+            aria-label="Share this game"
+            className="inline-flex items-center gap-1 border border-cream/40 px-2 py-1 font-athletic text-[11px] font-semibold uppercase tracking-wide text-cream/80"
+          >
+            Share <ArrowUpRightIcon className="h-3 w-3" />
+          </button>
+          {live.status === 'live' && firstPitchAt && <GameClock startIso={firstPitchAt} />}
           {/* Commentary only matters during a live game — hide it pre-game and on
               the final summary. */}
           {live.status === 'live' && (
@@ -530,7 +545,37 @@ export default function Watch() {
           </div>
         </>
       )}
+
+      {showShare && (
+        <ShareSheet
+          url={window.location.href}
+          title={`${board.away.name ?? board.away.code} at ${board.home.name ?? board.home.code}`}
+          onClose={() => setShowShare(false)}
+        />
+      )}
     </div>
+  )
+}
+
+// A running game clock — elapsed since first pitch, ticking each second.
+function GameClock({ startIso }: { startIso: string }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const s = Math.max(0, Math.floor((now - new Date(startIso).getTime()) / 1000))
+  const hh = Math.floor(s / 3600)
+  const mm = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  const text =
+    hh > 0
+      ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+      : `${mm}:${String(ss).padStart(2, '0')}`
+  return (
+    <span className="font-athletic tabular text-sm text-muted-green" title="Elapsed since first pitch">
+      {text}
+    </span>
   )
 }
 

@@ -11,8 +11,11 @@ const FX_FILES: Record<string, string> = {
   slide: '/sfx/slide.m4a',
   cheer: '/sfx/cheer.m4a',
   organ: '/sfx/organ.m4a', // inning-intro stinger (played via the voice queue)
+  charge: '/sfx/charge.m4a', // "charge!" rally riff for the home half
 }
 const ORGAN_CUE = '@organ' // queue sentinel: play the organ stinger, not a TTS url
+const CHARGE_CUE = '@charge'
+const CHARGE_MAX = 14 // the charge clip runs long; play up to the 14s mark
 const CROWD_FILE = '/sfx/crowd.m4a'
 const CROWD_BASE = 0.34 // ambient bed; clearly audible but under commentary/FX
 const FX_VOLUME = 0.7
@@ -49,11 +52,14 @@ class AudioManager {
       const bufs = await Promise.all(entries.map(([, url]) => this.load(url)))
       entries.forEach(([k], i) => {
         const b = bufs[i]
+        if (!b) return
         // Strip leading silence so every FX starts at its attack. The source clips
         // have wildly different lead-ins (pitch ~0.56s, slide ~1.06s, catch ~0s);
         // without this the staggered starts in playFx don't line up — e.g. pitch's
         // pop would land on top of catch. No trailing content is cut.
-        if (b) this.fx[k] = this.trimLead(b)
+        const lead = this.trimLead(b)
+        // The charge riff is long — keep only the opening rally.
+        this.fx[k] = k === 'charge' ? this.clip(lead, CHARGE_MAX) : lead
       })
       this.crowdBuffer = await this.load(CROWD_FILE)
       this.buildReverb()
@@ -114,6 +120,24 @@ class AudioManager {
       }
     }
     return imp
+  }
+
+  // Keep only the first `maxSec` of a buffer (a copy), with a short fade-out so
+  // the cut isn't an abrupt click.
+  private clip(buf: AudioBuffer, maxSec: number): AudioBuffer {
+    if (!this.ctx || buf.duration <= maxSec) return buf
+    const len = Math.floor(maxSec * buf.sampleRate)
+    const fade = Math.min(Math.floor(0.25 * buf.sampleRate), len)
+    const out = this.ctx.createBuffer(buf.numberOfChannels, len, buf.sampleRate)
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const src = buf.getChannelData(ch)
+      const dst = out.getChannelData(ch)
+      for (let i = 0; i < len; i++) {
+        const g = i >= len - fade ? (len - i) / fade : 1
+        dst[i] = src[i] * g
+      }
+    }
+    return out
   }
 
   // Drop leading near-silence so a clip starts at its attack (keeps a tiny 5ms
@@ -244,6 +268,13 @@ class AudioManager {
     void this.pump()
   }
 
+  // The "charge!" rally riff for the home half — also via the voice queue.
+  enqueueCharge() {
+    if (!this.enabled) return
+    this.queue.push(CHARGE_CUE)
+    void this.pump()
+  }
+
   private async pump() {
     if (this.playing || !this.enabled || !this.ctx) return
     const url = this.queue.shift()
@@ -252,6 +283,8 @@ class AudioManager {
     try {
       if (url === ORGAN_CUE) {
         await this.playAndWait(this.fx['organ'] ?? null, 0.7)
+      } else if (url === CHARGE_CUE) {
+        await this.playAndWait(this.fx['charge'] ?? null, 0.7)
       } else {
         let buf = this.voiceCache.get(url)
         if (!buf) {
