@@ -41,10 +41,12 @@ export default function Score() {
   // Live health of the phone broadcast (for the indicator in the header).
   const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
   // Scoring mode is chosen at game start and locked for the game (Full default).
-  const [simple, setSimple] = useState(() => localStorage.getItem(`bpw_mode_${gameId}`) === 'quick')
-  const setMode = (quick: boolean) => {
-    setSimple(quick)
-    localStorage.setItem(`bpw_mode_${gameId}`, quick ? 'quick' : 'full')
+  const [scoreboard, setScoreboard] = useState(
+    () => localStorage.getItem(`bpw_mode_${gameId}`) === 'board',
+  )
+  const setMode = (sb: boolean) => {
+    setScoreboard(sb)
+    localStorage.setItem(`bpw_mode_${gameId}`, sb ? 'board' : 'full')
   }
 
   if (loading) return <Centered>Loading game…</Centered>
@@ -69,14 +71,7 @@ export default function Score() {
     else act('pitch_strike', { kind })
   }
 
-  // Simple mode: one-tap HIT (single, everyone up a base) / OUT (batter out).
-  const onSimpleHit = () => {
-    const runners: Record<string, Dest> = {}
-    if (live.bases.first) runners[live.bases.first] = 2
-    if (live.bases.second) runners[live.bases.second] = 3
-    if (live.bases.third) runners[live.bases.third] = 4
-    act('single', { resolution: { batter: 1, runners }, rbi: live.bases.third ? 1 : 0 })
-  }
+  // Scoreboard mode: a generic out (no batter) just bumps the out count.
   const onSimpleOut = () => act('groundout', { resolution: { batter: 0, runners: {} } })
   const onStrikeSimple = () => (live.strikes >= 2 ? act('strikeout', {}) : act('pitch_strike', {}))
 
@@ -111,11 +106,11 @@ export default function Score() {
 
       {error && <p className="bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>}
 
-      {/* batter / pitcher strip */}
-      {playing && <BatterPitcherStrip scorer={s} gameId={gameId} onEdit={setEditPlayer} />}
+      {/* batter / pitcher strip (full mode only) */}
+      {playing && !scoreboard && <BatterPitcherStrip scorer={s} gameId={gameId} onEdit={setEditPlayer} />}
 
-      {/* live field — grows to fill the available space */}
-      {playing && (
+      {/* live field — grows to fill the available space (full mode only) */}
+      {playing && !scoreboard && (
         <div className="flex min-h-0 flex-1 flex-col bg-board-green">
           <div className="flex flex-none items-center justify-between bg-field-green px-3 py-1.5">
             <span className="font-athletic text-[10px] uppercase tracking-[.14em] text-muted-green">
@@ -167,36 +162,38 @@ export default function Score() {
             <div className="inline-flex border-2 border-gold">
               <button
                 onClick={() => setMode(false)}
-                className={`px-6 py-2 font-display ${!simple ? 'bg-gold text-ink' : 'text-cream'}`}
+                className={`px-6 py-2 font-display ${!scoreboard ? 'bg-gold text-ink' : 'text-cream'}`}
               >
                 Full
               </button>
               <button
                 onClick={() => setMode(true)}
-                className={`px-6 py-2 font-display ${simple ? 'bg-gold text-ink' : 'text-cream'}`}
+                className={`px-6 py-2 font-display ${scoreboard ? 'bg-gold text-ink' : 'text-cream'}`}
               >
-                Quick
+                Scoreboard
               </button>
             </div>
-            <p className="mt-2 font-data text-[11px] text-muted-green">
-              {simple
-                ? 'Quick: BALL / STRIKE / HIT / OUT. Stats incomplete.'
-                : 'Full play-by-play, baserunners, and stats.'}
+            <p className="mt-2 max-w-xs font-data text-[11px] text-muted-green">
+              {scoreboard
+                ? 'Scoreboard: just balls, strikes, outs, runs & hits — no field or lineup. Viewers see the score, not play-by-play.'
+                : 'Full play-by-play, baserunners, stats, and commentary.'}
             </p>
           </div>
           <button
             onClick={async () => {
-              // Don't get stuck if a team has no lineup (common for the opponent) —
-              // drop in a generic batting order they can rename/renumber on the fly.
-              if (!s.lineups.away.length) await s.fillGenericLineup('away')
-              if (!s.lineups.home.length) await s.fillGenericLineup('home')
+              // Full mode needs a batting order; drop in generic players for any team
+              // without a lineup. Scoreboard mode needs no lineup at all.
+              if (!scoreboard) {
+                if (!s.lineups.away.length) await s.fillGenericLineup('away')
+                if (!s.lineups.home.length) await s.fillGenericLineup('home')
+              }
               act('game_start')
             }}
             className="bg-gold px-8 py-4 font-display text-xl text-ink"
           >
             START GAME ▸
           </button>
-          {(!s.lineups.away.length || !s.lineups.home.length) && (
+          {!scoreboard && (!s.lineups.away.length || !s.lineups.home.length) && (
             <p className="max-w-xs font-data text-xs text-muted-tan">
               No lineup for {!s.lineups.away.length ? teams?.away.name : teams?.home.name}? We’ll add
               generic players (Player 1, 2, …) — tap a batter or use Substitution to set their number
@@ -240,10 +237,14 @@ export default function Score() {
             >
               ✎ PLAYS
             </button>
-            <span className="h-4 w-px bg-ink/25" />
-            <button onClick={() => setShowSub(true)} className="font-athletic text-xs font-bold uppercase text-ink">
-              ⇄ SUB
-            </button>
+            {!scoreboard && (
+              <>
+                <span className="h-4 w-px bg-ink/25" />
+                <button onClick={() => setShowSub(true)} className="font-athletic text-xs font-bold uppercase text-ink">
+                  ⇄ SUB
+                </button>
+              </>
+            )}
             {playing && (
               <>
                 <span className="h-4 w-px bg-ink/25" />
@@ -266,19 +267,29 @@ export default function Score() {
 
       {/* action zone — mode chosen at game start */}
       {playing &&
-        (simple ? (
-          <div className="flex flex-none flex-col gap-2.5 bg-ink p-3.5">
-            <div className="grid grid-cols-2 gap-2.5">
-              <ActionBtn className="h-[66px] bg-board-green text-2xl" onClick={onBall}>BALL</ActionBtn>
-              <ActionBtn className="h-[66px] bg-barn-red text-2xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
-              <ActionBtn className="h-[66px] bg-cream text-2xl !text-ink" onClick={onSimpleHit}>HIT</ActionBtn>
-              <ActionBtn className="h-[66px] border-2 border-gold text-2xl" onClick={onSimpleOut}>OUT</ActionBtn>
+        (scoreboard ? (
+          // Scoreboard mode: no field/lineup — just the count, outs, runs and hits.
+          <div className="flex min-h-0 flex-1 flex-col justify-center gap-2.5 bg-ink p-4">
+            <div className="grid grid-cols-3 gap-2.5">
+              <ActionBtn className="h-[64px] bg-board-green text-xl" onClick={onBall}>BALL</ActionBtn>
+              <ActionBtn className="h-[64px] bg-barn-red text-xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
+              <ActionBtn className="h-[64px] border-2 border-gold text-xl text-gold" onClick={() => act('pitch_foul')}>FOUL</ActionBtn>
             </div>
-            {/* Escape hatch for anything HIT/OUT can't express (extra-base hits,
-                a hit with a runner thrown out, etc.) — the full resolver. */}
-            <ActionBtn className="h-[44px] bg-gold text-base text-ink" onClick={() => setInPlay(true)}>
-              COMPLEX PLAY ▸
-            </ActionBtn>
+            <ActionBtn className="h-[56px] border-2 border-cream text-xl" onClick={onSimpleOut}>OUT</ActionBtn>
+            <div className="mt-1 grid grid-cols-2 gap-2.5">
+              <ActionBtn className="h-[60px] bg-gold text-xl !text-ink" onClick={() => act('manual_run', { team: 'away' })}>
+                + RUN {board.away.code}
+              </ActionBtn>
+              <ActionBtn className="h-[60px] bg-gold text-xl !text-ink" onClick={() => act('manual_run', { team: 'home' })}>
+                + RUN {board.home.code}
+              </ActionBtn>
+              <ActionBtn className="h-[48px] border-2 border-cream/60 text-base" onClick={() => act('manual_hit', { team: 'away' })}>
+                + HIT {board.away.code}
+              </ActionBtn>
+              <ActionBtn className="h-[48px] border-2 border-cream/60 text-base" onClick={() => act('manual_hit', { team: 'home' })}>
+                + HIT {board.home.code}
+              </ActionBtn>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 bg-ink p-3.5">

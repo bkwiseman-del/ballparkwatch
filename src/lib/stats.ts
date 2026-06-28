@@ -34,6 +34,21 @@ export function computeBoxScore(events: GameEventRow[]): BoxScore {
     const team = battingTop ? away : home
     const inningIdx = Math.max(0, before.inning - 1)
 
+    // Scoreboard-mode manual run/hit — credited to the named team explicitly.
+    if (ev.event_type === 'manual_run' || ev.event_type === 'manual_hit') {
+      const t = ev.payload?.team === 'home' ? home : away
+      if (ev.event_type === 'manual_run') {
+        ensure(t.runsByInning, inningIdx)
+        t.runsByInning[inningIdx] += 1
+        t.r += 1
+      } else {
+        t.h += 1
+      }
+      maxInning = Math.max(maxInning, before.inning, after.inning)
+      state = after
+      continue
+    }
+
     // runs scored during this event go to the team that was batting
     const dRuns = battingTop
       ? after.awayScore - before.awayScore

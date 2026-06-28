@@ -34,6 +34,9 @@ export type EventType =
   | 'substitution'
   // end the half early (e.g. a run-limit rule) — retires the side without a play
   | 'end_half'
+  // scoreboard mode: a run / hit added to a team directly (no plate appearance)
+  | 'manual_run'
+  | 'manual_hit'
 
 // Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
 export type Dest = 0 | 1 | 2 | 3 | 4
@@ -134,6 +137,8 @@ export const EVENT_LABELS: Record<EventType, string> = {
   picked_off: 'Picked off',
   substitution: 'Substitution',
   end_half: 'End half',
+  manual_run: 'Run',
+  manual_hit: 'Hit',
 }
 
 // Event-type groupings used across the app.
@@ -188,6 +193,13 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
       s.strikes = 0
       clearBases(s)
       break
+    case 'manual_run':
+      // Scoreboard mode: bump a team's score directly.
+      if (e.payload?.team === 'home') s.homeScore += 1
+      else s.awayScore += 1
+      break
+    case 'manual_hit':
+      break // scoreboard hit — counted in the box score, no live-state change
 
     case 'pitch_ball':
       s.balls += 1

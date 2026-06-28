@@ -123,6 +123,8 @@ export function fxCues(eventType: string): string[][] {
     case 'single':
     case 'double':
     case 'triple':
+    case 'manual_run':
+      return [['cheer']] // scoreboard-mode run
     case 'home_run':
       return [['pitch'], ['hit', 'cheer']] // crack of the bat + crowd cheer
     case 'error':
@@ -225,6 +227,12 @@ function voiceFor(
         { text: `It's the ${after.half === 'top' ? 'top' : 'bottom'} of the ${ord(after.inning)}.`, kind: 'info' },
         ...plate(),
       )
+      break
+    case 'manual_run':
+      out.push({
+        text: `${ev.payload?.team === 'home' ? teams.home : teams.away} pushes a run across. ${scoreSummary(after, teams)}`,
+        kind: 'info',
+      })
       break
     case 'game_end':
       out.push({ text: `That's the ballgame! ${finalSummary(after, teams)}`, kind: 'info' })
