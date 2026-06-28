@@ -386,6 +386,11 @@ export default function Watch() {
   // First-pitch timestamp (the game_start event), for the running game clock.
   const firstPitchAt = events.find((e) => e.event_type === 'game_start')?.created_at ?? null
 
+  // Scoreboard-mode games have no lineup (full games always do — generic if needed),
+  // so there are no baserunners/players: skip the field, just show the line score.
+  const isScoreboard =
+    live.status !== 'scheduled' && !(info.lineups?.away?.length || info.lineups?.home?.length)
+
   // External-camera games stream to YouTube; embed it if we have a usable link.
   const ytId =
     info.video_source === 'youtube'
@@ -488,6 +493,14 @@ export default function Watch() {
           startPos={startPositions}
           nameOf={nameById}
         />
+      ) : isScoreboard ? (
+        /* Scoreboard game: no field/lineup — the live scoreboard + the line score. */
+        <>
+          {videoBlock}
+          <div className="flex-1 p-4 min-[760px]:mx-auto min-[760px]:w-full min-[760px]:max-w-2xl min-[760px]:p-6">
+            <BoxTab board={board} events={events} startPos={startPositions} nameOf={nameById} />
+          </div>
+        </>
       ) : isDesktop ? (
         /* Desktop: left = video + bug + Plays/Box/Stats; right = the live field. */
         <div className="flex flex-1 items-stretch">
