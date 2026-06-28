@@ -267,11 +267,18 @@ export default function Score() {
       {/* action zone — mode chosen at game start */}
       {playing &&
         (simple ? (
-          <div className="grid flex-none grid-cols-2 gap-2.5 bg-ink p-3.5">
-            <ActionBtn className="h-[72px] bg-board-green text-2xl" onClick={onBall}>BALL</ActionBtn>
-            <ActionBtn className="h-[72px] bg-barn-red text-2xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
-            <ActionBtn className="h-[72px] bg-cream text-2xl !text-ink" onClick={onSimpleHit}>HIT</ActionBtn>
-            <ActionBtn className="h-[72px] border-2 border-gold text-2xl" onClick={onSimpleOut}>OUT</ActionBtn>
+          <div className="flex flex-none flex-col gap-2.5 bg-ink p-3.5">
+            <div className="grid grid-cols-2 gap-2.5">
+              <ActionBtn className="h-[66px] bg-board-green text-2xl" onClick={onBall}>BALL</ActionBtn>
+              <ActionBtn className="h-[66px] bg-barn-red text-2xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
+              <ActionBtn className="h-[66px] bg-cream text-2xl !text-ink" onClick={onSimpleHit}>HIT</ActionBtn>
+              <ActionBtn className="h-[66px] border-2 border-gold text-2xl" onClick={onSimpleOut}>OUT</ActionBtn>
+            </div>
+            {/* Escape hatch for anything HIT/OUT can't express (extra-base hits,
+                a hit with a runner thrown out, etc.) — the full resolver. */}
+            <ActionBtn className="h-[44px] bg-gold text-base text-ink" onClick={() => setInPlay(true)}>
+              COMPLEX PLAY ▸
+            </ActionBtn>
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 bg-ink p-3.5">
