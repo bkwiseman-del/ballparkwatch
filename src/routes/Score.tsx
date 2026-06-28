@@ -11,7 +11,7 @@ import { displayName } from '@/lib/names'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
-import { computeBattingLines } from '@/lib/stats'
+import { buildPlayByPlay, computeBattingLines } from '@/lib/stats'
 import {
   EVENT_LABELS,
   occupancy,
@@ -33,6 +33,7 @@ export default function Score() {
   const [endPopup, setEndPopup] = useState(false)
   const [endHalf, setEndHalf] = useState(false)
   const [showSub, setShowSub] = useState(false)
+  const [showPlays, setShowPlays] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
   const [editPlayer, setEditPlayer] = useState<Player | null>(null)
@@ -232,6 +233,14 @@ export default function Score() {
             ↶ UNDO{lastLabel ? ` — ${lastLabel}` : ''}
           </button>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowPlays(true)}
+              disabled={!events.length}
+              className="font-athletic text-xs font-bold uppercase text-ink disabled:opacity-40"
+            >
+              ✎ PLAYS
+            </button>
+            <span className="h-4 w-px bg-ink/25" />
             <button onClick={() => setShowSub(true)} className="font-athletic text-xs font-bold uppercase text-ink">
               ⇄ SUB
             </button>
@@ -323,6 +332,7 @@ export default function Score() {
         />
       )}
       {showSub && <SubstitutionFlow scorer={s} onClose={() => setShowSub(false)} />}
+      {showPlays && <PlaysEditor scorer={s} onClose={() => setShowPlays(false)} />}
       {showShare && (
         <ShareSheet
           url={`${window.location.origin}/watch/${gameId}`}
@@ -885,6 +895,56 @@ function SubstitutionFlow({
           onClose={() => setEditId(null)}
         />
       )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------- plays editor */
+
+// Edit/undo ANY past play, not just the last. Lists the play-by-play; deleting a
+// play removes that event and re-projects the game from the remaining log.
+function PlaysEditor({ scorer, onClose }: { scorer: ReturnType<typeof useScorer>; onClose: () => void }) {
+  const { events, playersById, deleteEvent } = scorer
+  const plays = buildPlayByPlay(events, (id) => (id ? (playersById.get(id)?.name ?? null) : null))
+  const half = (h: string) => (h === 'top' ? 'T' : 'B')
+  return (
+    <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
+      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
+        <span className="font-display text-lg text-cream">Edit Plays</span>
+        <button onClick={onClose} className="font-athletic text-sm uppercase tracking-wide text-gold">
+          Done
+        </button>
+      </header>
+      <p className="px-3 py-2 font-data text-xs text-muted-green">
+        Tap ✕ to remove a play (corrects a mistake found later). The game re-computes
+        from what’s left. To change a play, delete it and re-score it.
+      </p>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {plays.length === 0 ? (
+          <p className="px-3 py-4 font-data text-sm text-muted-green">No plays yet.</p>
+        ) : (
+          <ul className="flex flex-col">
+            {plays.map((p) => (
+              <li key={p.seq} className="flex items-center gap-3 border-b border-cream/10 px-3 py-2.5">
+                <span className="w-8 shrink-0 font-athletic text-[11px] uppercase text-muted-green">
+                  {half(p.half)}
+                  {p.inning}
+                </span>
+                <span className="flex-1 font-data text-sm">{p.text}</span>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Delete this play?\n\n${p.text}`)) deleteEvent(p.seq)
+                  }}
+                  title="Delete play"
+                  className="shrink-0 px-2 font-athletic text-base font-bold text-barn-red"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }

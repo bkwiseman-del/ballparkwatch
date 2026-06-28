@@ -340,6 +340,36 @@ export function useScorer(gameId: string | undefined) {
     await persist(nextLive)
   }, [gameId, persist])
 
+  // Delete ANY past play (correct a mistake found later). Removes that event, then
+  // re-projects the whole log — later events keep their seq, gaps are fine.
+  const deleteEvent = useCallback(
+    async (seq: number) => {
+      const base = eventsRef.current
+      if (!gameId || !base.some((e) => e.seq === seq)) return
+      const nextEvents = base.filter((e) => e.seq !== seq)
+      const nextLive = project(nextEvents)
+      eventsRef.current = nextEvents
+      setEvents(nextEvents)
+      setLive(nextLive)
+      writeWal(gameId, nextEvents)
+      const { error: delErr } = await supabase
+        .from('game_events')
+        .delete()
+        .eq('game_id', gameId)
+        .eq('seq', seq)
+      if (delErr) {
+        setError(delErr.message)
+        eventsRef.current = base
+        setEvents(base)
+        setLive(project(base))
+        writeWal(gameId, base)
+        return
+      }
+      await persist(nextLive)
+    },
+    [gameId, persist],
+  )
+
   // Fielding team's current pitcher (projected lineup player at position P).
   const fieldingKey = live.half === 'top' ? 'home' : 'away'
   const fieldingLineup = currentLineups[fieldingKey]
@@ -385,6 +415,7 @@ export function useScorer(gameId: string | undefined) {
     abPitches,
     editPlayer,
     fillGenericLineup,
+    deleteEvent,
   }
 }
 
