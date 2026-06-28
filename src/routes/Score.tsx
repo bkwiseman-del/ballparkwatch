@@ -11,7 +11,7 @@ import { displayName } from '@/lib/names'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
-import { buildPlayByPlay, computeBattingLines } from '@/lib/stats'
+import { buildPlayByPlay, computeBattingLines, computeBoxScore } from '@/lib/stats'
 import {
   EVENT_LABELS,
   occupancy,
@@ -27,7 +27,7 @@ import type { Player, Recap, Team } from '@/lib/types'
 export default function Score() {
   const { gameId } = useParams()
   const s = useScorer(gameId)
-  const { game, teams, lineups, live, events, loading, error, act, undo } = s
+  const { game, teams, lineups, live, events, firstPitchAt, loading, error, act, undo } = s
   const [strikePopup, setStrikePopup] = useState(false)
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
@@ -54,6 +54,8 @@ export default function Score() {
 
   const lastLabel = events.length ? EVENT_LABELS[events.at(-1)!.event_type] : null
   const board = toBoard(live, teams)
+  // Scoreboard mode shows a live R-H-E readout so + RUN / + HIT visibly register.
+  const box = scoreboard ? computeBoxScore(events) : null
   const halfOver = live.outs >= 3
   const notStarted = live.status === 'scheduled'
   const isFinal = live.status === 'final'
@@ -71,8 +73,9 @@ export default function Score() {
     else act('pitch_strike', { kind })
   }
 
-  // Scoreboard mode: a generic out (no batter) just bumps the out count.
-  const onSimpleOut = () => act('groundout', { resolution: { batter: 0, runners: {} } })
+  // Scoreboard mode: a generic out (no batter) just bumps the out count —
+  // no "grounded out" play-by-play, no spoken commentary.
+  const onSimpleOut = () => act('manual_out')
   const onStrikeSimple = () => (live.strikes >= 2 ? act('strikeout', {}) : act('pitch_strike', {}))
 
   return (
@@ -81,7 +84,10 @@ export default function Score() {
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
           ← Setup
         </Link>
-        <span className="font-athletic text-xs uppercase tracking-[.16em] text-muted-green">Scorer</span>
+        <div className="flex flex-col items-center leading-none">
+          <span className="font-athletic text-xs uppercase tracking-[.16em] text-muted-green">Scorer</span>
+          {live.status === 'live' && firstPitchAt && <GameClock startIso={firstPitchAt} />}
+        </div>
         <div className="flex items-center gap-3">
           {game && game.video_source !== 'none' && (
             <button
@@ -270,6 +276,19 @@ export default function Score() {
         (scoreboard ? (
           // Scoreboard mode: no field/lineup — just the count, outs, runs and hits.
           <div className="flex min-h-0 flex-1 flex-col justify-center gap-2.5 bg-ink p-4">
+            {/* inning control — advance the half directly (no lineup to step through) */}
+            <div className="flex items-center justify-between border-2 border-cream/25 px-3 py-2">
+              <span className="font-athletic text-sm uppercase tracking-wide text-muted-green">
+                {live.half === 'top' ? 'Top' : 'Bottom'} {live.inning}
+                {ordSuffix(live.inning)}
+              </span>
+              <button
+                onClick={() => act('inning_change')}
+                className="font-athletic text-sm font-bold uppercase tracking-wide text-gold"
+              >
+                Next half ▸
+              </button>
+            </div>
             <div className="grid grid-cols-3 gap-2.5">
               <ActionBtn className="h-[64px] bg-board-green text-xl" onClick={onBall}>BALL</ActionBtn>
               <ActionBtn className="h-[64px] bg-barn-red text-xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
@@ -290,6 +309,31 @@ export default function Score() {
                 + HIT {board.home.code}
               </ActionBtn>
             </div>
+            {/* live R-H-E so + RUN / + HIT visibly register */}
+            {box && (
+              <table className="mt-1 w-full font-data text-sm text-cream">
+                <thead>
+                  <tr className="text-muted-green">
+                    <th className="py-0.5 text-left font-athletic text-xs uppercase tracking-wide" />
+                    <th className="py-0.5 text-center font-athletic text-xs uppercase tracking-wide text-gold">R</th>
+                    <th className="py-0.5 text-center font-athletic text-xs uppercase tracking-wide">H</th>
+                    <th className="py-0.5 text-center font-athletic text-xs uppercase tracking-wide">E</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([['away', board.away.code, box.away], ['home', board.home.code, box.home]] as const).map(
+                    ([key, code, t]) => (
+                      <tr key={key} className="border-t border-cream/15">
+                        <td className="py-1 text-left font-athletic uppercase tracking-wide">{code}</td>
+                        <td className="py-1 text-center font-bold text-gold">{t.r}</td>
+                        <td className="py-1 text-center">{t.h}</td>
+                        <td className="py-1 text-center">{t.e}</td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 bg-ink p-3.5">
@@ -634,6 +678,28 @@ function ordSuffix(n: number): string {
   const t = n % 100
   if (t >= 11 && t <= 13) return 'th'
   return ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'
+}
+
+// A running game clock — elapsed since first pitch, ticking each second.
+function GameClock({ startIso }: { startIso: string }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const s = Math.max(0, Math.floor((now - new Date(startIso).getTime()) / 1000))
+  const hh = Math.floor(s / 3600)
+  const mm = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  const text =
+    hh > 0
+      ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+      : `${mm}:${String(ss).padStart(2, '0')}`
+  return (
+    <span className="font-athletic tabular text-[11px] text-gold" title="Elapsed since first pitch">
+      {text}
+    </span>
+  )
 }
 
 function ConfirmPopup({

@@ -53,6 +53,8 @@ export function useScorer(gameId: string | undefined) {
   const [playersById, setPlayersById] = useState<Map<string, Player>>(new Map())
   const [events, setEvents] = useState<GameEventRow[]>([])
   const [live, setLive] = useState<LiveGame>(INITIAL_LIVE)
+  // First-pitch timestamp (the game_start event) for the scorer's running clock.
+  const [firstPitchAt, setFirstPitchAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -80,7 +82,7 @@ export function useScorer(gameId: string | undefined) {
         await Promise.all([
           supabase.from('teams').select('*').eq('id', g.away_team_id).single(),
           supabase.from('teams').select('*').eq('id', g.home_team_id).single(),
-          supabase.from('game_events').select('seq,event_type,payload').eq('game_id', gameId).order('seq'),
+          supabase.from('game_events').select('seq,event_type,payload,created_at').eq('game_id', gameId).order('seq'),
           supabase.from('lineup_entries').select('*').eq('game_id', gameId).order('batting_order'),
           supabase.from('players').select('*').in('team_id', [g.away_team_id, g.home_team_id]),
         ])
@@ -133,6 +135,11 @@ export function useScorer(gameId: string | undefined) {
       }
 
       if (cancelled) return
+      // Game clock anchor: when the game_start event was recorded on the server.
+      const startTs = (dbRows as Array<GameEventRow & { created_at?: string }>).find(
+        (e) => e.event_type === 'game_start',
+      )?.created_at
+      setFirstPitchAt(startTs ?? null)
       eventsRef.current = rows
       setEvents(rows)
       setLive(project(rows))
@@ -287,6 +294,7 @@ export function useScorer(gameId: string | undefined) {
       eventsRef.current = nextEvents // synchronous — a rapid next tap gets seq+1
       setEvents(nextEvents)
       setLive(nextLive)
+      if (event_type === 'game_start') setFirstPitchAt(new Date().toISOString()) // start the clock now
       writeWal(gameId, nextEvents) // durable BEFORE the network write — survives a force-quit
       const { error: insErr } = await supabase.from('game_events').insert({
         game_id: gameId,
@@ -401,6 +409,7 @@ export function useScorer(gameId: string | undefined) {
     lineups: currentLineups,
     events,
     live,
+    firstPitchAt,
     loading,
     error,
     act,

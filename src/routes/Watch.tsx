@@ -290,7 +290,8 @@ export default function Watch() {
       const newest = freshAll[freshAll.length - 1]
       if (audio.isEnabled() && newest) {
         audio.playFx(fxCues(newest.event_type))
-        if (['single', 'double', 'triple', 'home_run'].includes(newest.event_type)) audio.swellCrowd()
+        if (['single', 'double', 'triple', 'home_run', 'manual_run'].includes(newest.event_type))
+          audio.swellCrowd()
         // Inning-intro stinger ahead of the commentary: the "charge!" rally riff
         // when the home team comes up (bottom half), the short organ otherwise.
         if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) {
@@ -383,9 +384,6 @@ export default function Watch() {
     away: Object.fromEntries((info?.lineups?.away ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
     home: Object.fromEntries((info?.lineups?.home ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
   }
-  // First-pitch timestamp (the game_start event), for the running game clock.
-  const firstPitchAt = events.find((e) => e.event_type === 'game_start')?.created_at ?? null
-
   // Scoreboard-mode games have no lineup (full games always do — generic if needed),
   // so there are no baserunners/players: skip the field, just show the line score.
   const isScoreboard =
@@ -433,7 +431,6 @@ export default function Watch() {
           >
             Share <ArrowUpRightIcon className="h-3 w-3" />
           </button>
-          {live.status === 'live' && firstPitchAt && <GameClock startIso={firstPitchAt} />}
           {/* Commentary only matters during a live game — hide it pre-game and on
               the final summary. */}
           {live.status === 'live' && (
@@ -570,27 +567,6 @@ export default function Watch() {
   )
 }
 
-// A running game clock — elapsed since first pitch, ticking each second.
-function GameClock({ startIso }: { startIso: string }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
-  const s = Math.max(0, Math.floor((now - new Date(startIso).getTime()) / 1000))
-  const hh = Math.floor(s / 3600)
-  const mm = Math.floor((s % 3600) / 60)
-  const ss = s % 60
-  const text =
-    hh > 0
-      ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
-      : `${mm}:${String(ss).padStart(2, '0')}`
-  return (
-    <span className="font-athletic tabular text-sm text-muted-green" title="Elapsed since first pitch">
-      {text}
-    </span>
-  )
-}
 
 // Pre-game cover (design spec): a navy screen with bunting, the matchup in full
 // names, the first-pitch time, and the location — vertically centered.
