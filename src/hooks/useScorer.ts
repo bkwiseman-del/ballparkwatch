@@ -386,11 +386,12 @@ export function useScorer(gameId: string | undefined) {
   // Pitch count for THIS pitcher (since they entered).
   const currentPitcherPitches = pitchesSince(events, fieldingKey, currentPitcherEntrySeq(events, fieldingKey))
 
-  // Bench: roster players not currently in either lineup.
+  // Bench: roster players not currently in either lineup (archived players excluded
+  // from the sub picker, but still resolve by id if they're in this game already).
   const inLineup = new Set([...currentLineups.away, ...currentLineups.home].map((p) => p.id))
   const bench = {
-    away: [...playersById.values()].filter((p) => p.team_id === teams?.away.id && !inLineup.has(p.id)),
-    home: [...playersById.values()].filter((p) => p.team_id === teams?.home.id && !inLineup.has(p.id)),
+    away: [...playersById.values()].filter((p) => p.team_id === teams?.away.id && !inLineup.has(p.id) && !p.archived_at),
+    home: [...playersById.values()].filter((p) => p.team_id === teams?.home.id && !inLineup.has(p.id) && !p.archived_at),
   }
 
   // Runners currently on base, resolved to players.

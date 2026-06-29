@@ -34,6 +34,8 @@ export type Player = {
   bats: Handedness | null
   throws: Exclude<Handedness, 'S'> | null
   created_at: string
+  // Soft-delete: archived players stay in past games but drop out of new lineups.
+  archived_at?: string | null
 }
 
 export type LineupEntry = {

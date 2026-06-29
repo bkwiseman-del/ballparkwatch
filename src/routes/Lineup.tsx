@@ -250,7 +250,9 @@ function TeamLineup({
   accent?: boolean
 }) {
   const byId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster])
-  const available = roster.filter((p) => !order.includes(p.id))
+  // Archived players drop out of the "add to lineup" pool, but anyone already in
+  // this game's order still shows (history stays intact).
+  const available = roster.filter((p) => !order.includes(p.id) && !p.archived_at)
   const [dragId, setDragId] = useState<string | null>(null)
 
   function move(from: number, to: number) {

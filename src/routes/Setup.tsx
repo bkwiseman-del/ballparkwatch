@@ -844,7 +844,9 @@ function NewTeamForm({ onAdd }: { onAdd: (name: string, season: string, favorite
 /* ----------------------------------------------------------------- Roster */
 
 function Roster({ team, onError }: { team: Team; onError: (m: string) => void }) {
-  const [players, setPlayers] = useState<Player[]>([])
+  const [players, setPlayers] = useState<Player[]>([]) // active roster
+  const [archived, setArchived] = useState<Player[]>([]) // soft-deleted
+  const [showArchived, setShowArchived] = useState(false)
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const scanRef = useRef<HTMLInputElement>(null)
@@ -858,8 +860,10 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
       .eq('team_id', team.id)
       .order('jersey_number', { nullsFirst: false })
       .then(({ data, error }) => {
-        if (error) onError(error.message)
-        else setPlayers((data ?? []) as Player[])
+        if (error) return onError(error.message)
+        const all = (data ?? []) as Player[]
+        setPlayers(all.filter((p) => !p.archived_at))
+        setArchived(all.filter((p) => p.archived_at))
       })
   }, [team.id, onError])
 
@@ -876,21 +880,52 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
     else reload()
   }
 
-  async function deletePlayer(p: Player) {
-    if (!window.confirm(`Remove ${p.name} from ${team.name}? This can’t be undone.`)) return
+  // Edit a player's number / name / position. Safe across games — corrections
+  // (typo, fixed number) just update the one player record.
+  async function savePlayer(
+    p: Player,
+    patch: { name: string; jersey_number: string; default_position: string },
+  ) {
+    const { error } = await supabase
+      .from('players')
+      .update({
+        name: patch.name.trim() || p.name,
+        jersey_number: patch.jersey_number.trim() || null,
+        default_position: patch.default_position.trim() || null,
+      })
+      .eq('id', p.id)
+    if (error) onError(error.message)
+    else reload()
+  }
+
+  async function archivePlayer(p: Player) {
+    const { error } = await supabase
+      .from('players')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', p.id)
+    if (error) onError(error.message)
+    else reload()
+  }
+
+  async function restorePlayer(p: Player) {
+    const { error } = await supabase.from('players').update({ archived_at: null }).eq('id', p.id)
+    if (error) onError(error.message)
+    else reload()
+  }
+
+  // Remove: hard-delete a never-used player; if they have game history (FK), fall
+  // back to archiving so past games stay intact and they leave the active roster.
+  async function removePlayer(p: Player) {
+    if (!window.confirm(`Remove ${p.name} from ${team.name}?`)) return
     const { error } = await supabase.from('players').delete().eq('id', p.id)
-    if (error) {
-      // game_events references players (no cascade), so a player who has batted
-      // in a saved game can't be deleted until that game is removed.
-      const fk = error.code === '23503' || /foreign key/i.test(error.message)
-      onError(
-        fk
-          ? `Can’t remove ${p.name} — they’ve appeared in a scored game. Delete that game first.`
-          : error.message,
-      )
-      return
+    if (!error) return reload()
+    const fk = error.code === '23503' || /foreign key|violates/i.test(error.message)
+    if (fk) {
+      await archivePlayer(p)
+      setImportMsg(`${p.name} has game history — archived (kept in past games, hidden from new lineups).`)
+    } else {
+      onError(error.message)
     }
-    reload()
   }
 
   async function onFile(file: File) {
@@ -968,32 +1003,48 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
 
       <ul className="flex flex-col">
         {players.map((p, i) => (
-          <li
+          <PlayerRow
             key={p.id}
-            className={`flex items-center gap-3 px-4 py-2.5 ${i > 0 ? 'border-t border-ink/12' : ''}`}
-          >
-            <span className="w-8 text-right font-athletic text-xl font-bold text-barn-red">
-              {p.jersey_number ?? '—'}
-            </span>
-            <span className="font-display text-base">{p.name}</span>
-            <span className="ml-auto font-data text-xs text-muted-tan">
-              {[p.default_position, p.bats && `B:${p.bats}`, p.throws && `T:${p.throws}`]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-            <button
-              onClick={() => deletePlayer(p)}
-              title={`Remove ${p.name}`}
-              className="font-athletic text-xs font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
-            >
-              Remove
-            </button>
-          </li>
+            p={p}
+            divider={i > 0}
+            onSave={(patch) => savePlayer(p, patch)}
+            onRemove={() => removePlayer(p)}
+          />
         ))}
         {players.length === 0 && (
           <li className="px-4 py-4 font-data text-muted-tan">No players yet.</li>
         )}
       </ul>
+
+      {archived.length > 0 && (
+        <div className="border-t-2 border-ink/15">
+          <button
+            onClick={() => setShowArchived((s) => !s)}
+            className="flex w-full items-center justify-between px-4 py-2.5 font-athletic text-xs font-semibold uppercase tracking-wide text-muted-tan"
+          >
+            <span>Archived ({archived.length})</span>
+            <span>{showArchived ? '▲ hide' : '▼ show'}</span>
+          </button>
+          {showArchived && (
+            <ul className="flex flex-col bg-ink/5">
+              {archived.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 border-t border-ink/10 px-4 py-2.5">
+                  <span className="w-8 text-right font-athletic text-xl font-bold text-ink/30">
+                    {p.jersey_number ?? '—'}
+                  </span>
+                  <span className="font-display text-base text-muted-tan line-through">{p.name}</span>
+                  <button
+                    onClick={() => restorePlayer(p)}
+                    className="ml-auto font-athletic text-xs font-bold uppercase tracking-wide text-board-green hover:underline"
+                  >
+                    Restore
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="border-t-2 border-ink p-4">
         <AddPlayerForm onAdd={addPlayer} />
@@ -1218,6 +1269,88 @@ function CodeEditor({ team, onError }: { team: Team; onError: (m: string) => voi
         className="w-16 border-2 border-ink bg-cream px-2 py-1 text-center font-athletic text-lg font-bold uppercase tracking-wide outline-none focus:border-board-green"
       />
     </label>
+  )
+}
+
+// One roster row — display mode with Edit/Remove, or an inline edit form.
+function PlayerRow({
+  p,
+  divider,
+  onSave,
+  onRemove,
+}: {
+  p: Player
+  divider: boolean
+  onSave: (patch: { name: string; jersey_number: string; default_position: string }) => void
+  onRemove: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [num, setNum] = useState(p.jersey_number ?? '')
+  const [name, setName] = useState(p.name)
+  const [pos, setPos] = useState(p.default_position ?? '')
+
+  function startEdit() {
+    setNum(p.jersey_number ?? '')
+    setName(p.name)
+    setPos(p.default_position ?? '')
+    setEditing(true)
+  }
+  function save() {
+    if (!name.trim()) return
+    onSave({ name, jersey_number: num, default_position: pos })
+    setEditing(false)
+  }
+
+  const input = 'border-2 border-ink bg-white px-2 py-1.5 font-data outline-none focus:border-board-green'
+
+  if (editing) {
+    return (
+      <li className={`flex flex-wrap items-center gap-2 px-4 py-2.5 ${divider ? 'border-t border-ink/12' : ''}`}>
+        <input className={`w-12 ${input}`} placeholder="#" value={num} onChange={(e) => setNum(e.target.value)} />
+        <input
+          className={`min-w-32 flex-1 ${input}`}
+          placeholder="Player name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          autoFocus
+        />
+        <input className={`w-16 ${input}`} placeholder="Pos" value={pos} onChange={(e) => setPos(e.target.value)} />
+        <button onClick={save} className="bg-gold px-3 py-1.5 font-display text-ink">
+          Save
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="px-2 py-1.5 font-athletic text-xs font-bold uppercase tracking-wide text-muted-tan"
+        >
+          Cancel
+        </button>
+      </li>
+    )
+  }
+  return (
+    <li className={`flex items-center gap-3 px-4 py-2.5 ${divider ? 'border-t border-ink/12' : ''}`}>
+      <span className="w-8 text-right font-athletic text-xl font-bold text-barn-red">
+        {p.jersey_number ?? '—'}
+      </span>
+      <span className="font-display text-base">{p.name}</span>
+      <span className="ml-auto font-data text-xs text-muted-tan">
+        {[p.default_position, p.bats && `B:${p.bats}`, p.throws && `T:${p.throws}`].filter(Boolean).join(' · ')}
+      </span>
+      <button
+        onClick={startEdit}
+        title={`Edit ${p.name}`}
+        className="font-athletic text-xs font-bold uppercase tracking-wide text-ink/40 hover:text-board-green"
+      >
+        Edit
+      </button>
+      <button
+        onClick={onRemove}
+        title={`Remove ${p.name}`}
+        className="font-athletic text-xs font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
+      >
+        Remove
+      </button>
+    </li>
   )
 }
 
