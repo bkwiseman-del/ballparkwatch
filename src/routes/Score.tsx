@@ -92,14 +92,22 @@ export default function Score() {
           {game && game.video_source !== 'none' && (
             <button
               onClick={() => setShowVideo(true)}
-              className="inline-flex items-center gap-1.5 font-athletic text-sm font-semibold uppercase tracking-wide text-gold"
+              className={`inline-flex items-center gap-1.5 font-athletic text-sm font-semibold uppercase tracking-wide ${
+                bstatus.down ? 'text-barn-red' : 'text-gold'
+              }`}
             >
               {game.video_source === 'phone_whip' && (
                 <span
-                  className={`h-2 w-2 rounded-full ${bstatus.live ? 'animate-pulse bg-board-green' : 'bg-gold/40'}`}
+                  className={`h-2 w-2 rounded-full ${
+                    bstatus.live
+                      ? 'animate-pulse bg-board-green'
+                      : bstatus.down
+                        ? 'animate-pulse bg-barn-red'
+                        : 'bg-gold/40'
+                  }`}
                 />
               )}
-              {bstatus.live ? `Live · ${bstatus.viewers}` : 'Video'}
+              {bstatus.live ? `Live · ${bstatus.viewers}` : bstatus.down ? 'Feed down' : 'Video'}
             </button>
           )}
           <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">
@@ -107,6 +115,26 @@ export default function Score() {
           </button>
         </div>
       </header>
+
+      {/* Video feed died — make it impossible to miss so the scorer can go fix the
+          broadcasting phone (locked screen / lost signal are the usual culprits). */}
+      {bstatus.down && (
+        <button
+          onClick={() => setShowVideo(true)}
+          className="flex w-full shrink-0 items-center justify-between gap-2 bg-barn-red px-3 py-2 text-left"
+        >
+          <span className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cream" />
+            <span className="font-athletic text-sm font-bold uppercase tracking-wide text-cream">
+              Video feed lost
+              {bstatus.secsSinceBeat != null ? ` — no signal for ${bstatus.secsSinceBeat}s` : ''}
+            </span>
+          </span>
+          <span className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/90">
+            Check phone ▸
+          </span>
+        </button>
+      )}
 
       <ScorePanel state={board} />
 

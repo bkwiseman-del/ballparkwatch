@@ -453,21 +453,33 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
   }
 }
 
-export type BroadcastStatus = { live: boolean; viewers: number }
+// live: heartbeats arriving now. down: the feed WAS live and heartbeats then
+// stopped without a clean stop (broadcaster phone locked / lost signal / crashed)
+// — the actionable "your video died" state. secsSinceBeat: seconds since the last
+// heartbeat (null if we've never seen one), for a live "no signal for Ns" readout.
+export type BroadcastStatus = { live: boolean; viewers: number; down: boolean; secsSinceBeat: number | null }
 
 // Passive monitor (no media, no signaling) for the scorer: listens for the
 // broadcaster's heartbeats so we can show whether a phone livestream is
-// happening and healthy. Drops to offline if heartbeats stop.
+// happening and healthy, and flags it DOWN if heartbeats stop unexpectedly.
 export function useBroadcastStatus(gameId: string | undefined, active: boolean): BroadcastStatus {
   const [live, setLive] = useState(false)
   const [viewers, setViewers] = useState(0)
+  const [down, setDown] = useState(false)
+  const [secsSinceBeat, setSecs] = useState<number | null>(null)
   const bc = useRef<string | null>(null)
   const timer = useRef<number | undefined>(undefined)
+  const everLive = useRef(false) // a feed has been seen since we started watching
+  const lastBeat = useRef<number | null>(null)
 
   useEffect(() => {
     if (!gameId || !active) {
       setLive(false)
       setViewers(0)
+      setDown(false)
+      setSecs(null)
+      everLive.current = false
+      lastBeat.current = null
       return
     }
     const ch = supabase.channel(videoChannelName(gameId), { config: { broadcast: { self: false } } })
@@ -475,24 +487,38 @@ export function useBroadcastStatus(gameId: string | undefined, active: boolean):
       const m = payload as Sig
       if (m?.kind === 'live') {
         bc.current = m.from
+        everLive.current = true
+        lastBeat.current = Date.now()
         setLive(true)
+        setDown(false)
         setViewers(m.viewers ?? 0)
         window.clearTimeout(timer.current)
+        // Heartbeats vanished → if a feed had been running, it DIED (not a clean stop).
         timer.current = window.setTimeout(() => {
           setLive(false)
           setViewers(0)
+          if (everLive.current) setDown(true)
         }, LIVE_TIMEOUT_MS)
       } else if (m?.kind === 'bye' && m.from === bc.current) {
+        // Clean stop — not a failure.
         setLive(false)
         setViewers(0)
+        setDown(false)
+        everLive.current = false
+        lastBeat.current = null
         window.clearTimeout(timer.current)
       }
     }).subscribe()
+    // Tick the "seconds since last heartbeat" readout once a second.
+    const tick = window.setInterval(() => {
+      setSecs(lastBeat.current ? Math.floor((Date.now() - lastBeat.current) / 1000) : null)
+    }, 1000)
     return () => {
       window.clearTimeout(timer.current)
+      window.clearInterval(tick)
       supabase.removeChannel(ch)
     }
   }, [gameId, active])
 
-  return { live, viewers }
+  return { live, viewers, down, secsSinceBeat }
 }

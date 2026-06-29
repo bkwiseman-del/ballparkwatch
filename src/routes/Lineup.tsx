@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
 import type { Game, LineupEntry, Player, Team } from '@/lib/types'
@@ -21,6 +21,24 @@ export default function Lineup() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [dirty, setDirty] = useState(false) // unsaved edits since load/save
+
+  // Warn before a browser refresh/close/back with unsaved lineup changes.
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
+
+  // Confirm before leaving via an in-app link if there are unsaved changes.
+  function leaveGuard(to: string) {
+    if (dirty && !window.confirm('You have unsaved lineup changes. Leave without saving?')) return
+    navigate(to)
+  }
 
   // Cream screen: paint the body cream so iOS doesn't show the dark night-green in
   // the safe-area strips (the home indicator area). Restore on leave.
@@ -109,6 +127,7 @@ export default function Lineup() {
       if (ins.error) return setError(ins.error.message)
     }
     setSaved(true)
+    setDirty(false)
     setTimeout(() => navigate(`/score/${gameId}`), 700)
   }
 
@@ -120,9 +139,12 @@ export default function Lineup() {
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-cream text-ink">
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
         <HeaderWordmark />
-        <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
+        <button
+          onClick={() => leaveGuard('/setup')}
+          className="font-athletic text-sm uppercase tracking-wide text-gold"
+        >
           ← Setup
-        </Link>
+        </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -145,42 +167,65 @@ export default function Lineup() {
             team={away}
             roster={rosters[game.away_team_id] ?? []}
             order={order[game.away_team_id] ?? []}
-            setOrder={(o) => setOrder((prev) => ({ ...prev, [game.away_team_id]: o }))}
+            setOrder={(o) => {
+              setDirty(true)
+              setOrder((prev) => ({ ...prev, [game.away_team_id]: o }))
+            }}
             positions={positions[game.away_team_id] ?? {}}
-            setPosition={(pid, pos) =>
+            setPosition={(pid, pos) => {
+              setDirty(true)
               setPositions((prev) => ({
                 ...prev,
                 [game.away_team_id]: { ...(prev[game.away_team_id] ?? {}), [pid]: pos },
               }))
-            }
+            }}
           />
           <TeamLineup
             team={home}
             roster={rosters[game.home_team_id] ?? []}
             order={order[game.home_team_id] ?? []}
-            setOrder={(o) => setOrder((prev) => ({ ...prev, [game.home_team_id]: o }))}
+            setOrder={(o) => {
+              setDirty(true)
+              setOrder((prev) => ({ ...prev, [game.home_team_id]: o }))
+            }}
             positions={positions[game.home_team_id] ?? {}}
-            setPosition={(pid, pos) =>
+            setPosition={(pid, pos) => {
+              setDirty(true)
               setPositions((prev) => ({
                 ...prev,
                 [game.home_team_id]: { ...(prev[game.home_team_id] ?? {}), [pid]: pos },
               }))
-            }
+            }}
             accent
           />
         </div>
 
-        <div className="mt-6 flex gap-2">
-          <button onClick={save} className="flex-1 bg-gold py-3 font-display text-ink">
-            {saved ? 'Saved ✓' : 'Save Lineups ▸'}
-          </button>
-          <Link
-            to={`/score/${gameId}`}
-            className="border-2 border-ink px-4 py-3 font-display text-ink"
-          >
-            Go to Score
-          </Link>
         </div>
+      </div>
+
+      {/* Sticky save bar — always visible so progress is never lost by scrolling
+          past it. Shows an Unsaved flag until the lineup is saved. */}
+      <div className="shrink-0 border-t-2 border-ink bg-cream-off px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <span
+            className={`font-athletic text-xs font-bold uppercase tracking-[.12em] ${
+              dirty ? 'text-barn-red' : 'text-board-green'
+            }`}
+          >
+            {dirty ? '● Unsaved' : saved ? '✓ Saved' : 'Saved'}
+          </span>
+          <button
+            onClick={save}
+            className="flex-1 bg-gold py-4 font-display text-lg text-ink shadow-hard"
+          >
+            {saved && !dirty ? 'Saved ✓' : 'Save Lineups ▸'}
+          </button>
+          <button
+            onClick={() => leaveGuard(`/score/${gameId}`)}
+            className="border-2 border-ink px-4 py-4 font-display text-ink"
+          >
+            Score
+          </button>
         </div>
       </div>
     </div>
