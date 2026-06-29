@@ -34,15 +34,17 @@ export function computeBoxScore(events: GameEventRow[]): BoxScore {
     const team = battingTop ? away : home
     const inningIdx = Math.max(0, before.inning - 1)
 
-    // Scoreboard-mode manual run/hit — credited to the named team explicitly.
-    if (ev.event_type === 'manual_run' || ev.event_type === 'manual_hit') {
+    // Manual run/hit (scoreboard) and scorer score corrections — credited to the
+    // named team explicitly (a correction can be ±N and may target either team).
+    if (ev.event_type === 'manual_run' || ev.event_type === 'manual_hit' || ev.event_type === 'score_adjust') {
       const t = ev.payload?.team === 'home' ? home : away
-      if (ev.event_type === 'manual_run') {
-        ensure(t.runsByInning, inningIdx)
-        t.runsByInning[inningIdx] += 1
-        t.r += 1
-      } else {
+      if (ev.event_type === 'manual_hit') {
         t.h += 1
+      } else {
+        const d = ev.event_type === 'manual_run' ? 1 : Number(ev.payload?.delta ?? 0)
+        ensure(t.runsByInning, inningIdx)
+        t.runsByInning[inningIdx] = Math.max(0, t.runsByInning[inningIdx] + d)
+        t.r = Math.max(0, t.r + d)
       }
       maxInning = Math.max(maxInning, before.inning, after.inning)
       state = after
@@ -308,7 +310,7 @@ const FEED_TYPES = new Set<EventType>([
   'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch', 'strikeout',
   'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
   'runner_advance', 'stolen_base', 'caught_stealing', 'picked_off',
-  'inning_change', 'game_start', 'game_end',
+  'inning_change', 'game_start', 'game_end', 'score_adjust',
 ])
 
 export function buildPlayByPlay(events: GameEventRow[], nameOf: NameOf): PlayLine[] {
@@ -418,6 +420,12 @@ function describe(ev: GameEventRow, before: LiveGame, after: LiveGame, nameOf: N
       return `${nameOf(ev.payload?.runner) ?? 'Runner'} caught stealing.`
     case 'picked_off':
       return `${nameOf(ev.payload?.runner) ?? 'Runner'} picked off.`
+    case 'score_adjust': {
+      const d = Number(ev.payload?.delta ?? 0)
+      const side = ev.payload?.team === 'home' ? 'home' : 'away'
+      const n = Math.abs(d)
+      return `Scorer edit: ${side} ${d >= 0 ? '+' : '−'}${n} run${n === 1 ? '' : 's'}`
+    }
     default:
       return who
   }

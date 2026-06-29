@@ -243,8 +243,12 @@ export default function Watch() {
   // starts the moment the context unlocks.
   const videoActive = live.status === 'live' && hasVideo
   useEffect(() => {
-    audio.setCrowd(soundOn && audioReady && !videoActive)
-  }, [soundOn, videoActive, audioReady])
+    // Crowd bed during pre-game (Starting Soon) and the live game, but NOT on the
+    // final summary — once the game's over the ambience shouldn't keep droning on
+    // revisits. The end-of-game commentary is a queued voice line, not the crowd
+    // loop, so silencing the bed here doesn't affect it.
+    audio.setCrowd(soundOn && audioReady && !videoActive && live.status !== 'final')
+  }, [soundOn, videoActive, audioReady, live.status])
 
   // Poll game info so status (scheduled → live → final), the video link, and
   // lineup changes reach an already-open viewer even before any play is scored.
@@ -433,28 +437,51 @@ export default function Watch() {
           </button>
           {/* Commentary only matters during a live game — hide it pre-game and on
               the final summary. */}
-          {live.status === 'live' && (
-            <button
-              onClick={async () => {
-                if (soundOn) {
-                  audio.disable()
-                  setSoundOn(false)
-                  setAudioReady(false)
-                } else {
-                  setSoundOn(true)
-                  await audio.enable()
-                  setAudioReady(true)
-                }
-              }}
-              aria-label={soundOn ? 'Turn off AI commentary' : 'Turn on AI commentary'}
-              className={`inline-flex items-center gap-1.5 border px-2 py-1 font-athletic text-[11px] font-semibold uppercase tracking-wide ${
-                soundOn ? 'border-gold bg-gold text-ink' : 'border-cream/40 text-cream/70'
-              }`}
-            >
-              {soundOn ? <SoundOnIcon className="h-4 w-4" /> : <SoundOffIcon className="h-4 w-4" />}
-              Commentary
-            </button>
-          )}
+          {live.status === 'live' &&
+            (() => {
+              // Three states: ON (sound wanted + unlocked), LOCKED (sound wanted but
+              // the browser hasn't let audio start since this load — needs a tap), and
+              // OFF. After a reload soundOn is still true but the AudioContext is
+              // suspended, so we must show LOCKED and treat a tap as "unlock", NOT
+              // "turn off" (the old bug: the button looked on but a tap muted it).
+              const locked = soundOn && !audioReady
+              return (
+                <button
+                  onClick={async () => {
+                    if (soundOn && audioReady) {
+                      audio.disable()
+                      setSoundOn(false)
+                      setAudioReady(false)
+                    } else {
+                      setSoundOn(true)
+                      await audio.enable()
+                      setAudioReady(true)
+                    }
+                  }}
+                  aria-label={
+                    locked
+                      ? 'Tap to start commentary sound'
+                      : soundOn
+                        ? 'Turn off AI commentary'
+                        : 'Turn on AI commentary'
+                  }
+                  className={`inline-flex items-center gap-1.5 border px-2 py-1 font-athletic text-[11px] font-semibold uppercase tracking-wide ${
+                    locked
+                      ? 'animate-pulse border-gold text-gold'
+                      : soundOn
+                        ? 'border-gold bg-gold text-ink'
+                        : 'border-cream/40 text-cream/70'
+                  }`}
+                >
+                  {soundOn && audioReady ? (
+                    <SoundOnIcon className="h-4 w-4" />
+                  ) : (
+                    <SoundOffIcon className="h-4 w-4" />
+                  )}
+                  {locked ? 'Tap for sound' : 'Commentary'}
+                </button>
+              )
+            })()}
           {live.status === 'live' ? (
             <span className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
@@ -1095,35 +1122,85 @@ function BoxTab({
         </tbody>
       </table>
 
-      {/* Each team's batting then its pitching, grouped together. */}
-      <BattingTable title={board.away.name ?? board.away.code} lines={bats.away} />
-      <PitchingTable title={`${board.away.name ?? board.away.code} — Pitching`} lines={pitch.away} />
-
-      <BattingTable title={board.home.name ?? board.home.code} lines={bats.home} accent />
-      <PitchingTable title={`${board.home.name ?? board.home.code} — Pitching`} lines={pitch.home} accent />
+      {/* Each team in its own block: team name, then Batting and Pitching sections. */}
+      <TeamBox name={board.away.name ?? board.away.code} bats={bats.away} pitch={pitch.away} />
+      <TeamBox name={board.home.name ?? board.home.code} bats={bats.home} pitch={pitch.home} accent />
     </div>
   )
 }
 
+// One team's full box: name heading with Batting / Pitching subheadings beneath.
+function TeamBox({
+  name,
+  bats,
+  pitch,
+  accent = false,
+}: {
+  name: string
+  bats: BattingLine[]
+  pitch: PitchingLine[]
+  accent?: boolean
+}) {
+  return (
+    <div className="border-2 border-cream/15">
+      <h3
+        className={`border-b-2 px-3 py-2 font-display text-lg ${
+          accent ? 'border-gold/50 text-gold' : 'border-cream/30 text-cream'
+        }`}
+      >
+        {name}
+      </h3>
+      <div className="flex flex-col gap-4 p-3">
+        <div>
+          <SectionHead>Batting</SectionHead>
+          <BattingTable lines={bats} accent={accent} />
+        </div>
+        <div>
+          <SectionHead>Pitching</SectionHead>
+          <PitchingTable lines={pitch} accent={accent} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SectionHead({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-1.5 font-athletic text-[11px] font-semibold uppercase tracking-[.16em] text-barn-red">
+      {children}
+    </p>
+  )
+}
+
+// Numeric batting columns (AVG is rendered separately as a .XXX string).
 const BAT_COLS = ['AB', 'R', 'H', 'RBI', '2B', '3B', 'HR', 'BB', 'K'] as const
 
-function BattingTable({ title, lines, accent = false }: { title: string; lines: BattingLine[]; accent?: boolean }) {
-  if (lines.length === 0) return null
+// Format a batting average baseball-style: ".333", "1.000", ".000".
+function fmtAvg(avg: number): string {
+  if (avg >= 1) return '1.000'
+  return avg.toFixed(3).slice(1)
+}
+
+function BattingTable({ lines }: { lines: BattingLine[]; accent?: boolean }) {
+  if (lines.length === 0)
+    return <p className="font-data text-[12px] text-muted-green">No at-bats yet.</p>
   const sorted = lines.slice().sort((a, b) => b.ab - a.ab || b.h - a.h)
   const sum = (f: (l: BattingLine) => number) => sorted.reduce((t, l) => t + f(l), 0)
   const cell = (l: BattingLine, c: (typeof BAT_COLS)[number]) =>
     c === 'AB' ? l.ab : c === 'R' ? l.r : c === 'H' ? l.h : c === 'RBI' ? l.rbi
       : c === '2B' ? l.doubles : c === '3B' ? l.triples : c === 'HR' ? l.hr : c === 'BB' ? l.bb : l.k
   const total = (c: (typeof BAT_COLS)[number]) => sum((l) => cell(l, c))
+  const teamAb = sum((l) => l.ab)
+  const teamAvg = teamAb > 0 ? sum((l) => l.h) / teamAb : 0
   return (
-    <div>
-      <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title}</h3>
-      <table className="w-full table-fixed border-collapse text-[13px]">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[480px] table-fixed border-collapse text-[13px]">
         <colgroup>
-          <col className="w-[28%]" />
+          <col className="w-[24%]" />
           {BAT_COLS.map((c) => (
-            <col key={c} className="w-[8%]" />
+            <col key={c} className="w-[7%]" />
           ))}
+          <col className="w-[9%]" />
         </colgroup>
         <thead>
           <tr className="border-b border-cream/20 font-athletic text-[11px] text-muted-green">
@@ -1133,6 +1210,7 @@ function BattingTable({ title, lines, accent = false }: { title: string; lines: 
                 {h}
               </th>
             ))}
+            <th className="px-0.5 py-1.5 text-center font-normal">AVG</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-cream/10">
@@ -1142,6 +1220,7 @@ function BattingTable({ title, lines, accent = false }: { title: string; lines: 
               {BAT_COLS.map((c) => (
                 <Num key={c} n={cell(l, c)} bold={c === 'H'} />
               ))}
+              <td className="px-0.5 py-1.5 text-center tabular text-cream/85">{fmtAvg(l.avg)}</td>
             </tr>
           ))}
           <tr className="border-t-2 border-cream/25 font-athletic font-semibold text-cream">
@@ -1149,6 +1228,7 @@ function BattingTable({ title, lines, accent = false }: { title: string; lines: 
             {BAT_COLS.map((c) => (
               <Num key={c} n={total(c)} bold />
             ))}
+            <td className="px-0.5 py-1.5 text-center tabular">{fmtAvg(teamAvg)}</td>
           </tr>
         </tbody>
       </table>
@@ -1158,8 +1238,9 @@ function BattingTable({ title, lines, accent = false }: { title: string; lines: 
 
 const PITCH_COLS = ['IP', 'H', 'R', 'ER', 'BB', 'K'] as const
 
-function PitchingTable({ title, lines, accent = false }: { title: string; lines: PitchingLine[]; accent?: boolean }) {
-  if (lines.length === 0) return null
+function PitchingTable({ lines }: { lines: PitchingLine[]; accent?: boolean }) {
+  if (lines.length === 0)
+    return <p className="font-data text-[12px] text-muted-green">No pitching recorded yet.</p>
   const tot = {
     outs: lines.reduce((t, l) => t + l.outs, 0),
     h: lines.reduce((t, l) => t + l.h, 0),
@@ -1169,9 +1250,8 @@ function PitchingTable({ title, lines, accent = false }: { title: string; lines:
     k: lines.reduce((t, l) => t + l.k, 0),
   }
   return (
-    <div>
-      <h3 className={`mb-1.5 font-display text-base ${accent ? 'text-gold' : 'text-cream'}`}>{title}</h3>
-      <table className="w-full table-fixed border-collapse text-[13px]">
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] table-fixed border-collapse text-[13px]">
         <colgroup>
           <col className="w-[34%]" />
           {PITCH_COLS.map((c) => (

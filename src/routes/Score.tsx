@@ -223,9 +223,12 @@ export default function Score() {
           live={live}
           lineups={lineups}
           gameId={gameId}
+          awayCode={board.away.code}
+          homeCode={board.home.code}
           onStartNext={() => act('inning_change')}
           onEndEarly={() => setEndPopup(true)}
           onSub={() => setShowSub(true)}
+          onAdjust={(team, delta) => act('score_adjust', { team, delta })}
         />
       )}
 
@@ -595,16 +598,22 @@ function BetweenInnings({
   live,
   lineups,
   gameId,
+  awayCode,
+  homeCode,
   onStartNext,
   onEndEarly,
   onSub,
+  onAdjust,
 }: {
   live: LiveGame
   lineups: { away: Player[]; home: Player[] }
   gameId: string | undefined
+  awayCode: string
+  homeCode: string
   onStartNext: () => void
   onEndEarly: () => void
   onSub: () => void
+  onAdjust: (team: 'away' | 'home', delta: number) => void
 }) {
   // The team batting in the NEXT half.
   const nextTop = live.half === 'bottom'
@@ -627,6 +636,41 @@ function BetweenInnings({
         {/* scores shown in the scorebug above */}
         3 outs
       </p>
+      {/* Correct the score here if the stats fell behind the real game. Each tap is
+          logged in the play feed as a "Scorer edit". */}
+      <div className="w-full max-w-xs border-t border-gold/30 pt-4">
+        <p className="mb-2 font-athletic text-[10px] uppercase tracking-[.16em] text-muted-green">
+          Score — tap to correct
+        </p>
+        <div className="flex flex-col gap-2">
+          {([['away', awayCode, live.awayScore], ['home', homeCode, live.homeScore]] as const).map(
+            ([team, code, score]) => (
+              <div key={team} className="flex items-center justify-between">
+                <span className="font-display text-lg text-cream">{code}</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => onAdjust(team, -1)}
+                    disabled={score <= 0}
+                    aria-label={`Subtract a run from ${code}`}
+                    className="h-9 w-9 border-2 border-cream/50 font-display text-xl text-cream disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <span className="w-8 text-center font-display text-2xl text-gold">{score}</span>
+                  <button
+                    onClick={() => onAdjust(team, 1)}
+                    aria-label={`Add a run to ${code}`}
+                    className="h-9 w-9 border-2 border-gold font-display text-xl text-gold"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+      </div>
+
       {due.length > 0 && (
         <div className="w-full max-w-xs border-t border-gold/30 pt-4">
           <p className="mb-1 font-athletic text-[10px] uppercase tracking-[.16em] text-muted-green">Due up</p>

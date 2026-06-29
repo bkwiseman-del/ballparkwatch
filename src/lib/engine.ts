@@ -38,6 +38,8 @@ export type EventType =
   | 'manual_run'
   | 'manual_hit'
   | 'manual_out'
+  // scorer correction: nudge a team's score by ±N (logged as a "scorer edit")
+  | 'score_adjust'
 
 // Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
 export type Dest = 0 | 1 | 2 | 3 | 4
@@ -65,6 +67,8 @@ export type EventPayload = {
   location?: string
   // substitution: team + one or more moves (bench swap or position change)
   team?: 'away' | 'home'
+  // score correction (score_adjust): signed run delta, e.g. +1 or -1
+  delta?: number
   out_id?: string
   in_id?: string
   position?: string
@@ -141,6 +145,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   manual_run: 'Run',
   manual_hit: 'Hit',
   manual_out: 'Out',
+  score_adjust: 'Score edit',
 }
 
 // Event-type groupings used across the app.
@@ -209,6 +214,13 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
       s.strikes = 0
       if (s.outs >= 3) clearBases(s)
       break
+    case 'score_adjust': {
+      // Scorer correction: nudge a team's score by the signed delta (never below 0).
+      const d = Number(e.payload?.delta ?? 0)
+      if (e.payload?.team === 'home') s.homeScore = Math.max(0, s.homeScore + d)
+      else s.awayScore = Math.max(0, s.awayScore + d)
+      break
+    }
 
     case 'pitch_ball':
       s.balls += 1
