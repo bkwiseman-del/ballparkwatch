@@ -14,10 +14,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'ball.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon-32.png', 'favicon-16.png', 'ball.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Ballpark Watch',
-        short_name: 'Ballpark',
+        name: 'Bandbox',
+        short_name: 'Bandbox',
         description: 'Live baseball scoring & streaming for youth and amateur leagues.',
         theme_color: '#1A2A4A',
         background_color: '#F4ECD8',

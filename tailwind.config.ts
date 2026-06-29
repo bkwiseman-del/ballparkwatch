@@ -1,6 +1,6 @@
 import type { Config } from 'tailwindcss'
 
-// Ballpark Watch design tokens — "vintage athletic, rendered flat".
+// Bandbox design tokens — "vintage athletic, rendered flat".
 // See docs/design_handoff_ballpark_watch/README.md. Hard corners, no shadows.
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],

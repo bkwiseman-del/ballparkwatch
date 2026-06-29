@@ -7,7 +7,7 @@ if (!url || !anonKey) {
   throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
 }
 
-// Ballpark Watch shares one Supabase project with the user's other apps
+// Bandbox shares one Supabase project with the user's other apps
 // (string-art, three-wise-prints). All our tables live in the dedicated `bpw`
 // schema so the apps never collide. The `bpw` schema must be in the project's
 // PostgREST exposed-schemas list, or queries 404 with PGRST106.

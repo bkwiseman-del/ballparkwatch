@@ -1,4 +1,4 @@
-// Ballpark Watch — AI voice commentary.
+// Bandbox — AI voice commentary.
 //
 // Turns a play description into spoken commentary with ElevenLabs, caching the
 // audio in Storage by (gameId, seq) so multiple viewers reuse one generation.

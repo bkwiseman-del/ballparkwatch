@@ -1,4 +1,4 @@
-// Ballpark Watch — WebRTC ICE servers (STUN + TURN).
+// Bandbox — WebRTC ICE servers (STUN + TURN).
 //
 // Returns ICE servers for the phone broadcast. TURN relays make connections work
 // across networks (broadcaster on LTE, viewer on home wifi) where plain STUN

@@ -1,4 +1,4 @@
-// Ballpark Watch — AI lineup scan.
+// Bandbox — AI lineup scan.
 //
 // Accepts a single image (a GameChanger/app screenshot, or a photo of a paper
 // scorebook lineup) and returns a structured roster the user can review and

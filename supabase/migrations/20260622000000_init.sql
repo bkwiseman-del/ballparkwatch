@@ -1,5 +1,5 @@
 -- =====================================================================
--- Ballpark Watch — initial schema
+-- Bandbox — initial schema
 -- Lives in the dedicated `bpw` schema (shared Supabase project; isolated
 -- from string-art/three-wise-prints). Event-sourced: game_events is the
 -- source of truth; game_state is a cached projection for instant viewer

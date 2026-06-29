@@ -1,21 +1,23 @@
-// Brand assets. Main crest for identity moments (login, headers); the ball mark
-// (baseball + play button) for small areas (nav, favicons, chips).
+// Brand assets. Horizontal "BANDBOX LIVE" lockups — a navy-text version for light
+// backgrounds and a cream-text version for the dark (ink) app headers. The ball
+// mark is for small areas (chips, fallbacks).
 export function BrandLogo({ className = '' }: { className?: string }) {
-  return <img src="/logo.svg" alt="Ballpark Watch" className={className} draggable={false} />
+  // Used on the cream login screen → navy-text lockup.
+  return <img src="/wordmark-on-light.png" alt="Bandbox" className={className} draggable={false} />
 }
 
 export function BallMark({ className = '' }: { className?: string }) {
-  return <img src="/ball.svg" alt="" aria-hidden className={className} draggable={false} />
+  return <img src="/ball.png" alt="" aria-hidden className={className} draggable={false} />
 }
 
-// Compact horizontal lockup for app headers: ball mark + wordmark.
+// Compact horizontal lockup for app headers (dark ink background) → cream-text lockup.
 export function HeaderWordmark({ className = '' }: { className?: string }) {
   return (
-    <span className={`flex items-center gap-2 ${className}`}>
-      <BallMark className="h-8 w-8" />
-      <span className="font-display text-lg leading-none tracking-tight text-cream">
-        Ballpark <span className="text-barn-red">Watch</span>
-      </span>
-    </span>
+    <img
+      src="/wordmark-on-dark.png"
+      alt="Bandbox"
+      className={`h-7 w-auto ${className}`}
+      draggable={false}
+    />
   )
 }

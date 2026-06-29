@@ -1,4 +1,8 @@
-# Ballpark Watch — project guide
+# Bandbox — project guide
+
+(Formerly "Ballpark Watch." The internal Postgres schema, storage prefix, and bucket
+stay named `bpw`/`bpw-audio` — that's infra, not branding, and renaming would break the
+shared Supabase project.)
 
 Live baseball scoring + streaming PWA for youth/amateur leagues (think GameChanger).
 One parent **scores** play-by-play; family **watches** a live video stream with a
@@ -50,8 +54,9 @@ Light = cream-and-ink (daytime); dark = night-game scoreboard (default; `<html c
 - `/watch/:gameId` — public viewer, reached via share link (no account). Phase 1.
 
 ## Share links
-Domain is **ballparkwatch.live** (owned). Links: `ballparkwatch.live/<slug>`.
-(The design spec's `bpw.live` is a placeholder — use the real domain.)
+Domains owned: **bandbox.tv** (primary) and **bandboxlive.com**. Links:
+`bandbox.tv/watch/<gameId>`. Share URLs are built from `window.location.origin` in code
+(no hardcoded domain), so they follow whatever domain Vercel serves.
 
 ## Build phases (build top-to-bottom; each has an acceptance test)
 0. **Scaffolding** ✅ — sign in, create team/players, create a game.

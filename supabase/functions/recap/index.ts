@@ -1,4 +1,4 @@
-// Ballpark Watch — AI post-game recap.
+// Bandbox — AI post-game recap.
 //
 // Takes a compact game summary (final score, line score, scoring plays, top
 // hitters) and returns a short, warm recap for family. The Anthropic key lives
