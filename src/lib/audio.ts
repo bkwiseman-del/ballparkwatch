@@ -260,6 +260,12 @@ class AudioManager {
     void this.pump()
   }
 
+  // Drop any pending spoken lines (e.g. when the replay is scrubbed) so stale
+  // commentary from before the seek doesn't keep playing.
+  flushVoice() {
+    this.queue = []
+  }
+
   // Play the organ stinger at the top of an inning. Goes through the voice queue
   // so it finishes BEFORE the inning's commentary (which queues behind it).
   enqueueOrgan() {

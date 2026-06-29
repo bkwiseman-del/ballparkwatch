@@ -33,10 +33,12 @@ export default function Broadcast() {
   if (!data) return <Center>Loading…</Center>
 
   const code = (t: { code: string | null; name: string }) => t.code ?? t.name
-  return <Broadcaster gameId={data.game_id} title={`${code(data.away)} @ ${code(data.home)}`} />
+  return (
+    <Broadcaster gameId={data.game_id} token={token!} title={`${code(data.away)} @ ${code(data.home)}`} />
+  )
 }
 
-function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
+function Broadcaster({ gameId, token, title }: { gameId: string; token: string; title: string }) {
   const v = usePhoneVideo(gameId, true)
   const localRef = useRef<HTMLVideoElement>(null)
   const [ended, setEnded] = useState(false)
@@ -44,6 +46,76 @@ function Broadcaster({ gameId, title }: { gameId: string; title: string }) {
 
   useEffect(() => {
     if (localRef.current) localRef.current.srcObject = v.local
+  }, [v.local])
+
+  // Record the broadcast — the same 16:9 canvas + audio the viewers see — and upload
+  // it when the broadcast stops, so the game can be replayed with the synced scorebug
+  // and AI commentary. started_at anchors the video to the event log's wall_clock_ts.
+  // (v1: chunks accumulate in memory and upload once on stop; long games will need
+  // incremental/chunked upload — see docs/bandbox-plan.md.)
+  const recChunks = useRef<Blob[]>([])
+  const recStartedAt = useRef(0)
+  const recMime = useRef('')
+
+  async function uploadRecording() {
+    const chunks = recChunks.current
+    recChunks.current = []
+    if (!chunks.length) return
+    const full = recMime.current || 'video/webm'
+    const base = full.split(';')[0] || 'video/webm'
+    const startedAt = recStartedAt.current
+    const ext = base.includes('mp4') ? 'mp4' : 'webm'
+    const path = `recordings/${gameId}/${startedAt}.${ext}`
+    const { error } = await supabase.storage
+      .from('bpw-video')
+      .upload(path, new Blob(chunks, { type: full }), { contentType: base, upsert: true })
+    if (error) return
+    await supabase.rpc('save_recording', {
+      p_token: token,
+      p_path: path,
+      p_started_at: new Date(startedAt).toISOString(),
+      p_duration_ms: Date.now() - startedAt,
+      p_mime: base,
+    })
+  }
+
+  useEffect(() => {
+    const stream = v.local
+    if (!stream || typeof MediaRecorder === 'undefined') return
+    const mime =
+      ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(
+        (m) => {
+          try {
+            return MediaRecorder.isTypeSupported(m)
+          } catch {
+            return false
+          }
+        },
+      ) ?? ''
+    let rec: MediaRecorder
+    try {
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+    } catch {
+      return
+    }
+    recChunks.current = []
+    recMime.current = rec.mimeType || mime || 'video/webm'
+    recStartedAt.current = Date.now()
+    rec.ondataavailable = (e) => {
+      if (e.data?.size) recChunks.current.push(e.data)
+    }
+    rec.start(4000)
+    return () => {
+      if (rec.state !== 'inactive') {
+        rec.onstop = uploadRecording
+        try {
+          rec.stop()
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v.local])
 
   // End the broadcast when the scorer ends the game. Catch it instantly off the

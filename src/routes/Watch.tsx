@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { ScorePanel } from '@/components/ScorePanel'
@@ -47,6 +47,10 @@ type PublicGame = {
   snapshot: Partial<LiveGame>
   lineups?: { away: LineupSlot[]; home: LineupSlot[] }
   players?: Record<string, { name: string; jersey: string | null }>
+  recording_path?: string | null
+  recording_started_at?: string | null
+  recording_mime?: string | null
+  recording_duration_ms?: number | null
 }
 
 type LineupSlot = { id?: string; name: string; jersey: string | null; pos: string | null }
@@ -70,7 +74,11 @@ function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null
   return null
 }
 
-type ViewerEvent = GameEventRow & { batter_name: string | null; created_at?: string }
+type ViewerEvent = GameEventRow & {
+  batter_name: string | null
+  created_at?: string
+  wall_clock_ts?: string
+}
 
 type Tab = 'field' | 'plays' | 'box' | 'stats'
 
@@ -360,6 +368,26 @@ export default function Watch() {
     runners: occupancy(live.bases),
   }
 
+  // Replay of the recorded broadcast (shown on the Final screen) if one was saved.
+  const replay: ReplayProps | null =
+    info.recording_path && info.recording_started_at
+      ? {
+          url: supabase.storage.from('bpw-video').getPublicUrl(info.recording_path).data.publicUrl,
+          startedAtMs: new Date(info.recording_started_at).getTime(),
+          gameId: info.id,
+          events,
+          lineups: {
+            away: (info.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+            home: (info.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+          },
+          teams: {
+            away: { name: info.away.name, code: board.away.code },
+            home: { name: info.home.name, code: board.home.code },
+          },
+          cueNameOf: (id) => (id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null),
+        }
+      : null
+
   // Between half-innings: the scorer is at its between-innings screen (3 outs).
   const between = live.status === 'live' && (live.outs ?? 0) >= 3
 
@@ -516,6 +544,7 @@ export default function Watch() {
           location={info.location ?? null}
           startPos={startPositions}
           nameOf={nameById}
+          replay={replay}
         />
       ) : isScoreboard ? (
         /* Scoreboard game: no field/lineup — the live scoreboard + the line score. */
@@ -702,6 +731,7 @@ function FinalView({
   location,
   startPos,
   nameOf,
+  replay,
 }: {
   board: ScoreboardState
   events: ViewerEvent[]
@@ -709,8 +739,14 @@ function FinalView({
   location: string | null
   startPos: StartPositions
   nameOf: (id: string) => string
+  replay?: ReplayProps | null
 }) {
-  const [tab, setTab] = useState<'recap' | 'box' | 'stats' | 'plays'>('recap')
+  const finalTabs = replay
+    ? (['replay', 'recap', 'box', 'stats', 'plays'] as const)
+    : (['recap', 'box', 'stats', 'plays'] as const)
+  const [tab, setTab] = useState<'replay' | 'recap' | 'box' | 'stats' | 'plays'>(
+    replay ? 'replay' : 'recap',
+  )
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
@@ -738,7 +774,7 @@ function FinalView({
 
       {/* sub-tabs */}
       <div className="flex border-b-2 border-gold bg-ink">
-        {(['recap', 'box', 'stats', 'plays'] as const).map((t) => (
+        {finalTabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -753,11 +789,114 @@ function FinalView({
       </div>
 
       <div className="flex-1 p-4 min-[760px]:p-6">
+        {tab === 'replay' && replay && <ReplayView {...replay} />}
         {tab === 'recap' && <RecapFinal recap={recap} events={events} board={board} />}
         {tab === 'box' && <BoxTab board={board} events={events} startPos={startPos} nameOf={nameOf} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
         {tab === 'plays' && <PlaysTab events={events} />}
       </div>
+    </div>
+  )
+}
+
+type ReplayProps = {
+  url: string
+  startedAtMs: number
+  gameId: string
+  events: ViewerEvent[]
+  lineups: { away: { name: string; jersey: string | null }[]; home: { name: string; jersey: string | null }[] }
+  teams: { away: { name: string; code: string }; home: { name: string; code: string } }
+  cueNameOf: (id: string | null | undefined) => string | null
+}
+
+// Replay the recorded broadcast with the scorebug + AI commentary re-synced to the
+// video clock: as the video plays, each event fires at wall_clock_ts − started_at into
+// it (FX immediately; the spoken lines through the same cached-TTS queue as live), and
+// the scorebug is projected from the events reached so far. Scrubbing re-syncs both.
+function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf }: ReplayProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const sorted = useMemo(() => [...events].sort((a, b) => a.seq - b.seq), [events])
+  const firedSeq = useRef(0)
+  const lastTime = useRef(0)
+  const [live, setLive] = useState<LiveGame>(() => ({ ...INITIAL_LIVE }))
+
+  const tsOf = (e: ViewerEvent) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0)
+
+  function fire(sinceSeq: number, upTo: ViewerEvent[]) {
+    const newest = upTo[upTo.length - 1]
+    if (!newest) return
+    audio.playFx(fxCues(newest.event_type))
+    if (['single', 'double', 'triple', 'home_run', 'manual_run'].includes(newest.event_type)) audio.swellCrowd()
+    const fresh = upTo.filter((e) => e.seq > sinceSeq)
+    if (fresh.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) {
+      if (project(upTo).half === 'bottom') audio.enqueueCharge()
+      else audio.enqueueOrgan()
+    }
+    const cues = freshCues(upTo, sinceSeq, cueNameOf, lineups, { away: teams.away.name, home: teams.home.name })
+    void (async () => {
+      for (const c of cues) {
+        try {
+          const { data } = await supabase.functions.invoke('commentary', {
+            body: { gameId, seq: c.key, text: c.text, kind: c.kind },
+          })
+          if (data?.url) audio.enqueueVoice(String(data.url))
+        } catch {
+          /* skip this line */
+        }
+      }
+    })()
+  }
+
+  function onTime() {
+    const vid = videoRef.current
+    if (!vid) return
+    const cur = vid.currentTime
+    const virtualMs = startedAtMs + cur * 1000
+    const upTo = sorted.filter((e) => tsOf(e) <= virtualMs)
+    setLive(project(upTo))
+    const newMax = upTo.length ? upTo[upTo.length - 1].seq : 0
+    const seeked = Math.abs(cur - lastTime.current) > 1.5 || cur < lastTime.current
+    if (seeked) {
+      firedSeq.current = newMax
+      audio.flushVoice()
+    } else if (newMax > firedSeq.current && audio.isEnabled()) {
+      fire(firedSeq.current, upTo)
+      firedSeq.current = newMax
+    }
+    lastTime.current = cur
+  }
+
+  const board: ScoreboardState = {
+    away: { code: teams.away.code, name: teams.away.name, score: live.awayScore },
+    home: { code: teams.home.code, name: teams.home.name, score: live.homeScore },
+    inning: live.inning,
+    half: live.half,
+    balls: live.balls,
+    strikes: live.strikes,
+    outs: live.outs,
+    runners: occupancy(live.bases),
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-2xl">
+      <div className="relative bg-black">
+        <video
+          ref={videoRef}
+          src={url}
+          controls
+          autoPlay
+          playsInline
+          onPlay={() => void audio.enable()}
+          onTimeUpdate={onTime}
+          className="aspect-video w-full bg-black object-contain"
+        />
+        <div className="pointer-events-none absolute bottom-2 left-2">
+          <ScorebugBar state={board} />
+        </div>
+      </div>
+      <p className="mt-3 text-center font-data text-xs text-muted-green">
+        Game replay — the scorebug and AI commentary play back in sync. Tap play to enable sound.
+      </p>
     </div>
   )
 }
