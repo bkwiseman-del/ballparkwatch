@@ -3,14 +3,15 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthProvider'
 import { BrandLogo } from '@/components/Logo'
 
+// Sign-in only — Bandbox is in private beta. New accounts can't be created here; access
+// is granted via the bpw.app_access allowlist (see RequireAuth). Public visitors are
+// pointed at the waitlist on the marketing page.
 export default function Login() {
-  const { session, signIn, signUp } = useAuth()
+  const { session, signIn } = useAuth()
   const location = useLocation()
-  const [mode, setMode] = useState<'in' | 'up'>('in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   // Paint the body cream so iOS doesn't show the dark night-green default in the
@@ -31,17 +32,10 @@ export default function Login() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    setNotice(null)
     setBusy(true)
-    const fn = mode === 'in' ? signIn : signUp
-    const { error } = await fn(email, password)
+    const { error } = await signIn(email, password)
     setBusy(false)
-    if (error) {
-      setError(error)
-    } else if (mode === 'up') {
-      setNotice('Account created. Check your email if confirmation is required, then sign in.')
-      setMode('in')
-    }
+    if (error) setError(error)
   }
 
   return (
@@ -49,7 +43,7 @@ export default function Login() {
       <BrandLogo className="mb-6 w-56 max-w-[70vw]" />
       <div className="w-full max-w-sm border-2 border-gold bg-ink p-6">
         <p className="mb-6 text-center font-athletic uppercase tracking-[0.14em] text-muted-green">
-          {mode === 'in' ? 'Operator sign in' : 'Create operator account'}
+          Operator sign in
         </p>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
@@ -68,7 +62,7 @@ export default function Login() {
             Password
             <input
               type="password"
-              autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+              autoComplete="current-password"
               required
               minLength={6}
               value={password}
@@ -78,28 +72,22 @@ export default function Login() {
           </label>
 
           {error && <p className="font-data text-sm text-barn-red">{error}</p>}
-          {notice && <p className="font-data text-sm text-gold">{notice}</p>}
 
           <button
             type="submit"
             disabled={busy}
             className="mt-2 bg-gold py-3 font-display text-lg text-ink disabled:opacity-60"
           >
-            {busy ? '…' : mode === 'in' ? 'Sign In' : 'Sign Up'}
+            {busy ? '…' : 'Sign In'}
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={() => {
-            setMode((m) => (m === 'in' ? 'up' : 'in'))
-            setError(null)
-            setNotice(null)
-          }}
-          className="mt-4 w-full font-athletic uppercase tracking-wide text-sm text-muted-green underline"
-        >
-          {mode === 'in' ? 'Need an account? Sign up' : 'Have an account? Sign in'}
-        </button>
+        <p className="mt-5 text-center font-athletic text-sm tracking-wide text-muted-green">
+          Bandbox is in private beta.{' '}
+          <a href="/" className="text-gold underline">
+            Join the waitlist →
+          </a>
+        </p>
       </div>
     </div>
   )
