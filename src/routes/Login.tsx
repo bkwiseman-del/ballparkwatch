@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthProvider'
 import { BrandLogo } from '@/components/Logo'
@@ -12,6 +12,16 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // Paint the body cream so iOS doesn't show the dark night-green default in the
+  // safe-area strips (the home-indicator area) below the cream login screen.
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor
+    document.body.style.backgroundColor = '#F4ECD8'
+    return () => {
+      document.body.style.backgroundColor = prev
+    }
+  }, [])
 
   if (session) {
     const from = (location.state as { from?: Location })?.from?.pathname ?? '/setup'
