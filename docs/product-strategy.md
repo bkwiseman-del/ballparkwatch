@@ -1,3 +1,8 @@
+> ⚠️ **SUPERSEDED (2026-06-29).** This doc has been folded into the unified
+> [bandbox-plan.md](bandbox-plan.md) (post-rebrand to Bandbox, with the matchup-native model
+> and the sub+sponsor monetization). Kept only as history — **do not edit; read the master
+> plan instead.**
+
 # Ballpark Watch — Product Strategy, Pricing & Platform Plan
 
 > Companion to [baseball-app-build-plan.md](baseball-app-build-plan.md). That doc is the
@@ -550,5 +555,3 @@ always web-checkout** to dodge the App Store cut, regardless of surface.
 - Whether to run **SFU-for-everyone within the free tier** early vs. ship the P2P/SFU split
   from day one.
 - Opponent-privacy display specifics (confirm jersey# + last name default).
-</content>
-</invoke>

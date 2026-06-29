@@ -1,0 +1,85 @@
+/* Bandbox marketing page styles — ported from the Claude Design handoff.
+   All class rules are scoped under .bb-mkt so they can't leak into the app.
+   Keyframes are global (unique names). The page is self-contained dark navy/cream. */
+
+html { scroll-behavior: smooth; }
+
+@keyframes sl-pulse { 0%,100% { opacity:1 } 50% { opacity:.2 } }
+@keyframes spray-hit { 0%,100% { stroke-dashoffset:640; opacity:0 } 8% { opacity:.75; stroke-dashoffset:640 } 52% { stroke-dashoffset:0; opacity:.75 } 62% { stroke-dashoffset:0; opacity:0 } }
+@keyframes runner-appear { 0%,32%,90%,100% { opacity:0 } 37%,85% { opacity:1 } }
+@keyframes bb-waveform { 0%,100% { height:5px } 50% { height:26px } }
+
+.bb-mkt { font-family: Archivo, sans-serif; background:#1A2A4A; color:#F4ECD8; overflow-x:hidden; }
+
+/* Scroll reveal */
+.bb-mkt [data-visible="true"] .anim { opacity:1; transform:none; }
+.bb-mkt .anim { opacity:0; transform:translateY(22px); transition:opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
+.bb-mkt .anim.left { transform:translateX(-26px); }
+.bb-mkt .anim.right { transform:translateX(26px); }
+.bb-mkt .anim.d1 { transition-delay:.1s; }
+.bb-mkt .anim.d2 { transition-delay:.2s; }
+.bb-mkt .anim.d3 { transition-delay:.3s; }
+.bb-mkt .anim.d4 { transition-delay:.4s; }
+.bb-mkt .anim.d5 { transition-delay:.5s; }
+
+/* Nav */
+.bb-mkt .site-nav { transition:background .35s, box-shadow .35s; }
+.bb-mkt .site-nav[data-scrolled="true"] { background:rgba(26,42,74,.97) !important; box-shadow:0 1px 0 rgba(201,161,74,.3); }
+.bb-mkt .nav-link { font-family:'Saira Condensed',sans-serif; font-weight:600; font-size:14px; letter-spacing:.1em; color:rgba(244,236,216,.7); text-decoration:none; transition:color .2s; }
+.bb-mkt .nav-link:hover { color:#C9A14A; }
+
+/* Buttons */
+.bb-mkt .btn-gold { background:#C9A14A; color:#1A2A4A; border:none; cursor:pointer; font-family:'Alfa Slab One',serif; text-decoration:none; display:inline-block; transition:background .2s; }
+.bb-mkt .btn-gold:hover { background:#d8b958; }
+.bb-mkt .btn-ghost { background:transparent; color:#F4ECD8; border:2px solid rgba(244,236,216,.45); cursor:pointer; font-family:'Alfa Slab One',serif; text-decoration:none; display:inline-block; transition:all .2s; }
+.bb-mkt .btn-ghost:hover { background:rgba(244,236,216,.08); border-color:#F4ECD8; }
+.bb-mkt .btn-navy { background:#1A2A4A; color:#F4ECD8; border:none; cursor:pointer; font-family:'Alfa Slab One',serif; text-decoration:none; display:inline-block; transition:background .2s; }
+.bb-mkt .btn-navy:hover { background:#243b5c; }
+.bb-mkt .btn-red { background:#A6342E; color:#F4ECD8; border:none; cursor:pointer; font-family:'Alfa Slab One',serif; text-decoration:none; display:inline-block; transition:background .2s; }
+.bb-mkt .btn-red:hover { background:#be3d35; }
+.bb-mkt .btn-sm { background:#C9A14A; color:#1A2A4A; border:none; cursor:pointer; font-family:'Saira Condensed',sans-serif; font-weight:700; font-size:12px; letter-spacing:.1em; padding:9px 18px; text-decoration:none; display:inline-block; transition:background .2s; white-space:nowrap; }
+.bb-mkt .btn-sm:hover { background:#d8b958; }
+
+/* Waveform */
+.bb-mkt .wave-bar { display:inline-block; width:3px; background:#C9A14A; border-radius:2px; animation:bb-waveform .85s ease-in-out infinite; vertical-align:bottom; }
+
+/* Pricing */
+.bb-mkt .price-card { background:#152438; border:1.5px solid rgba(244,236,216,.12); transition:border-color .2s; }
+.bb-mkt .price-card:hover { border-color:rgba(201,161,74,.4); }
+.bb-mkt .price-card.hero-card { border:3px solid #C9A14A; background:#1a2e48; position:relative; }
+
+/* Comparison */
+.bb-mkt .cmp-row { display:grid; grid-template-columns:2fr 1fr 1fr; border-bottom:1px solid rgba(244,236,216,.1); }
+.bb-mkt .cmp-row:last-child { border-bottom:none; }
+/* Comparison sits on a CREAM section, so cells use dark ink (the handoff CSS used
+   light-on-dark colors, which made the labels invisible on cream). */
+.bb-mkt .cmp-cell { padding:14px 18px; font-family:Archivo,sans-serif; font-size:15px; color:rgba(26,42,74,.78); line-height:1.4; }
+.bb-mkt .cmp-cell.label { font-weight:600; color:#1A2A4A; }
+.bb-mkt .cmp-cell.them { text-align:center; color:rgba(26,42,74,.45); }
+.bb-mkt .cmp-cell.us { text-align:center; color:#2C5234; font-weight:700; }
+.bb-mkt .cmp-head { padding:12px 18px; font-family:'Saira Condensed',sans-serif; font-weight:700; font-size:12px; letter-spacing:.14em; text-transform:uppercase; }
+
+/* Responsive */
+@media (max-width:900px) {
+  .bb-mkt .hero-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .hero-phone-col { display:none !important; }
+  .bb-mkt .viewer-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .ai-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .field-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .steps-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .price-grid { grid-template-columns:1fr 1fr !important; }
+  .bb-mkt .diff-grid { grid-template-columns:repeat(3,1fr) !important; }
+  .bb-mkt .nav-links { display:none !important; }
+  .bb-mkt .cmp-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .fields-grid { grid-template-columns:1fr !important; }
+}
+@media (max-width:640px) {
+  .bb-mkt .hero-h1 { font-size:58px !important; }
+  .bb-mkt .sec-h2 { font-size:34px !important; }
+  .bb-mkt .price-grid { grid-template-columns:1fr !important; }
+  .bb-mkt .diff-grid { grid-template-columns:repeat(2,1fr) !important; }
+  .bb-mkt .footer-cols { grid-template-columns:1fr 1fr !important; }
+}
+
+/* Stars-and-stripes bunting (matches the app cover screens) */
+.bb-mkt .bunting { position:absolute; top:0; left:0; right:0; height:66px; background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%2266%22%20viewBox%3D%220%200%20120%2066%22%3E%3Cpath%20d%3D%22M%203%206%20A%2057%2057%200%200%200%20117%206%20Z%22%20fill%3D%22%23B22234%22%2F%3E%3Cpath%20d%3D%22M%2013%206%20A%2047%2047%200%200%200%20107%206%20Z%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Cpath%20d%3D%22M%2023%206%20A%2037%2037%200%200%200%2097%206%20Z%22%20fill%3D%22%23B22234%22%2F%3E%3Cpath%20d%3D%22M%2033%206%20A%2027%2027%200%200%200%2087%206%20Z%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Cpath%20d%3D%22M%2043%206%20A%2017%2017%200%200%200%2077%206%20Z%22%20fill%3D%22%231A2A4A%22%2F%3E%3Cpolygon%20points%3D%2269.4%2C9.1%2070.0%2C10.9%2071.9%2C10.9%2070.4%2C12.1%2070.9%2C13.9%2069.4%2C12.8%2067.8%2C13.9%2068.3%2C12.1%2066.9%2C10.9%2068.7%2C10.9%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Cpolygon%20points%3D%2265.5%2C12.9%2066.1%2C14.7%2067.9%2C14.7%2066.5%2C15.9%2067.0%2C17.6%2065.5%2C16.6%2063.9%2C17.6%2064.4%2C15.9%2063.0%2C14.7%2064.8%2C14.7%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Cpolygon%20points%3D%2260.0%2C14.4%2060.7%2C16.1%2062.5%2C16.2%2061.0%2C17.3%2061.5%2C19.1%2060.0%2C18.1%2058.5%2C19.1%2059.0%2C17.3%2057.5%2C16.2%2059.4%2C16.1%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Cpolygon%20points%3D%2254.5%2C13.0%2055.2%2C14.7%2057.0%2C14.7%2055.6%2C15.9%2056.1%2C17.7%2054.5%2C16.6%2053.0%2C17.7%2053.5%2C15.9%2052.1%2C14.7%2053.9%2C14.7%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Cpolygon%20points%3D%2250.6%2C9.2%2051.3%2C10.9%2053.1%2C11.0%2051.7%2C12.1%2052.2%2C13.9%2050.6%2C12.9%2049.1%2C13.9%2049.6%2C12.1%2048.2%2C11.0%2050.0%2C10.9%22%20fill%3D%22%23FBF6E9%22%2F%3E%3Crect%20x%3D%22-1%22%20y%3D%220%22%20width%3D%22122%22%20height%3D%229%22%20fill%3D%22%231A2A4A%22%2F%3E%3C%2Fsvg%3E"); background-repeat:repeat-x; background-position:center top; background-size:120px 66px; }

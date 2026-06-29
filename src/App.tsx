@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from './auth/RequireAuth'
+import Home from './routes/Home'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Lineup from './routes/Lineup'
@@ -10,7 +11,8 @@ import Broadcast from './routes/Broadcast'
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/setup" replace />} />
+      {/* Public marketing landing page. */}
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route
         path="/setup"
@@ -40,7 +42,7 @@ export default function App() {
       <Route path="/watch/:gameId" element={<Watch />} />
       {/* Broadcaster — reached only via the scorer's private token link/QR. */}
       <Route path="/broadcast/:token" element={<Broadcast />} />
-      <Route path="*" element={<Navigate to="/setup" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

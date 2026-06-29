@@ -1,0 +1,443 @@
+<nav class="site-nav" data-scrolled="false" style="position:fixed;top:0;left:0;right:0;z-index:100;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 5%;background:transparent">
+  <a href="#home" style="text-decoration:none">
+    <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox Live" style="height:36px;width:auto;display:block"/>
+  </a>
+  <div class="nav-links" style="display:flex;gap:36px">
+    <a href="#steps" class="nav-link">HOW IT WORKS</a>
+    <a href="#pricing" class="nav-link">PRICING</a>
+    <a href="#watch" class="nav-link">WATCH LIVE</a>
+  </div>
+  <a href="/login" class="btn-sm">START FREE ▸</a>
+</nav>
+
+
+<!-- ═══════════ HERO ═══════════ -->
+<section id="home" data-visible="true" style="height:100vh;overflow:hidden;position:relative;padding-top:64px">
+  <div style="position:absolute;inset:0;background:url(/marketing/assets/youth-baseball.jpg) center 35%/cover no-repeat;z-index:0"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(108deg,rgba(14,28,18,.98) 0%,rgba(14,28,18,.97) 44%,rgba(14,28,18,.78) 62%,rgba(14,28,18,.5) 100%);z-index:1"></div>
+
+  <div class="hero-grid" style="position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 64px);max-width:1320px;margin:0 auto;padding:0 5%;align-items:center">
+
+    <!-- Left: headline -->
+    <div style="padding-right:32px">
+      <!-- Mini scoreboard badge -->
+      <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.28em;color:#a9c0ad;text-transform:uppercase;margin-bottom:20px">Youth Baseball Stats &amp; Video Made Easy</div>
+      <h1 class="anim d1 hero-h1" style="font-family:'Alfa Slab One',serif;font-size:68px;line-height:.88;letter-spacing:.01em;color:#F4ECD8;margin:0">BROADCAST<br>LIKE THE<br><span style="color:#C9A14A">BIG LEAGUES.</span></h1>
+      <div class="anim d2" style="height:1px;width:72px;background:#C9A14A;margin:28px 0"></div>
+      <p class="anim d3" style="font-size:19px;line-height:1.65;color:rgba(244,236,216,.72);max-width:460px;margin:0 0 36px">One phone films. The whole family watches in a browser — live scorebug, stats, and an AI announcer calling every pitch. No app. No account. The family never pays.</p>
+      <div class="anim d4" style="display:flex;gap:14px;flex-wrap:wrap">
+        <a href="/login" class="btn-gold" style="font-size:17px;letter-spacing:.04em;padding:17px 36px">START FREE ▸</a>
+        <a href="#steps" class="btn-ghost" style="font-size:17px;letter-spacing:.04em;padding:15px 34px">SEE HOW IT WORKS</a>
+      </div>
+    </div>
+
+    <!-- Right: phone mockup -->
+    <div class="hero-phone-col" style="display:flex;justify-content:center;align-items:center;height:100%">
+      <div>
+        <div style="background:linear-gradient(155deg,#0c1520 0%,#06101b 100%);border-radius:54px;padding:13px;box-shadow:0 0 0 1px rgba(201,161,74,.22),0 48px 120px rgba(0,0,0,.9);position:relative">
+          <div style="position:absolute;right:-4px;top:128px;width:4px;height:56px;background:#050c14;border-radius:0 2px 2px 0"></div>
+          <div style="position:absolute;left:-4px;top:96px;width:4px;height:34px;background:#050c14;border-radius:2px 0 0 2px"></div>
+          <div style="position:absolute;left:-4px;top:142px;width:4px;height:34px;background:#050c14;border-radius:2px 0 0 2px"></div>
+          <div style="width:296px;height:640px;background:#15281b;border-radius:42px;overflow:hidden;display:flex;flex-direction:column">
+            <div style="height:28px;background:#0e1a14;display:flex;align-items:center;justify-content:space-between;padding:0 22px;flex:none">
+              <span style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;color:#F4ECD8">2:41</span>
+              <div style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#A6342E;animation:sl-pulse 1.4s infinite"></span><span style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;color:#F4ECD8">LIVE</span></div>
+            </div>
+            <!-- VIDEO (clip; scaled+top-anchored to crop the baked-in bug; no overlays — LIVE shows in the status bar) -->
+            <div style="background:#0a0f0a;flex:none">
+              <video src="/marketing/assets/hero-clip.mp4" autoplay muted loop playsinline preload="auto" style="width:100%;height:auto;display:block"></video>
+            </div>
+            <!-- SCOREBUG BAR (under the video) -->
+            <div style="display:flex;align-items:center;gap:8px;background:#15281b;border-bottom:2px solid #C9A14A;padding:5px 11px;flex:none;font-family:'Saira Condensed',sans-serif;color:#F4ECD8">
+              <span style="display:flex;align-items:baseline;gap:3px"><span style="font-size:12px;font-weight:600">GFS</span><span style="font-size:14px;font-weight:700;font-variant-numeric:tabular-nums" id="bbHeroAway">0</span></span>
+              <span style="display:flex;align-items:baseline;gap:3px"><span style="font-size:12px;font-weight:600;color:#C9A14A">OAK</span><span style="font-size:14px;font-weight:700;color:#C9A14A;font-variant-numeric:tabular-nums" id="bbHeroHome">0</span></span>
+              <span style="width:1px;height:14px;background:rgba(201,161,74,.3)"></span>
+              <span style="font-size:13px;font-weight:700">▼6</span>
+              <span style="display:flex;align-items:baseline;gap:3px"><span style="font-size:8px;color:#a9c0ad;letter-spacing:.08em">B–S</span><span style="font-size:13px;font-weight:700;font-variant-numeric:tabular-nums">2–1</span></span>
+              <span style="display:flex;align-items:center;gap:3px"><span style="display:flex;gap:2px"><span style="width:7px;height:7px;border-radius:50%;background:#A6342E"></span><span style="width:7px;height:7px;border-radius:50%;background:#A6342E"></span><span style="width:7px;height:7px;border-radius:50%;border:1.5px solid #F4ECD8;box-sizing:border-box"></span></span><span style="font-size:8px;color:#a9c0ad">OUT</span></span>
+              <span style="margin-left:auto;display:flex;align-items:center"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="13" y="7" width="6" height="6" transform="rotate(45 16 10)" fill="#C9A14A"/><rect x="7" y="1" width="6" height="6" transform="rotate(45 10 4)" fill="none" stroke="#F4ECD8" stroke-width="1"/><rect x="1" y="7" width="6" height="6" transform="rotate(45 4 10)" fill="#C9A14A"/></svg></span>
+            </div>
+            <!-- BATTER / PITCHER strip (divider, on-deck, pitch count) -->
+            <div style="display:flex;background:#FAF4E6;border-bottom:2px solid #1A2A4A;flex:none">
+              <div style="flex:1;border-right:1px solid rgba(26,42,74,.2);padding:6px 11px">
+                <div style="font-family:'Saira Condensed',sans-serif;font-size:8px;font-weight:600;letter-spacing:.14em;color:#A6342E">AT BAT</div>
+                <div style="font-family:'Alfa Slab One',serif;font-size:13px;color:#1A2A4A;line-height:1.15"><span style="color:#A6342E">7</span> Ellis</div>
+                <div style="font-family:Archivo,sans-serif;font-size:9px;color:#7a6f54">On deck: 9 Shaw</div>
+              </div>
+              <div style="flex:1;padding:6px 11px;text-align:right">
+                <div style="font-family:'Saira Condensed',sans-serif;font-size:8px;font-weight:600;letter-spacing:.14em;color:#7a6f54">PITCHING</div>
+                <div style="font-family:'Alfa Slab One',serif;font-size:13px;color:#1A2A4A;line-height:1.15"><span style="color:#A6342E">21</span> Reyes</div>
+                <div style="font-family:Archivo,sans-serif;font-size:9px;color:#7a6f54">32 pitches</div>
+              </div>
+            </div>
+            <!-- TAB ROW -->
+            <div style="display:flex;background:#122019;border-bottom:2px solid #C9A14A;flex:none;font-family:'Saira Condensed',sans-serif"><div style="flex:1;position:relative;text-align:center;padding:9px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#F4ECD8">field<span style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);height:3px;width:30px;background:#C9A14A"></span></div><div style="flex:1;position:relative;text-align:center;padding:9px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a9c0ad">plays</div><div style="flex:1;position:relative;text-align:center;padding:9px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a9c0ad">box</div><div style="flex:1;position:relative;text-align:center;padding:9px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a9c0ad">stats</div></div>
+            <!-- FIELD (active tab) -->
+            <div style="flex:1;min-height:0;background:#2C5234;position:relative;overflow:hidden"><svg viewBox="18 112 304 258" preserveAspectRatio="xMidYMid meet" width="100%" height="100%" style="display:block"><path d="M170 330 L40 190 A182 182 0 0 1 300 190 Z" fill="#326139"/><line x1="170" y1="330" x2="44" y2="194" stroke="#e9ddc2" stroke-width="2.5"/><line x1="170" y1="330" x2="296" y2="194" stroke="#e9ddc2" stroke-width="2.5"/><polygon points="170,330 244,256 170,182 96,256" fill="#b07a3e"/><polygon points="170,318 232,256 170,194 108,256" fill="#2C5234"/><polygon points="170,330 244,256 170,182 96,256" fill="none" stroke="#e9ddc2" stroke-width="3"/><circle cx="170" cy="256" r="13" fill="#b07a3e"/><rect x="166" y="253" width="8" height="4" fill="#F4ECD8"/><g><rect x="148.5" y="265" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="170" y="275.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">P </tspan><tspan fill="#F4ECD8">Reyes</tspan></text></g><g><rect x="151.0" y="349" width="38.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="170" y="359.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">C </tspan><tspan fill="#F4ECD8">Diaz</tspan></text></g><g><rect x="248.0" y="231" width="48.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="272" y="241.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">1B </tspan><tspan fill="#F4ECD8">Ortiz</tspan></text></g><g><rect x="190.0" y="189" width="48.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="214" y="199.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">2B </tspan><tspan fill="#F4ECD8">Vance</tspan></text></g><g><rect x="104.5" y="189" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="126" y="199.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">SS </tspan><tspan fill="#F4ECD8">Webb</tspan></text></g><g><rect x="46.5" y="231" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="68" y="241.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">3B </tspan><tspan fill="#F4ECD8">Cruz</tspan></text></g><g><rect x="70.5" y="153" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="92" y="163.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">LF </tspan><tspan fill="#F4ECD8">Shaw</tspan></text></g><g><rect x="148.5" y="133" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="170" y="143.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">CF </tspan><tspan fill="#F4ECD8">Soto</tspan></text></g><g><rect x="229.0" y="153" width="38.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="248" y="163.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">RF </tspan><tspan fill="#F4ECD8">Lee</tspan></text></g><rect x="162" y="174" width="16" height="16" transform="rotate(45 170 182)" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/><rect x="236" y="248" width="16" height="16" transform="rotate(45 244 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/><rect x="88" y="248" width="16" height="16" transform="rotate(45 96 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/><polygon points="162,326 178,326 178,333 170,340 162,333" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/><circle cx="244" cy="256" r="12" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2.5"/><circle cx="96" cy="256" r="12" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2.5"/><circle cx="170" cy="330" r="9" fill="#A6342E" stroke="#F4ECD8" stroke-width="1.5"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ THREE STEPS ═══════════ -->
+<section id="steps" data-section="s2" data-visible="false" style="background:#F4ECD8;padding:90px 5%">
+  <div style="max-width:1280px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:56px">
+      <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#A6342E;margin-bottom:12px">DEAD SIMPLE</div>
+      <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:48px;letter-spacing:.01em;line-height:.95;color:#1A2A4A">SCORE IT. STREAM IT.<br>EVERYONE WATCHES.</h2>
+    </div>
+    <div class="steps-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(26,42,74,.18)">
+      <div class="anim" style="background:#F4ECD8;padding:48px 40px">
+        <!-- Badge: phone -->
+        <div style="width:64px;height:64px;background:#1A2A4A;display:flex;align-items:center;justify-content:center;margin-bottom:24px">
+          <svg width="32" height="32" viewBox="0 0 32 32"><rect x="8" y="2" width="16" height="28" rx="0" fill="none" stroke="#F4ECD8" stroke-width="2"/><rect x="13" y="26" width="6" height="2" fill="#C9A14A"/><rect x="10" y="6" width="12" height="16" fill="#2C5234"/></svg>
+        </div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.22em;color:#A6342E;margin-bottom:10px">STEP 01</div>
+        <h3 style="font-family:'Alfa Slab One',serif;font-size:24px;letter-spacing:.01em;color:#1A2A4A;margin:0 0 14px">One parent films and scores.</h3>
+        <p style="font-size:15px;line-height:1.7;color:#4a4132">Prop your phone on the bleachers or hand it to a volunteer. Open Bandbox and score the game. No special gear, no setup, no tech degree required.</p>
+      </div>
+      <div class="anim d1" style="background:#F4ECD8;padding:48px 40px">
+        <div style="width:64px;height:64px;background:#1A2A4A;display:flex;align-items:center;justify-content:center;margin-bottom:24px">
+          <svg width="32" height="32" viewBox="0 0 32 32"><rect x="3" y="8" width="26" height="18" fill="none" stroke="#F4ECD8" stroke-width="2"/><rect x="5" y="10" width="22" height="14" fill="#2C5234"/><rect x="8" y="13" width="6" height="2" fill="#C9A14A"/><rect x="8" y="17" width="8" height="2" fill="rgba(244,236,216,.5)"/><line x1="12" y1="26" x2="20" y2="26" stroke="#F4ECD8" stroke-width="2"/><rect x="14" y="26" width="4" height="4" fill="#1A2A4A" stroke="#F4ECD8" stroke-width="1.5"/></svg>
+        </div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.22em;color:#A6342E;margin-bottom:10px">STEP 02</div>
+        <h3 style="font-family:'Alfa Slab One',serif;font-size:24px;letter-spacing:.01em;color:#1A2A4A;margin:0 0 14px">A real broadcast goes live.</h3>
+        <p style="font-size:15px;line-height:1.7;color:#4a4132">Live video with the Bandbox scorebug overlay, full play-by-play stats, and an AI announcer calling every at-bat — the kind of broadcast your kid deserves.</p>
+      </div>
+      <div class="anim d2" style="background:#1A2A4A;padding:48px 40px;position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#C9A14A"></div>
+        <div style="width:64px;height:64px;background:#C9A14A;display:flex;align-items:center;justify-content:center;margin-bottom:24px">
+          <svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="none" stroke="#1A2A4A" stroke-width="2"/><path d="M10 16 L14 20 L22 12" stroke="#1A2A4A" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.22em;color:#C9A14A;margin-bottom:10px">STEP 03</div>
+        <h3 style="font-family:'Alfa Slab One',serif;font-size:24px;letter-spacing:.01em;color:#F4ECD8;margin:0 0 14px">The family taps a link. Done.</h3>
+        <p style="font-size:15px;line-height:1.7;color:rgba(244,236,216,.6)">No app to download. No account to create. No credit card. The family — grandma included — just taps the link and they're at the game.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ DIFFERENTIATOR ROW ═══════════ -->
+<section data-section="s3" data-visible="false" style="position:relative;overflow:hidden;background:#1A2A4A;padding:96px 5% 72px;border-bottom:1px solid rgba(201,161,74,.2)">
+  <div class="bunting" aria-hidden="true"></div>
+  <div style="max-width:1280px;margin:0 auto">
+    <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#C9A14A;margin-bottom:36px;text-align:center">WHAT MAKES BANDBOX DIFFERENT</div>
+    <div class="diff-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:rgba(201,161,74,.15)">
+      <div class="anim" style="background:#1A2A4A;padding:28px 20px;text-align:center">
+        <div style="font-family:'Alfa Slab One',serif;font-size:13px;letter-spacing:.01em;color:#C9A14A;line-height:1.3;margin-bottom:8px">NO APP<br>TO WATCH</div>
+        <div style="font-size:12px;color:rgba(244,236,216,.45);line-height:1.4">Just tap a link in any browser</div>
+      </div>
+      <div class="anim d1" style="background:#1A2A4A;padding:28px 20px;text-align:center">
+        <div style="font-family:'Alfa Slab One',serif;font-size:13px;letter-spacing:.01em;color:#C9A14A;line-height:1.3;margin-bottom:8px">FAMILY<br>NEVER PAYS</div>
+        <div style="font-size:12px;color:rgba(244,236,216,.45);line-height:1.4">Watching is always free</div>
+      </div>
+      <div class="anim d2" style="background:#1A2A4A;padding:28px 20px;text-align:center">
+        <div style="font-family:'Alfa Slab One',serif;font-size:13px;letter-spacing:.01em;color:#C9A14A;line-height:1.3;margin-bottom:8px">FREE STATS<br>&amp; SCOREBOOK</div>
+        <div style="font-size:12px;color:rgba(244,236,216,.45);line-height:1.4">Full season stats, kept forever</div>
+      </div>
+      <div class="anim d3" style="background:#1A2A4A;padding:28px 20px;text-align:center">
+        <div style="font-family:'Alfa Slab One',serif;font-size:13px;letter-spacing:.01em;color:#C9A14A;line-height:1.3;margin-bottom:8px">REAL AI<br>ANNOUNCER</div>
+        <div style="font-size:12px;color:rgba(244,236,216,.45);line-height:1.4">Calls the game play by play</div>
+      </div>
+      <div class="anim d4" style="background:#1A2A4A;padding:28px 20px;text-align:center">
+        <div style="font-family:'Alfa Slab One',serif;font-size:13px;letter-spacing:.01em;color:#C9A14A;line-height:1.3;margin-bottom:8px">ANY PHONE<br>AS CAMERA</div>
+        <div style="font-size:12px;color:rgba(244,236,216,.45);line-height:1.4">No hardware to buy or rent</div>
+      </div>
+      <div class="anim d5" style="background:#152438;padding:28px 20px;text-align:center;position:relative">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:#A6342E"></div>
+        <div style="font-family:'Alfa Slab One',serif;font-size:13px;letter-spacing:.01em;color:#A6342E;line-height:1.3;margin-bottom:8px">SPONSORS<br>CAN PAY</div>
+        <div style="font-size:12px;color:rgba(244,236,216,.45);line-height:1.4">Team earns, families pay nothing</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ VIEWER EXPERIENCE — CREAM ═══════════ -->
+<section id="watch" data-section="s4" data-visible="false" style="background:#F4ECD8;padding:100px 5%">
+  <div class="viewer-grid" style="max-width:1280px;margin:0 auto;display:grid;grid-template-columns:1.25fr 0.75fr;gap:80px;align-items:center">
+    <!-- Laptop mockup -->
+    <div class="anim left" style="justify-self:start;width:fit-content">
+      <div style="background:#1a2535;border-radius:12px 12px 0 0;padding:12px 12px 10px;border:1.5px solid rgba(255,255,255,.07)">
+        <div style="width:6px;height:6px;border-radius:50%;background:#1d2d42;margin:0 auto 8px"></div>
+        <div style="width:620px;background:#15281b;border-radius:3px;overflow:hidden;display:flex"><div style="display:flex;width:100%"><div style="width:58%;display:flex;flex-direction:column;border-right:2px solid #C9A14A"><div style="height:200px;position:relative;overflow:hidden;background:#0a0f0a"><video src="/marketing/assets/desk-clip.mp4" autoplay muted loop playsinline preload="auto" style="width:100%;height:auto;display:block;transform:scale(1.12);transform-origin:top center"></video><div style="position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:6px;background:#A6342E;padding:4px 9px"><span style="width:7px;height:7px;border-radius:50%;background:#F4ECD8;animation:sl-pulse 1.4s infinite"></span><span style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:10px;letter-spacing:.16em;color:#F4ECD8">LIVE</span></div></div><div style="display:flex;align-items:center;gap:10px;background:#15281b;border-bottom:2px solid #C9A14A;padding:6px 12px;font-family:'Saira Condensed',sans-serif;color:#F4ECD8"><span style="display:flex;align-items:baseline;gap:3px"><span style="font-size:13px;font-weight:600">GFS</span><span style="font-size:15px;font-weight:700">3</span></span><span style="display:flex;align-items:baseline;gap:3px"><span style="font-size:13px;font-weight:600;color:#C9A14A">OAK</span><span style="font-size:15px;font-weight:700;color:#C9A14A">4</span></span><span style="width:1px;height:14px;background:rgba(201,161,74,.3)"></span><span style="font-size:14px;font-weight:700">▼6</span><span style="display:flex;align-items:baseline;gap:3px"><span style="font-size:8px;color:#a9c0ad">B–S</span><span style="font-size:14px;font-weight:700">2–1</span></span><span style="display:flex;align-items:center;gap:3px"><span style="display:flex;gap:2px"><span style="width:7px;height:7px;border-radius:50%;background:#A6342E"></span><span style="width:7px;height:7px;border-radius:50%;background:#A6342E"></span><span style="width:7px;height:7px;border-radius:50%;border:1.5px solid #F4ECD8;box-sizing:border-box"></span></span><span style="font-size:8px;color:#a9c0ad">OUT</span></span><span style="margin-left:auto"><svg width="22" height="22" viewBox="0 0 20 20"><rect x="13" y="7" width="6" height="6" transform="rotate(45 16 10)" fill="#C9A14A"/><rect x="7" y="1" width="6" height="6" transform="rotate(45 10 4)" fill="none" stroke="#F4ECD8" stroke-width="1"/><rect x="1" y="7" width="6" height="6" transform="rotate(45 4 10)" fill="#C9A14A"/></svg></span></div><div style="display:flex;background:#122019;border-bottom:2px solid #C9A14A;font-family:'Saira Condensed',sans-serif"><div style="flex:1;position:relative;text-align:center;padding:8px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a9c0ad">plays</div><div style="flex:1;position:relative;text-align:center;padding:8px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#F4ECD8">box<span style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);height:3px;width:28px;background:#C9A14A"></span></div><div style="flex:1;position:relative;text-align:center;padding:8px 0;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#a9c0ad">stats</div></div><div style="flex:1;background:#FAF4E6;padding:9px 12px 12px;font-family:Archivo,sans-serif;color:#1A2A4A"><div style="font-family:'Saira Condensed',sans-serif;font-size:9px;letter-spacing:.14em;color:#A6342E;font-weight:600;margin-bottom:5px">LINE SCORE</div><table style="width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums"><tr style="font-family:'Saira Condensed',sans-serif;font-size:9px;color:#7a6f54"><td>&nbsp;</td><td style="text-align:center;">1</td><td style="text-align:center;">2</td><td style="text-align:center;">3</td><td style="text-align:center;">4</td><td style="text-align:center;">5</td><td style="text-align:center;">6</td><td style="text-align:center;color:#A6342E;font-weight:700;border-left:1px solid rgba(26,42,74,.2)">R</td><td style="text-align:center;">H</td><td style="text-align:center;">E</td></tr><tr style="border-top:1px solid rgba(26,42,74,.12)"><td style="font-weight:600">GFS</td><td style="text-align:center;">0</td><td style="text-align:center;">1</td><td style="text-align:center;">0</td><td style="text-align:center;">0</td><td style="text-align:center;">2</td><td style="text-align:center;">0</td><td style="text-align:center;font-weight:700;border-left:1px solid rgba(26,42,74,.2)">3</td><td style="text-align:center;">7</td><td style="text-align:center;">1</td></tr><tr style="border-top:1px solid rgba(26,42,74,.12)"><td style="font-weight:600">OAK</td><td style="text-align:center;">1</td><td style="text-align:center;">0</td><td style="text-align:center;">0</td><td style="text-align:center;">2</td><td style="text-align:center;">0</td><td style="text-align:center;">1</td><td style="text-align:center;font-weight:700;border-left:1px solid rgba(26,42,74,.2)">4</td><td style="text-align:center;">8</td><td style="text-align:center;">0</td></tr></table><div style="font-family:'Saira Condensed',sans-serif;font-size:9px;letter-spacing:.14em;color:#A6342E;font-weight:600;margin:11px 0 4px">OAKLAND BATTING</div><table style="width:100%;border-collapse:collapse;font-size:10.5px;font-variant-numeric:tabular-nums"><tr style="font-family:'Saira Condensed',sans-serif;font-size:8px;color:#7a6f54"><td>&nbsp;</td><td style="text-align:right">AB</td><td style="text-align:right">R</td><td style="text-align:right">H</td><td style="text-align:right">RBI</td><td style="text-align:right">AVG</td></tr><tr style="border-top:1px solid rgba(26,42,74,.1)"><td style="text-align:left"><span style="color:#A6342E">7</span> Ellis 2B</td><td style="text-align:right">3</td><td style="text-align:right">1</td><td style="text-align:right">2</td><td style="text-align:right">2</td><td style="text-align:right">.412</td></tr><tr style="border-top:1px solid rgba(26,42,74,.1)"><td style="text-align:left"><span style="color:#A6342E">4</span> Cruz SS</td><td style="text-align:right">3</td><td style="text-align:right">1</td><td style="text-align:right">1</td><td style="text-align:right">0</td><td style="text-align:right">.333</td></tr><tr style="border-top:1px solid rgba(26,42,74,.1)"><td style="text-align:left"><span style="color:#A6342E">9</span> Shaw LF</td><td style="text-align:right">2</td><td style="text-align:right">1</td><td style="text-align:right">1</td><td style="text-align:right">1</td><td style="text-align:right">.300</td></tr></table></div></div><div style="flex:1;display:flex;flex-direction:column;background:#2C5234"><div style="display:flex;background:#FAF4E6;border-bottom:2px solid #1A2A4A"><div style="flex:1;border-right:1px solid rgba(26,42,74,.2);padding:7px 12px"><div style="font-family:'Saira Condensed',sans-serif;font-size:8px;font-weight:600;letter-spacing:.14em;color:#A6342E">AT BAT</div><div style="font-family:'Alfa Slab One',serif;font-size:14px;color:#1A2A4A;line-height:1.15"><span style="color:#A6342E">7</span> Ellis</div><div style="font-family:Archivo,sans-serif;font-size:9px;color:#7a6f54">On deck: 9 Shaw</div></div><div style="flex:1;padding:7px 12px;text-align:right"><div style="font-family:'Saira Condensed',sans-serif;font-size:8px;font-weight:600;letter-spacing:.14em;color:#7a6f54">PITCHING</div><div style="font-family:'Alfa Slab One',serif;font-size:14px;color:#1A2A4A;line-height:1.15"><span style="color:#A6342E">21</span> Reyes</div><div style="font-family:Archivo,sans-serif;font-size:9px;color:#7a6f54">32 pitches</div></div></div><div style="flex:1;position:relative;overflow:hidden"><svg viewBox="18 112 304 258" preserveAspectRatio="xMidYMid meet" width="100%" height="100%" style="display:block"><path d="M170 330 L40 190 A182 182 0 0 1 300 190 Z" fill="#326139"/><line x1="170" y1="330" x2="44" y2="194" stroke="#e9ddc2" stroke-width="2.5"/><line x1="170" y1="330" x2="296" y2="194" stroke="#e9ddc2" stroke-width="2.5"/><polygon points="170,330 244,256 170,182 96,256" fill="#b07a3e"/><polygon points="170,318 232,256 170,194 108,256" fill="#2C5234"/><polygon points="170,330 244,256 170,182 96,256" fill="none" stroke="#e9ddc2" stroke-width="3"/><circle cx="170" cy="256" r="13" fill="#b07a3e"/><rect x="166" y="253" width="8" height="4" fill="#F4ECD8"/><g><rect x="148.5" y="265" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="170" y="275.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">P </tspan><tspan fill="#F4ECD8">Reyes</tspan></text></g><g><rect x="151.0" y="349" width="38.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="170" y="359.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">C </tspan><tspan fill="#F4ECD8">Diaz</tspan></text></g><g><rect x="248.0" y="231" width="48.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="272" y="241.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">1B </tspan><tspan fill="#F4ECD8">Ortiz</tspan></text></g><g><rect x="190.0" y="189" width="48.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="214" y="199.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">2B </tspan><tspan fill="#F4ECD8">Vance</tspan></text></g><g><rect x="104.5" y="189" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="126" y="199.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">SS </tspan><tspan fill="#F4ECD8">Webb</tspan></text></g><g><rect x="46.5" y="231" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="68" y="241.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">3B </tspan><tspan fill="#F4ECD8">Cruz</tspan></text></g><g><rect x="70.5" y="153" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="92" y="163.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">LF </tspan><tspan fill="#F4ECD8">Shaw</tspan></text></g><g><rect x="148.5" y="133" width="43.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="170" y="143.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">CF </tspan><tspan fill="#F4ECD8">Soto</tspan></text></g><g><rect x="229.0" y="153" width="38.0" height="14" fill="#1A2A4A" opacity="0.95"/><text x="248" y="163.5" text-anchor="middle" font-size="9" font-weight="600" font-family="Saira Condensed,sans-serif"><tspan fill="#C9A14A">RF </tspan><tspan fill="#F4ECD8">Lee</tspan></text></g><rect x="162" y="174" width="16" height="16" transform="rotate(45 170 182)" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/><rect x="236" y="248" width="16" height="16" transform="rotate(45 244 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/><rect x="88" y="248" width="16" height="16" transform="rotate(45 96 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/><polygon points="162,326 178,326 178,333 170,340 162,333" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/><circle cx="244" cy="256" r="12" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2.5"/><circle cx="96" cy="256" r="12" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2.5"/><circle cx="170" cy="330" r="9" fill="#A6342E" stroke="#F4ECD8" stroke-width="1.5"/></svg></div></div></div></div>
+      </div>
+      <div style="background:#131c2a;height:18px;border-radius:0 0 14px 14px;border:1.5px solid rgba(255,255,255,.04);border-top:none;display:flex;align-items:center;justify-content:center"><div style="width:88px;height:5px;background:rgba(0,0,0,.35);border-radius:3px"></div></div>
+    </div>
+    <!-- Text -->
+    <div>
+      <div class="anim right" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#A6342E;margin-bottom:16px">WATCH LIVE — FREE</div>
+      <h2 class="anim right d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:44px;letter-spacing:.01em;line-height:.94;color:#1A2A4A;margin:0 0 20px">IT FEELS LIKE THE BIG LEAGUES.</h2>
+      <div class="anim right d2" style="height:2px;width:56px;background:#A6342E;margin-bottom:20px"></div>
+      <p class="anim right d3" style="font-size:17px;line-height:1.7;color:#3a3526;margin:0 0 20px">Live video, a synced vintage scorebug, the full box score, play-by-play, and an AI announcer — for a 9-year-old's Saturday game. Cast it to the living room TV and make it an event.</p>
+      <div class="anim right d4" style="padding:16px 18px;background:#1A2A4A;margin-bottom:28px">
+        <div style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;color:#C9A14A;margin-bottom:4px">THE BANDBOX RULE</div>
+        <div style="font-size:15px;color:#F4ECD8;line-height:1.5">"The family never pays to watch. Not after 5 games. Not after 50. Never."</div>
+      </div>
+      <div class="anim right d4"><a href="/login" class="btn-navy" style="font-size:15px;letter-spacing:.04em;padding:14px 30px">START FREE ▸</a></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ AI ANNOUNCER — NAVY ═══════════ -->
+<section data-section="s5" data-visible="false" style="background:#1A2A4A;padding:100px 5%">
+  <div class="ai-grid" style="max-width:1280px;margin:0 auto;display:grid;grid-template-columns:0.85fr 1.15fr;gap:80px;align-items:center">
+    <div>
+      <div class="anim left" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#C9A14A;margin-bottom:16px">AI VOICE COMMENTARY</div>
+      <h2 class="anim left d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:44px;letter-spacing:.01em;line-height:.94;color:#F4ECD8;margin:0 0 20px">THE ANNOUNCER THAT SOUNDS LIKE BASEBALL.</h2>
+      <div class="anim left d2" style="height:2px;width:56px;background:#C9A14A;margin-bottom:22px"></div>
+      <p class="anim left d3" style="font-size:17px;line-height:1.7;color:rgba(244,236,216,.65);margin:0 0 28px">Live play-by-play powered by ElevenLabs, with crowd noise, stadium reverb, and organ stings. Not canned phrases — the actual at-bat, called as it happens.</p>
+      <div class="anim left d4"><a href="#" id="bb-hear-sample" class="btn-gold" style="font-size:15px;letter-spacing:.04em;padding:14px 28px">HEAR A SAMPLE ▸</a></div>
+    </div>
+    <div class="anim right d1">
+      <div style="background:#060e18;border:1.5px solid rgba(201,161,74,.22)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(201,161,74,.12)">
+          <div style="display:flex;align-items:center;gap:9px"><span style="width:8px;height:8px;border-radius:50%;background:#A6342E;animation:sl-pulse 1.4s infinite"></span><span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.18em;color:#A6342E">LIVE · AI COMMENTARY</span></div>
+          <span style="font-family:'Saira Condensed',sans-serif;font-size:11px;color:rgba(244,236,216,.3)">BOT 6TH</span>
+        </div>
+        <div style="padding:24px;border-bottom:1px solid rgba(201,161,74,.1)">
+          <p style="font-family:Archivo;font-size:18px;line-height:1.75;color:rgba(244,236,216,.85);font-style:italic;margin:0">"Reyes steps in, full count, two on. Park winds up — <strong style="color:#F4ECD8;font-style:normal">AND HE DRIVES IT TO LEFT</strong> — runners going — Shaw scores — <span style="color:#C9A14A">OAKLAND TAKES THE LEAD!</span>"</p>
+        </div>
+        <div style="padding:14px 18px;display:flex;align-items:flex-end;gap:3px;height:52px">
+          <span class="wave-bar" style="animation-delay:0.00s"></span><span class="wave-bar" style="animation-delay:0.06s"></span><span class="wave-bar" style="animation-delay:0.11s"></span><span class="wave-bar" style="animation-delay:0.17s"></span><span class="wave-bar" style="animation-delay:0.22s"></span><span class="wave-bar" style="animation-delay:0.28s"></span><span class="wave-bar" style="animation-delay:0.33s"></span><span class="wave-bar" style="animation-delay:0.39s"></span><span class="wave-bar" style="animation-delay:0.44s"></span><span class="wave-bar" style="animation-delay:0.49s"></span><span class="wave-bar" style="animation-delay:0.55s"></span><span class="wave-bar" style="animation-delay:0.60s"></span><span class="wave-bar" style="animation-delay:0.66s"></span><span class="wave-bar" style="animation-delay:0.71s"></span><span class="wave-bar" style="animation-delay:0.77s"></span><span class="wave-bar" style="animation-delay:0.82s"></span><span class="wave-bar" style="animation-delay:0.88s"></span><span class="wave-bar" style="animation-delay:0.94s"></span><span class="wave-bar" style="animation-delay:0.99s"></span><span class="wave-bar" style="animation-delay:1.04s"></span><span class="wave-bar" style="animation-delay:1.10s"></span><span class="wave-bar" style="animation-delay:1.16s"></span><span class="wave-bar" style="animation-delay:1.21s"></span><span class="wave-bar" style="animation-delay:1.26s"></span><span class="wave-bar" style="animation-delay:1.32s"></span><span class="wave-bar" style="animation-delay:1.38s"></span><span class="wave-bar" style="animation-delay:1.43s"></span><span class="wave-bar" style="animation-delay:1.49s"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ LIVE FIELD TRACKER — GREEN ═══════════ -->
+<section data-section="s5b" data-visible="false" style="background:#15281b;padding:100px 5%;overflow:hidden">
+  <div class="field-grid" style="max-width:1280px;margin:0 auto;display:grid;grid-template-columns:0.9fr 1.1fr;gap:80px;align-items:center">
+    <div>
+      <div class="anim left" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#a9c0ad;margin-bottom:16px">LIVE FIELD TRACKER</div>
+      <h2 class="anim left d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:44px;letter-spacing:.01em;line-height:.94;color:#F4ECD8;margin:0 0 20px">SEE EVERY PLAY. LIVE.</h2>
+      <div class="anim left d2" style="height:2px;width:56px;background:#C9A14A;margin-bottom:22px"></div>
+      <p class="anim left d3" style="font-size:17px;line-height:1.7;color:rgba(244,236,216,.65);margin:0 0 24px">As the scorer records each pitch and play, the field view updates in real time — baserunners move, spray charts build, every viewer sees exactly what happened.</p>
+      <div class="anim left d4" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:12px"><span style="color:#C9A14A;font-size:18px;flex:none;line-height:1.2">—</span><span style="font-size:15px;color:rgba(244,236,216,.7)">Runners advance in real time as plays are scored</span></div>
+        <div style="display:flex;gap:12px"><span style="color:#C9A14A;font-size:18px;flex:none;line-height:1.2">—</span><span style="font-size:15px;color:rgba(244,236,216,.7)">Spray chart builds pitch by pitch, at-bat by at-bat</span></div>
+        <div style="display:flex;gap:12px"><span style="color:#C9A14A;font-size:18px;flex:none;line-height:1.2">—</span><span style="font-size:15px;color:rgba(244,236,216,.7)">Flat, readable diamond — no skeuomorphic clutter</span></div>
+      </div>
+    </div>
+    <div class="anim right d1">
+      <div style="background:#1E3A24;border:2px solid #C9A14A;padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:50%;background:#A6342E;animation:sl-pulse 1.4s infinite"></span><span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:10px;letter-spacing:.18em;color:#A6342E">LIVE</span></div>
+          <span style="font-family:'Saira Condensed',sans-serif;font-size:11px;color:#a9c0ad;letter-spacing:.08em">RUNNERS ON CORNERS · BOT 6TH</span>
+        </div>
+        <div style="background:#2C5234;aspect-ratio:1;width:100%;position:relative">
+          <svg viewBox="18 112 304 258" preserveAspectRatio="xMidYMid meet" width="100%" height="100%" style="display:block"><path d="M170 330 L40 190 A182 182 0 0 1 300 190 Z" fill="#326139"/><line x1="170" y1="330" x2="44" y2="194" stroke="#e9ddc2" stroke-width="2.5"/><line x1="170" y1="330" x2="296" y2="194" stroke="#e9ddc2" stroke-width="2.5"/><polygon points="170,330 244,256 170,182 96,256" fill="#b07a3e"/><polygon points="170,318 232,256 170,194 108,256" fill="#2C5234"/><polygon points="170,330 244,256 170,182 96,256" fill="none" stroke="#e9ddc2" stroke-width="3"/><circle cx="170" cy="256" r="13" fill="#b07a3e"/><rect x="166" y="253" width="8" height="4" fill="#F4ECD8"/><rect x="162" y="174" width="16" height="16" transform="rotate(45 170 182)" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/><rect x="236" y="248" width="16" height="16" transform="rotate(45 244 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/><rect x="88" y="248" width="16" height="16" transform="rotate(45 96 256)" fill="#C9A14A" stroke="#1A2A4A" stroke-width="1.5"/><polygon points="162,326 178,326 178,333 170,340 162,333" fill="#F4ECD8" stroke="#1A2A4A" stroke-width="1.5"/><path d="M170 330 L72 168" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -0.0s"/><circle cx="72" cy="168" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -0.0s"/><path d="M170 330 L118 156" fill="none" stroke="#e9ddc2" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -3.4s"/><circle cx="118" cy="156" r="4.0" fill="#e9ddc2" style="animation:spray-hit 9s ease-in-out infinite -3.4s"/><path d="M170 330 L158 204" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -1.7s"/><circle cx="158" cy="204" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -1.7s"/><path d="M170 330 L205 176" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -5.1s"/><circle cx="205" cy="176" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -5.1s"/><path d="M170 330 L262 166" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -2.3s"/><circle cx="262" cy="166" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -2.3s"/><path d="M170 330 L98 234" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -6.6s"/><circle cx="98" cy="234" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -6.6s"/><path d="M170 330 L236 236" fill="none" stroke="#e9ddc2" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -4.2s"/><circle cx="236" cy="236" r="4.0" fill="#e9ddc2" style="animation:spray-hit 9s ease-in-out infinite -4.2s"/><path d="M170 330 L178 248" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -7.8s"/><circle cx="178" cy="248" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -7.8s"/><path d="M170 330 L288 198" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -0.9s"/><circle cx="288" cy="198" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -0.9s"/><path d="M170 330 L52 200" fill="none" stroke="#e9ddc2" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -5.9s"/><circle cx="52" cy="200" r="4.0" fill="#e9ddc2" style="animation:spray-hit 9s ease-in-out infinite -5.9s"/><path d="M170 330 L132 224" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -3.0s"/><circle cx="132" cy="224" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -3.0s"/><path d="M170 330 L220 158" fill="none" stroke="#C9A14A" stroke-width="3" stroke-linecap="round" stroke-dasharray="640" style="animation:spray-hit 9s ease-in-out infinite -7.0s"/><circle cx="220" cy="158" r="4.5" fill="#C9A14A" style="animation:spray-hit 9s ease-in-out infinite -7.0s"/><circle cx="244" cy="256" r="11" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2.5"/><circle cx="96" cy="256" r="11" fill="#C9A14A" stroke="#1A2A4A" stroke-width="2.5"/><circle cx="170" cy="330" r="6" fill="#A6342E" stroke="#F4ECD8" stroke-width="1.5"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ PRICING — NAVY ═══════════ -->
+<section id="pricing" data-section="s6" data-visible="false" style="background:#1A2A4A;padding:100px 5%">
+  <div style="max-width:1200px;margin:0 auto">
+    <div style="text-align:center;margin-bottom:60px">
+      <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#C9A14A;margin-bottom:12px">PRICING</div>
+      <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:46px;letter-spacing:.01em;line-height:.95;color:#F4ECD8">FREE IS GENUINELY GREAT.<br>MORE IS CHEAP.</h2>
+      <p class="anim d2" style="font-size:17px;color:rgba(244,236,216,.55);margin-top:16px;line-height:1.6">Watching is always free. Scoring is always free.<br>Pay only for the extras that cost us money to deliver.</p>
+    </div>
+
+    <div class="price-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(201,161,74,.15)">
+      <!-- FREE -->
+      <div class="anim price-card" style="padding:36px 28px">
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:rgba(244,236,216,.5);margin-bottom:16px">FREE</div>
+        <div style="font-family:'Alfa Slab One',serif;font-size:48px;line-height:.88;color:#F4ECD8;margin-bottom:6px">$0</div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-size:13px;color:rgba(244,236,216,.4);margin-bottom:24px">Always free, forever</div>
+        <div style="height:1px;background:rgba(244,236,216,.1);margin-bottom:22px"></div>
+        <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:11px;margin-bottom:32px">
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>Full play-by-play scoring</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>Live scoreboard + stats</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>Live video (small audience)</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>24-hour replay</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>Full season stats kept forever</li>
+        </ul>
+        <a href="/login" class="btn-ghost" style="font-size:14px;letter-spacing:.04em;padding:13px;display:block;text-align:center">START FREE ▸</a>
+      </div>
+
+      <!-- SINGLE GAME -->
+      <div class="anim d1 price-card" style="padding:36px 28px">
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:rgba(244,236,216,.5);margin-bottom:16px">SINGLE GAME</div>
+        <div style="font-family:'Alfa Slab One',serif;font-size:48px;line-height:.88;color:#F4ECD8;margin-bottom:6px">~$8</div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-size:13px;color:rgba(244,236,216,.4);margin-bottom:24px">Per game, when you want it</div>
+        <div style="height:1px;background:rgba(244,236,216,.1);margin-bottom:22px"></div>
+        <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:11px;margin-bottom:32px">
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">+</span>HD video + larger audience</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">+</span>AI voice commentary on</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">+</span>Recording to keep forever</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>Family still never pays</li>
+        </ul>
+        <a href="/login" class="btn-ghost" style="font-size:14px;letter-spacing:.04em;padding:13px;display:block;text-align:center">BUY A GAME ▸</a>
+      </div>
+
+      <!-- TEAM — HERO CARD -->
+      <div class="anim d2 price-card hero-card" style="padding:36px 28px">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#C9A14A"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <span style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:#C9A14A">TEAM SEASON</span>
+          <span style="background:#C9A14A;color:#1A2A4A;font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:10px;letter-spacing:.14em;padding:3px 8px">MOST POPULAR</span>
+        </div>
+        <div style="font-family:'Alfa Slab One',serif;font-size:48px;line-height:.88;color:#C9A14A;margin-bottom:6px">~$149</div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-size:13px;color:rgba(244,236,216,.5);margin-bottom:24px">Per season · one team buys it</div>
+        <div style="height:1px;background:rgba(201,161,74,.25);margin-bottom:22px"></div>
+        <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:11px;margin-bottom:32px">
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.85);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">✓</span>Every game, all season</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.85);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">✓</span>HD video + AI commentary</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.85);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">✓</span>Full recording archive kept</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.85);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">✓</span>One buy covers the whole team</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:#C9A14A;line-height:1.4;font-weight:600"><span style="color:#C9A14A;font-weight:700;flex:none">★</span>Family still never pays</li>
+        </ul>
+        <a href="/login" class="btn-gold" style="font-size:14px;letter-spacing:.04em;padding:14px;display:block;text-align:center">GET THE TEAM PLAN ▸</a>
+      </div>
+
+      <!-- FAMILY -->
+      <div class="anim d3 price-card" style="padding:36px 28px">
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:rgba(244,236,216,.5);margin-bottom:16px">FAMILY</div>
+        <div style="font-family:'Alfa Slab One',serif;font-size:48px;line-height:.88;color:#F4ECD8;margin-bottom:6px">~$29</div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-size:13px;color:rgba(244,236,216,.4);margin-bottom:24px">Per season · your player</div>
+        <div style="height:1px;background:rgba(244,236,216,.1);margin-bottom:22px"></div>
+        <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:11px;margin-bottom:32px">
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">+</span>Follow-my-kid alerts</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">+</span>Highlight keepsakes</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#C9A14A;font-weight:700;flex:none">+</span>Recruiting-ready stats record</li>
+          <li style="display:flex;gap:10px;font-size:14px;color:rgba(244,236,216,.7);line-height:1.4"><span style="color:#2C5234;font-weight:700;flex:none">✓</span>Works alongside Team plan</li>
+        </ul>
+        <a href="/login" class="btn-ghost" style="font-size:14px;letter-spacing:.04em;padding:13px;display:block;text-align:center">GET FAMILY PLAN ▸</a>
+      </div>
+    </div>
+
+    <!-- Sponsor line -->
+    <div class="anim d4" style="margin-top:24px;padding:20px 28px;background:rgba(166,52,46,.12);border:1.5px solid rgba(166,52,46,.35);display:flex;align-items:center;gap:16px">
+      <span style="font-family:'Alfa Slab One',serif;font-size:18px;color:#A6342E;flex:none">★</span>
+      <p style="font-size:16px;color:rgba(244,236,216,.75);line-height:1.5;margin:0"><strong style="color:#F4ECD8">Let a local sponsor put their name on the scoreboard</strong> and cover the whole season — your families pay nothing and your boosters come out ahead. <a href="#" style="color:#C9A14A;text-decoration:none;font-weight:600">Learn about sponsor plans →</a></p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ COMPARISON — CREAM ═══════════ -->
+<section id="compare" data-section="s7" data-visible="false" style="background:#F4ECD8;padding:80px 5%">
+  <div style="max-width:900px;margin:0 auto">
+    <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#A6342E;margin-bottom:16px">THE USUAL WAY VS. BANDBOX</div>
+    <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:40px;letter-spacing:.01em;line-height:.95;color:#1A2A4A;margin-bottom:36px">YOU KNOW HOW THIS USUALLY GOES.</h2>
+    <div class="anim d2" style="border:2px solid #1A2A4A">
+      <div class="cmp-row" style="display:grid;grid-template-columns:2fr 1fr 1fr;background:#1A2A4A">
+        <div class="cmp-head" style="color:rgba(244,236,216,.4)"></div>
+        <div class="cmp-head" style="text-align:center;color:rgba(244,236,216,.55)">The usual app</div>
+        <div class="cmp-head" style="text-align:center;color:#C9A14A">Bandbox</div>
+      </div>
+      <div class="cmp-row" style="display:grid;grid-template-columns:2fr 1fr 1fr"><div class="cmp-cell label">Family pays to watch</div><div class="cmp-cell them">Yes, and needs the app</div><div class="cmp-cell us">No — just a link</div></div>
+      <div class="cmp-row" style="display:grid;grid-template-columns:2fr 1fr 1fr;background:rgba(26,42,74,.04)"><div class="cmp-cell label">Season stats</div><div class="cmp-cell them">Costs extra</div><div class="cmp-cell us">Free</div></div>
+      <div class="cmp-row" style="display:grid;grid-template-columns:2fr 1fr 1fr"><div class="cmp-cell label">Who pays</div><div class="cmp-cell them">Every family, or a pricey pass</div><div class="cmp-cell us">One cheap team buy</div></div>
+      <div class="cmp-row" style="display:grid;grid-template-columns:2fr 1fr 1fr;background:rgba(26,42,74,.04)"><div class="cmp-cell label">Team can earn money</div><div class="cmp-cell them">No</div><div class="cmp-cell us">Yes — via sponsors</div></div>
+      <div class="cmp-row" style="display:grid;grid-template-columns:2fr 1fr 1fr"><div class="cmp-cell label">AI announcer</div><div class="cmp-cell them">No</div><div class="cmp-cell us">Yes, included</div></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ TRUST / SAFETY — NAVY ═══════════ -->
+<section data-section="s8" data-visible="false" style="background:#1A2A4A;padding:80px 5%">
+  <div style="max-width:900px;margin:0 auto;text-align:center">
+    <div class="anim" style="margin-bottom:28px">
+      <svg width="48" height="48" viewBox="0 0 48 48"><path d="M24 4 L40 12 L40 28 Q40 38 24 44 Q8 38 8 28 L8 12 Z" fill="#2C5234" stroke="#C9A14A" stroke-width="2"/><path d="M17 24 L21 28 L31 18" stroke="#F4ECD8" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:40px;letter-spacing:.01em;line-height:.95;color:#F4ECD8;margin-bottom:20px">WE PROTECT EVERY KID ON THE FIELD.<br>INCLUDING THE OTHER TEAM'S.</h2>
+    <p class="anim d2" style="font-size:17px;line-height:1.7;color:rgba(244,236,216,.6);max-width:640px;margin:0 auto 36px">Names show as first name + last initial by default. Streams are private unless you choose to share. You're always in control of who sees what.</p>
+    <div class="anim d3" style="display:flex;align-items:center;justify-content:center;gap:48px;flex-wrap:wrap">
+      <div style="text-align:center"><div style="font-family:'Alfa Slab One',serif;font-size:15px;color:#C9A14A;margin-bottom:5px">NAMES PROTECTED</div><div style="font-size:13px;color:rgba(244,236,216,.45)">First name + last initial by default</div></div>
+      <div style="width:1px;height:40px;background:rgba(244,236,216,.1)"></div>
+      <div style="text-align:center"><div style="font-family:'Alfa Slab One',serif;font-size:15px;color:#C9A14A;margin-bottom:5px">STREAMS PRIVATE</div><div style="font-size:13px;color:rgba(244,236,216,.45)">Share only with who you choose</div></div>
+      <div style="width:1px;height:40px;background:rgba(244,236,216,.1)"></div>
+      <div style="text-align:center"><div style="font-family:'Alfa Slab One',serif;font-size:15px;color:#C9A14A;margin-bottom:5px">YOU'RE IN CONTROL</div><div style="font-size:13px;color:rgba(244,236,216,.45)">Change anything, anytime</div></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ FIELDS & LEAGUES TEASER — CREAM ═══════════ -->
+<section id="fields" data-section="s9" data-visible="false" style="background:#F4ECD8;padding:72px 5%;border-top:2px solid #1A2A4A;border-bottom:2px solid #1A2A4A">
+  <div class="fields-grid" style="max-width:1280px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center">
+    <div class="anim left">
+      <div style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#7a6f54;margin-bottom:12px">FOR FIELDS &amp; LEAGUES</div>
+      <h2 class="sec-h2" style="font-family:'Alfa Slab One',serif;font-size:34px;letter-spacing:.01em;color:#1A2A4A;line-height:1.05;margin:0 0 16px">LIGHT UP EVERY DIAMOND.</h2>
+      <p style="font-size:16px;line-height:1.7;color:#4a4132;max-width:480px;margin:0 0 24px">Run a field, a complex, or a league? Zip-tie a QR sign to the fence and the crowd's phones become the cameras — every game broadcastable, sponsor-funded, no hardware to install. Your families pay nothing.</p>
+      <a href="#" style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:.1em;color:#A6342E;text-decoration:none;border-bottom:2px solid #A6342E;padding-bottom:3px">FOR FIELDS &amp; LEAGUES →</a>
+    </div>
+    <div class="anim right d1">
+      <img src="/marketing/assets/field-qr-sign.jpg" alt="A Bandbox Live QR sign on a ballfield fence — scan to share the game broadcast" style="width:100%;height:auto;display:block;border:2px solid #1A2A4A;box-shadow:10px 10px 0 #1A2A4A"/>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ FINAL CTA — GREEN ═══════════ -->
+<section data-section="sf" data-visible="false" style="background:#15281b;padding:100px 5%;text-align:center">
+  <div style="max-width:700px;margin:0 auto">
+    <div class="anim" style="margin-bottom:20px">
+      <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox" style="height:48px;width:auto;display:inline-block"/>
+    </div>
+    <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:56px;letter-spacing:.01em;line-height:.9;color:#F4ECD8;margin-bottom:16px">EVERY GAME<br>DESERVES A BROADCAST.</h2>
+    <p class="anim d2" style="font-size:18px;color:rgba(244,236,216,.6);line-height:1.65;margin:0 auto 40px;max-width:500px">Start free. Score a game tonight. The family watches from anywhere — no app, no paywall, no clunk.</p>
+    <div class="anim d3" style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+      <a href="/login" class="btn-gold" style="font-size:19px;letter-spacing:.04em;padding:19px 48px">START FREE ▸</a>
+      <a href="#steps" class="btn-ghost" style="font-size:19px;letter-spacing:.04em;padding:17px 44px">SEE HOW IT WORKS</a>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer style="background:#1A2A4A;padding:56px 5% 36px;border-top:1px solid rgba(201,161,74,.2)">
+  <div style="max-width:1280px;margin:0 auto">
+    <div class="footer-cols" style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:48px;margin-bottom:48px">
+      <div>
+        <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox Live" style="height:40px;width:auto;display:block;margin-bottom:18px"/>
+        <p style="font-size:14px;line-height:1.65;color:rgba(244,236,216,.38);max-width:240px">Live baseball &amp; softball broadcasting for youth leagues. Free to watch. Always.</p>
+      </div>
+      <div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:rgba(201,161,74,.6);margin-bottom:16px">PRODUCT</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <a href="#steps" class="nav-link" style="font-size:14px">How It Works</a>
+          <a href="#" class="nav-link" style="font-size:14px">Start Scoring Free</a>
+          <a href="#pricing" class="nav-link" style="font-size:14px">Pricing</a>
+          <a href="#" class="nav-link" style="font-size:14px">Download the App</a>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:rgba(201,161,74,.6);margin-bottom:16px">FEATURES</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <a href="#" class="nav-link" style="font-size:14px">AI Commentary</a>
+          <a href="#" class="nav-link" style="font-size:14px">Live Field Tracker</a>
+          <a href="#" class="nav-link" style="font-size:14px">Season Stats</a>
+          <a href="#" class="nav-link" style="font-size:14px">Sponsor Plans</a>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:rgba(201,161,74,.6);margin-bottom:16px">COMPANY</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <a href="#" class="nav-link" style="font-size:14px">About</a>
+          <a href="#" class="nav-link" style="font-size:14px">Privacy</a>
+          <a href="#" class="nav-link" style="font-size:14px">Terms</a>
+          <a href="#" class="nav-link" style="font-size:14px">Contact</a>
+        </div>
+      </div>
+    </div>
+    <div style="padding-top:22px;border-top:1px solid rgba(244,236,216,.08);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <span style="font-family:'Saira Condensed',sans-serif;font-size:12px;letter-spacing:.08em;color:rgba(244,236,216,.22)">© 2026 BANDBOX LIVE</span>
+      <span style="font-family:'Saira Condensed',sans-serif;font-size:12px;letter-spacing:.06em;color:rgba(244,236,216,.22)">BANDBOX.TV</span>
+    </div>
+  </div>
+</footer>

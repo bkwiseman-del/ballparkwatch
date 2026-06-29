@@ -36,3 +36,8 @@ supabase/.env
 
 # vercel
 .vercel
+
+# large raw source media (kept locally, never committed)
+docs/*.mp4
+docs/*.zip
+docs/Screenshot*.png
