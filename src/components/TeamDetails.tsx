@@ -1,20 +1,42 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/auth/AuthProvider'
 import type { Season, Team, TeamDiscovery, TeamSport } from '@/lib/types'
 
 const AGE_GROUPS = ['6U', '7U', '8U', '9U', '10U', '11U', '12U', '13U', '14U', 'HS-JV', 'HS-V', 'Adult']
 const LEVELS = ['', 'rec', 'travel', 'school', 'league']
+// Each option spells out EXACTLY what it exposes — this is minors' data, so it must be
+// a deliberate choice, not a vague toggle (plan §4).
 const DISCOVERY: { value: TeamDiscovery; label: string; hint: string }[] = [
-  { value: 'private', label: 'Private', hint: 'Only you and team members' },
-  { value: 'discoverable', label: 'Discoverable', hint: 'Public stats page, names-down' },
-  { value: 'public', label: 'Public', hint: 'Stats + video/replays public' },
+  { value: 'private', label: 'Private', hint: 'Only you and team members. Nothing is public.' },
+  {
+    value: 'discoverable',
+    label: 'Discoverable',
+    hint: 'A public, searchable page: schedule, scores, season stats, and roster (shown as first name + last initial). No video.',
+  },
+  {
+    value: 'public',
+    label: 'Public',
+    hint: 'Everything in Discoverable, plus published game video replays.',
+  },
 ]
+
+// The exact thing the admin is attesting to, by level.
+function attestation(d: TeamDiscovery): string {
+  const base =
+    "I confirm I have permission from the players' families to make this team's schedule, scores, season stats, and roster (first name + last initial) publicly visible and searchable"
+  return d === 'public' ? `${base}, and to publish game video replays.` : `${base}.`
+}
 
 // Edit a team's durable identity + discovery metadata (plan §2/§8). The structured
 // fields (state, season, age group, sport) are what the directory filters and the
 // public team page need.
 export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: () => void; onSaved: () => void }) {
+  const { user } = useAuth()
   const [seasons, setSeasons] = useState<Season[]>([])
+  // Pre-checked only if the team is already public (consent previously given); a move
+  // OUT of private starts unchecked so it's a deliberate act.
+  const [confirmed, setConfirmed] = useState(team.discovery !== 'private')
   const [sport, setSport] = useState<TeamSport>(team.sport ?? 'baseball')
   const [city, setCity] = useState(team.city ?? '')
   const [state, setState] = useState(team.state ?? '')
@@ -36,22 +58,29 @@ export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: (
   }, [])
 
   async function save() {
+    // Going public is gated on a deliberate consent attestation (plan §4).
+    if (discovery !== 'private' && !confirmed) {
+      return setErr('Please confirm you have family permission before making this team visible.')
+    }
     setBusy(true)
     setErr(null)
     const by = birthYear.trim() ? Number(birthYear.trim()) : null
-    const { error } = await supabase
-      .from('teams')
-      .update({
-        sport,
-        city: city.trim() || null,
-        state: state.trim().toUpperCase() || null,
-        age_group: ageGroup || null,
-        level: level || null,
-        birth_year: by && by > 1900 && by < 2100 ? by : null,
-        season_id: seasonId || null,
-        discovery,
-      })
-      .eq('id', team.id)
+    const patch: Record<string, unknown> = {
+      sport,
+      city: city.trim() || null,
+      state: state.trim().toUpperCase() || null,
+      age_group: ageGroup || null,
+      level: level || null,
+      birth_year: by && by > 1900 && by < 2100 ? by : null,
+      season_id: seasonId || null,
+      discovery,
+    }
+    // Stamp the attestation (who/when) as the audit trail when public/discoverable.
+    if (discovery !== 'private') {
+      patch.consent_ack_at = new Date().toISOString()
+      patch.consent_ack_by = user?.id ?? null
+    }
+    const { error } = await supabase.from('teams').update(patch).eq('id', team.id)
     setBusy(false)
     if (error) return setErr(error.message)
     onSaved()
@@ -163,7 +192,7 @@ export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: (
             </label>
           </div>
 
-          {/* Discovery */}
+          {/* Discovery + consent gate */}
           <div>
             <span className={labelCls}>Visibility</span>
             <div className="flex flex-col gap-1.5">
@@ -171,7 +200,7 @@ export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: (
                 <button
                   key={d.value}
                   onClick={() => setDiscovery(d.value)}
-                  className={`flex items-center justify-between border-2 px-3 py-2 text-left ${
+                  className={`flex flex-col items-start gap-0.5 border-2 px-3 py-2 text-left ${
                     discovery === d.value ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
                   }`}
                 >
@@ -182,8 +211,23 @@ export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: (
                 </button>
               ))}
             </div>
-            <p className="mt-1 font-data text-[11px] text-muted-tan">
-              Public surfaces aren't live yet — this is saved for when the team page and directory ship.
+
+            {discovery !== 'private' && (
+              <label className="mt-3 flex items-start gap-2.5 border-2 border-barn-red bg-barn-red/5 p-3">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(e) => setConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-barn-red"
+                />
+                <span className="font-data text-xs leading-snug text-ink">{attestation(discovery)}</span>
+              </label>
+            )}
+
+            <p className="mt-2 font-data text-[11px] text-muted-tan">
+              {discovery === 'private'
+                ? 'Nothing about this team is published.'
+                : `This team will be published at ${window.location.host}/t/${team.slug ?? ''}.`}
             </p>
           </div>
         </div>
