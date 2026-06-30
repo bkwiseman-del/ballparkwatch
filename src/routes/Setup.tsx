@@ -743,7 +743,11 @@ function CreateGameCard({
   onCreated: () => void
   fixedTeamId?: string // pre-select this team (home) when scheduling from its page
 }) {
-  const favorites = teams.filter((t) => t.is_favorite)
+  // Newly-created opponents are tracked locally so they appear in the pickers
+  // immediately (the parent reloads its teams list on game create).
+  const [extraTeams, setExtraTeams] = useState<Team[]>([])
+  const allTeams = [...teams, ...extraTeams]
+  const favorites = allTeams.filter((t) => t.is_favorite)
   const firstFav = favorites[0]?.id ?? ''
   const [away, setAway] = useState('')
   const [home, setHome] = useState(fixedTeamId ?? firstFav)
@@ -752,13 +756,32 @@ function CreateGameCard({
   const [video, setVideo] = useState<VideoSource>('none')
   const [ytUrl, setYtUrl] = useState('')
   const [busy, setBusy] = useState(false)
+  const [addingTeam, setAddingTeam] = useState(false)
+  const [newTeamName, setNewTeamName] = useState('')
+
+  async function addNewTeam() {
+    const name = newTeamName.trim()
+    if (!name) return
+    const { data, error } = await supabase
+      .from('teams')
+      .insert({ name, owner_id: userId, is_favorite: false })
+      .select('*')
+      .single()
+    if (error) return onError(error.message)
+    const created = data as Team
+    setExtraTeams((prev) => [...prev, created])
+    if (!away) setAway(created.id)
+    else if (!home) setHome(created.id)
+    setNewTeamName('')
+    setAddingTeam(false)
+  }
 
   async function create() {
     if (!away || !home) return onError('Pick both teams.')
     if (away === home) return onError('Away and home must be different teams.')
     setBusy(true)
-    const aName = teams.find((t) => t.id === away)?.name
-    const hName = teams.find((t) => t.id === home)?.name
+    const aName = allTeams.find((t) => t.id === away)?.name
+    const hName = allTeams.find((t) => t.id === home)?.name
     const { error } = await supabase.from('games').insert({
       owner_id: userId,
       away_team_id: away,
@@ -781,18 +804,44 @@ function CreateGameCard({
       <h3 className="mb-4 font-display text-xl">New Game</h3>
 
       {/* Matchup */}
-      <div className="mb-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <TeamSelect label="Away" value={away} onChange={setAway} teams={teams} favorites={favorites} />
+      <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <TeamSelect label="Away" value={away} onChange={setAway} teams={allTeams} favorites={favorites} />
         <span className="pt-5 font-athletic text-sm uppercase text-muted-tan">at</span>
-        <TeamSelect
-          label="Home"
-          value={home}
-          onChange={setHome}
-          teams={teams}
-          favorites={favorites}
-          accent
-        />
+        <TeamSelect label="Home" value={home} onChange={setHome} teams={allTeams} favorites={favorites} accent />
       </div>
+
+      {/* Add an opponent that isn't in your list yet */}
+      {addingTeam ? (
+        <div className="mb-5 flex gap-2">
+          <input
+            value={newTeamName}
+            onChange={(e) => setNewTeamName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addNewTeam()}
+            placeholder="New team / opponent name"
+            autoFocus
+            className="min-w-0 flex-1 border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
+          />
+          <button onClick={addNewTeam} className="bg-board-green px-4 py-2 font-display text-sm text-cream">
+            Add
+          </button>
+          <button
+            onClick={() => {
+              setAddingTeam(false)
+              setNewTeamName('')
+            }}
+            className="border-2 border-ink px-3 py-2 font-display text-sm text-ink"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAddingTeam(true)}
+          className="mb-5 font-athletic text-xs font-bold uppercase tracking-wide text-board-green"
+        >
+          + Add a new team
+        </button>
+      )}
 
       {/* Video source */}
       <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">

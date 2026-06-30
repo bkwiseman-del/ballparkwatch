@@ -50,6 +50,39 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   const [discovery, setDiscovery] = useState<TeamDiscovery>(team.discovery ?? 'private')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Add-your-own season (Fall Ball, cross-year travel, a league's calendar).
+  const [addingSeason, setAddingSeason] = useState(false)
+  const [nsLabel, setNsLabel] = useState('')
+  const [nsYear, setNsYear] = useState('')
+  const [nsTerm, setNsTerm] = useState('fall')
+  const [nsStart, setNsStart] = useState('')
+  const [nsEnd, setNsEnd] = useState('')
+
+  async function createSeason() {
+    const yr = Number(nsYear)
+    if (!nsLabel.trim() || !yr) return setErr('A season needs a label and a year.')
+    const { data, error } = await supabase
+      .from('seasons')
+      .insert({
+        label: nsLabel.trim(),
+        year: yr,
+        term: nsTerm,
+        starts_on: nsStart || null,
+        ends_on: nsEnd || null,
+        owner_id: user?.id,
+      })
+      .select('*')
+      .single()
+    if (error) return setErr(error.message)
+    const s = data as Season
+    setSeasons((prev) => [s, ...prev])
+    setSeasonId(s.id)
+    setAddingSeason(false)
+    setNsLabel('')
+    setNsYear('')
+    setNsStart('')
+    setNsEnd('')
+  }
 
   useEffect(() => {
     supabase
@@ -177,7 +210,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
 
           {/* Season / Birth year */}
           <div className="grid grid-cols-2 gap-2">
-            <label>
+            <div>
               <span className={labelCls}>Season</span>
               <select className={input} value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
                 <option value="">—</option>
@@ -187,7 +220,14 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
                   </option>
                 ))}
               </select>
-            </label>
+              <button
+                type="button"
+                onClick={() => setAddingSeason((v) => !v)}
+                className="mt-1 font-athletic text-[11px] font-bold uppercase tracking-wide text-board-green"
+              >
+                {addingSeason ? 'Cancel' : '+ Add a season'}
+              </button>
+            </div>
             <label>
               <span className={labelCls}>Birth year (travel)</span>
               <input
@@ -199,6 +239,46 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
               />
             </label>
           </div>
+
+          {addingSeason && (
+            <div className="border-2 border-ink bg-white p-3">
+              <p className="mb-2 font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+                New season — Fall Ball, a travel/club calendar, anything custom
+              </p>
+              <div className="grid grid-cols-[1fr_5rem] gap-2">
+                <input
+                  className={input}
+                  value={nsLabel}
+                  onChange={(e) => setNsLabel(e.target.value)}
+                  placeholder="Label, e.g. Fall Ball 2025 or 2025–26 Travel"
+                />
+                <input
+                  className={input}
+                  value={nsYear}
+                  onChange={(e) => setNsYear(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+                  placeholder="Year"
+                  inputMode="numeric"
+                />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <select className={input} value={nsTerm} onChange={(e) => setNsTerm(e.target.value)}>
+                  <option value="spring">Spring</option>
+                  <option value="summer">Summer</option>
+                  <option value="fall">Fall</option>
+                  <option value="winter">Winter</option>
+                  <option value="year_round">Year-round</option>
+                </select>
+                <input className={input} type="date" value={nsStart} onChange={(e) => setNsStart(e.target.value)} title="Starts (optional)" />
+                <input className={input} type="date" value={nsEnd} onChange={(e) => setNsEnd(e.target.value)} title="Ends (optional)" />
+              </div>
+              <p className="mt-1 font-data text-[10px] text-muted-tan">
+                Dates are optional — use them for seasons that cross the new year (e.g. Aug → Jul).
+              </p>
+              <button onClick={createSeason} className="mt-2 w-full bg-board-green py-2 font-display text-sm text-cream">
+                Create season
+              </button>
+            </div>
+          )}
 
           {/* Discovery + consent gate */}
           <div>
