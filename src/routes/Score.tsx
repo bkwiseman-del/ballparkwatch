@@ -1483,9 +1483,19 @@ function Resolver({
             : 'Where did the batter & runners end up?'}
       </p>
       <div className="flex flex-col gap-3">
-        {!hideBatter && (
-          <Ladder label="BATTER" name={batter?.name ?? 'Batter'} value={dest['batter'] ?? 0} onPick={(d) => set('batter', d)} />
-        )}
+        {!hideBatter &&
+          // For a clean hit the batter's base IS the hit type — lock it so type and
+          // base can't diverge (want the batter on 2nd? pick Double). Runners below
+          // stay editable. Errors / fielder's choice keep the editable ladder.
+          (['single', 'double', 'triple'].includes(result) ? (
+            <LockedDestRow
+              label="BATTER"
+              name={batter?.name ?? 'Batter'}
+              destLabel={DESTS.find((x) => x.d === (dest['batter'] ?? 1))?.label ?? ''}
+            />
+          ) : (
+            <Ladder label="BATTER" name={batter?.name ?? 'Batter'} value={dest['batter'] ?? 0} onPick={(d) => set('batter', d)} />
+          ))}
         {onBase.map((r) => (
           <Ladder
             key={r.player.id}
@@ -1511,6 +1521,19 @@ function Resolver({
   )
 }
 
+
+// A locked destination row — the base is fixed (e.g. a hit's batter), not tappable.
+function LockedDestRow({ label, name, destLabel }: { label: string; name: string; destLabel: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="bg-gold px-1.5 py-0.5 font-athletic text-[10px] font-bold uppercase text-ink">{label}</span>
+      <span className="font-display text-sm text-cream">{name}</span>
+      <span className="ml-auto bg-board-green px-2 py-0.5 font-athletic text-[10px] font-bold uppercase text-cream">
+        {destLabel}
+      </span>
+    </div>
+  )
+}
 
 // A non-editable runner row (home run: everyone scored).
 function ScoredRow({ label, name }: { label: string; name: string }) {
