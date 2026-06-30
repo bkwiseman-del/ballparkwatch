@@ -11,15 +11,16 @@ import { ShareSheet } from '@/components/ShareSheet'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type TeamRecord = { w: number; l: number; t: number; rf: number; ra: number }
+type GState = { home: number; away: number; inning: number; half: string; outs: number }
 
 export default function Setup() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   const [teams, setTeams] = useState<Team[]>([])
   const [games, setGames] = useState<Game[]>([])
-  const [states, setStates] = useState<Map<string, { home: number; away: number }>>(new Map())
-  const [plays, setPlays] = useState(0)
+  const [states, setStates] = useState<Map<string, GState>>(new Map())
   const [creating, setCreating] = useState(false)
+  const [showAddTeam, setShowAddTeam] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -33,18 +34,17 @@ export default function Setup() {
     const gs = g.data as Game[]
     setTeams(t.data as Team[])
     setGames(gs)
-    const finalIds = gs.filter((x) => x.status === 'final').map((x) => x.id)
-    if (finalIds.length) {
-      const { data: st } = await supabase
-        .from('game_state')
-        .select('game_id, home_score, away_score')
-        .in('game_id', finalIds)
-      setStates(new Map((st ?? []).map((s) => [s.game_id as string, { home: s.home_score, away: s.away_score }])))
-    } else {
-      setStates(new Map())
-    }
-    const { count } = await supabase.from('game_events').select('id', { count: 'exact', head: true })
-    setPlays(count ?? 0)
+    const { data: st } = await supabase
+      .from('game_state')
+      .select('game_id, home_score, away_score, inning, half, outs')
+    setStates(
+      new Map(
+        (st ?? []).map((s) => [
+          s.game_id as string,
+          { home: s.home_score, away: s.away_score, inning: s.inning, half: String(s.half), outs: s.outs },
+        ]),
+      ),
+    )
   }, [])
 
   useEffect(() => {
@@ -63,18 +63,24 @@ export default function Setup() {
   }, [])
 
   const favorites = teams.filter((t) => t.is_favorite)
-  const others = teams.filter((t) => !t.is_favorite)
+  const favoriteIds = new Set(favorites.map((t) => t.id))
   const nameOf = (gid: string) => teams.find((t) => t.id === gid)?.name ?? 'TBD'
   const records = computeRecords(games, states)
   const upcoming = games.filter((g) => g.status !== 'final')
-  const finalCount = games.length - upcoming.length
+  // Hero = whatever needs you most: a live game, else the soonest scheduled one.
+  const heroGame = games.find((g) => g.status === 'live') ?? games.find((g) => g.status === 'scheduled') ?? null
+  // games are sorted by scheduled_at ascending → reverse the finals for "most recent".
+  const recentFinals = games.filter((g) => g.status === 'final').reverse().slice(0, 4)
 
   async function addTeam(name: string, season: string, favorite: boolean) {
     const { error } = await supabase
       .from('teams')
       .insert({ name, season: season || null, is_favorite: favorite, owner_id: user!.id })
     if (error) setError(error.message)
-    else load()
+    else {
+      setShowAddTeam(false)
+      load()
+    }
   }
   async function toggleFav(team: Team) {
     const { error } = await supabase.from('teams').update({ is_favorite: !team.is_favorite }).eq('id', team.id)
@@ -97,79 +103,54 @@ export default function Setup() {
             <p className="mb-4 border-2 border-barn-red bg-barn-red/10 px-3 py-2 font-data text-sm text-barn-red">{error}</p>
           )}
 
-          {/* Activity */}
-          <section className="mb-7 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <StatTile label="My teams" value={favorites.length} />
-            <StatTile label="Games" value={games.length} />
-            <StatTile label="Finished" value={finalCount} />
-            <StatTile label="Plays scored" value={plays} />
-          </section>
+          {/* Hero: the live or next game (the reason you opened the app) */}
+          <HeroGame
+            game={heroGame}
+            state={heroGame ? states.get(heroGame.id) : undefined}
+            nameOf={nameOf}
+            canSchedule={teams.length >= 2}
+            onSchedule={() => setCreating(true)}
+          />
 
-          {/* Upcoming & live */}
-          <section className="mb-7">
+          {creating && (
+            <div className="mt-3">
+              <CreateGameCard
+                teams={teams}
+                userId={user!.id}
+                onError={setError}
+                onCancel={() => setCreating(false)}
+                onCreated={() => {
+                  setCreating(false)
+                  load()
+                }}
+              />
+            </div>
+          )}
+
+          {/* My teams */}
+          <section className="mt-8">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-display text-xl">Upcoming &amp; live</h2>
-              {teams.length >= 2 && !creating && (
-                <button onClick={() => setCreating(true)} className="bg-gold px-4 py-2 font-display text-sm text-ink">
-                  + New game
+              <h2 className="font-display text-xl">My teams</h2>
+              {favorites.length > 0 && (
+                <button
+                  onClick={() => setShowAddTeam((v) => !v)}
+                  className="font-athletic text-xs font-bold uppercase tracking-wide text-board-green"
+                >
+                  {showAddTeam ? 'Close' : '+ Add team'}
                 </button>
               )}
             </div>
-            {creating && (
+
+            {(showAddTeam || favorites.length === 0) && (
               <div className="mb-3">
-                <CreateGameCard
-                  teams={teams}
-                  userId={user!.id}
-                  onError={setError}
-                  onCancel={() => setCreating(false)}
-                  onCreated={() => {
-                    setCreating(false)
-                    load()
-                  }}
-                />
+                {favorites.length === 0 && (
+                  <p className="mb-2 font-data text-sm text-muted-tan">Add your team to start scoring and streaming.</p>
+                )}
+                <NewTeamForm onAdd={addTeam} />
               </div>
             )}
-            {upcoming.length === 0 ? (
-              <EmptyHint>No upcoming games. Tap “New game”, or open a team to schedule one.</EmptyHint>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {upcoming.slice(0, 6).map((g) => (
-                  <li key={g.id} className="flex items-center justify-between gap-2 border-2 border-ink bg-cream-off p-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-display">
-                        {nameOf(g.away_team_id)} <span className="text-muted-tan">at</span> {nameOf(g.home_team_id)}
-                      </p>
-                      <p className="font-athletic text-[11px] uppercase tracking-wide text-muted-tan">
-                        {g.status === 'live' ? (
-                          <span className="text-barn-red">● Live now</span>
-                        ) : g.scheduled_at ? (
-                          formatWhen(g.scheduled_at)
-                        ) : (
-                          'Scheduled'
-                        )}
-                        {g.location ? ` · ${g.location}` : ''}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Link to={`/score/${g.id}`} className="bg-board-green px-3 py-1.5 font-display text-sm text-cream">
-                        Score ▸
-                      </Link>
-                      <Link to={`/watch/${g.id}`} className="border-2 border-ink px-3 py-1.5 font-display text-sm text-ink">
-                        Watch
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
 
-          {/* My teams */}
-          <section>
-            <h2 className="mb-2 font-display text-xl">My teams</h2>
-            {favorites.length === 0 ? (
-              <EmptyHint>No teams yet — add yours below.</EmptyHint>
-            ) : (
+            {favorites.length > 0 && (
               <div className="grid gap-3 sm:grid-cols-2">
                 {favorites.map((tm) => (
                   <TeamCard
@@ -184,42 +165,149 @@ export default function Setup() {
                 ))}
               </div>
             )}
-
-            <NewTeamForm onAdd={addTeam} />
-
-            {others.length > 0 && (
-              <details className="mt-5">
-                <summary className="cursor-pointer font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-                  Opponents &amp; other teams ({others.length})
-                </summary>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                  {others.map((tm) => (
-                    <TeamCard
-                      key={tm.id}
-                      team={tm}
-                      record={records.get(tm.id)}
-                      next={nextGameFor(upcoming, tm.id)}
-                      nameOf={nameOf}
-                      onOpen={() => navigate(`/team/${tm.id}`)}
-                      onToggleFav={() => toggleFav(tm)}
-                    />
-                  ))}
-                </div>
-              </details>
-            )}
           </section>
+
+          {/* Recent results */}
+          {recentFinals.length > 0 && (
+            <section className="mt-8">
+              <h2 className="mb-2 font-display text-xl">Recent results</h2>
+              <ul className="flex flex-col gap-2">
+                {recentFinals.map((g) => (
+                  <RecentRow key={g.id} game={g} state={states.get(g.id)} favoriteIds={favoriteIds} nameOf={nameOf} />
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function StatTile({ label, value }: { label: string; value: number }) {
+// The home hero — a live game (resume scoring) or the next one, or a create CTA.
+function HeroGame({
+  game,
+  state,
+  nameOf,
+  canSchedule,
+  onSchedule,
+}: {
+  game: Game | null
+  state?: GState
+  nameOf: (id: string) => string
+  canSchedule: boolean
+  onSchedule: () => void
+}) {
+  if (!game) {
+    return (
+      <section className="border-2 border-dashed border-ink/30 px-6 py-8 text-center">
+        <p className="font-display text-xl">No games on the calendar</p>
+        <p className="mx-auto mt-1 max-w-xs font-data text-sm text-muted-tan">
+          Schedule a game to score it, stream it, and let family watch from anywhere.
+        </p>
+        {canSchedule && (
+          <button onClick={onSchedule} className="mt-4 bg-gold px-6 py-3 font-display text-ink">
+            Schedule a game ▸
+          </button>
+        )}
+      </section>
+    )
+  }
+  const away = nameOf(game.away_team_id)
+  const home = nameOf(game.home_team_id)
+  const live = game.status === 'live'
   return (
-    <div className="border-2 border-ink bg-cream-off px-3 py-2.5">
-      <div className="font-display text-2xl tabular">{value}</div>
-      <div className="font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">{label}</div>
+    <section className={`border-2 ${live ? 'border-barn-red' : 'border-ink'} bg-ink p-5 text-cream`}>
+      <div
+        className={`flex items-center gap-2 font-athletic text-xs font-bold uppercase tracking-[.18em] ${
+          live ? 'text-barn-red' : 'text-gold'
+        }`}
+      >
+        {live && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />}
+        {live ? 'Live now' : 'Next up'}
+      </div>
+
+      {live ? (
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <ScoreSide name={away} score={state?.away ?? 0} />
+          <span className="shrink-0 font-data text-xs text-cream/50">
+            {state ? `${state.half === 'top' ? '▲' : '▼'}${state.inning} · ${state.outs} out` : ''}
+          </span>
+          <ScoreSide name={home} score={state?.home ?? 0} right />
+        </div>
+      ) : (
+        <>
+          <p className="mt-2 font-display text-2xl leading-tight">
+            {away} <span className="text-cream/50">at</span> {home}
+          </p>
+          <p className="mt-1 font-athletic text-sm uppercase tracking-wide text-cream/60">
+            {game.scheduled_at ? formatWhen(game.scheduled_at) : 'Time TBD'}
+            {game.location ? ` · ${game.location}` : ''}
+          </p>
+        </>
+      )}
+
+      <div className="mt-4 flex gap-2">
+        <Link to={`/score/${game.id}`} className="flex-1 bg-board-green py-3 text-center font-display text-cream">
+          {live ? 'Resume scoring ▸' : 'Start scoring ▸'}
+        </Link>
+        <Link
+          to={live ? `/watch/${game.id}` : `/lineup/${game.id}`}
+          className="border-2 border-cream/40 px-5 py-3 text-center font-display text-cream"
+        >
+          {live ? 'Watch' : 'Lineup'}
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+function ScoreSide({ name, score, right }: { name: string; score: number; right?: boolean }) {
+  return (
+    <div className={`min-w-0 flex-1 ${right ? 'text-right' : ''}`}>
+      <div className="truncate font-display text-sm text-cream/80">{name}</div>
+      <div className="font-display text-4xl tabular">{score}</div>
     </div>
+  )
+}
+
+function RecentRow({
+  game,
+  state,
+  favoriteIds,
+  nameOf,
+}: {
+  game: Game
+  state?: GState
+  favoriteIds: Set<string>
+  nameOf: (id: string) => string
+}) {
+  const myId = [game.home_team_id, game.away_team_id].find((id) => favoriteIds.has(id))
+  const home = myId ? myId === game.home_team_id : true
+  const my = state ? (home ? state.home : state.away) : 0
+  const opp = state ? (home ? state.away : state.home) : 0
+  const oppName = home ? nameOf(game.away_team_id) : nameOf(game.home_team_id)
+  const wl = my > opp ? 'W' : my < opp ? 'L' : 'T'
+  const color = my > opp ? 'text-board-green' : my < opp ? 'text-barn-red' : 'text-muted-tan'
+  return (
+    <li>
+      <Link
+        to={`/watch/${game.id}`}
+        className="flex items-center justify-between gap-2 border-2 border-ink bg-cream-off p-3 hover:bg-cream"
+      >
+        <div className="min-w-0">
+          <p className="truncate font-display">
+            <span className="text-muted-tan">{home ? 'vs' : 'at'}</span> {oppName}
+          </p>
+          <p className="font-athletic text-[11px] uppercase tracking-wide text-muted-tan">
+            {game.scheduled_at ? formatWhen(game.scheduled_at) : 'Final'}
+          </p>
+        </div>
+        <span className={`shrink-0 font-display text-lg tabular ${color}`}>
+          {state ? `${wl} ${my}-${opp}` : 'Final'}
+        </span>
+      </Link>
+    </li>
   )
 }
 
