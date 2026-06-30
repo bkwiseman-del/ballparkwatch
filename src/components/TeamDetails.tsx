@@ -31,9 +31,10 @@ function attestation(d: TeamDiscovery): string {
 // Edit a team's durable identity + discovery metadata (plan §2/§8). The structured
 // fields (state, season, age group, sport) are what the directory filters and the
 // public team page need.
-export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: () => void; onSaved: () => void }) {
+export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void }) {
   const { user } = useAuth()
   const [seasons, setSeasons] = useState<Season[]>([])
+  const [saved, setSaved] = useState(false)
   // Pre-checked only if the team is already public (consent previously given); a move
   // OUT of private starts unchecked so it's a deliberate act.
   const [confirmed, setConfirmed] = useState(team.discovery !== 'private')
@@ -84,26 +85,16 @@ export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: (
     setBusy(false)
     if (error) return setErr(error.message)
     onSaved()
-    onClose()
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 1800)
   }
 
   const input = 'w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green'
   const labelCls = 'mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan'
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
-      <div
-        className="flex max-h-[92vh] w-full max-w-lg flex-col border-t-2 border-gold bg-cream text-ink sm:border-2"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
-          <span className="font-display text-lg text-cream">{team.name} · Details</span>
-          <button onClick={onClose} className="font-athletic text-cream">
-            Done
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <div className="mx-auto max-w-lg">
+        <div className="space-y-4">
           {err && <p className="border-2 border-barn-red bg-barn-red/10 px-3 py-2 font-data text-sm text-barn-red">{err}</p>}
 
           {/* Sport */}
@@ -232,15 +223,12 @@ export function TeamDetails({ team, onClose, onSaved }: { team: Team; onClose: (
           </div>
         </div>
 
-        <div className="flex gap-2 border-t-2 border-ink bg-cream-off p-4">
+        <div className="mt-4 flex items-center gap-3 border-t-2 border-ink bg-cream-off p-4">
           <button onClick={save} disabled={busy} className="flex-1 bg-gold py-3 font-display text-ink disabled:opacity-60">
             {busy ? 'Saving…' : 'Save details'}
           </button>
-          <button onClick={onClose} className="border-2 border-ink px-4 py-3 font-display text-ink">
-            Cancel
-          </button>
+          {saved && <span className="font-data text-sm text-board-green">Saved ✓</span>}
         </div>
-      </div>
     </div>
   )
 }

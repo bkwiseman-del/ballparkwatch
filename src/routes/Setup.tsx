@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import { HeaderWordmark } from '@/components/Logo'
@@ -8,9 +8,6 @@ import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
 import { VideoSetup } from '@/components/VideoSetup'
 import { ShareSheet } from '@/components/ShareSheet'
-import { TeamMembers } from '@/components/TeamMembers'
-import { SeasonStats } from '@/components/SeasonStats'
-import { TeamDetails } from '@/components/TeamDetails'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -667,8 +664,7 @@ function TeamsView({
   onChange: () => void
   onError: (m: string) => void
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const selected = teams.find((t) => t.id === selectedId) ?? null
+  const navigate = useNavigate()
   const favorites = teams.filter((t) => t.is_favorite)
   const others = teams.filter((t) => !t.is_favorite)
 
@@ -702,47 +698,36 @@ function TeamsView({
     if (!window.confirm(`Delete ${team.name} and its whole roster? This can’t be undone.`)) return
     const { error } = await supabase.from('teams').delete().eq('id', team.id)
     if (error) return onError(error.message)
-    if (selectedId === team.id) setSelectedId(null)
     onChange()
   }
 
-  return (
-    <div className="grid gap-6 md:grid-cols-[1fr_1.2fr]">
-      <section>
-        <h2 className="mb-3 font-display text-2xl">Teams</h2>
+  const open = (id: string) => navigate(`/team/${id}`)
 
-        {favorites.length > 0 && (
-          <TeamGroup
-            title="My Teams"
-            teams={favorites}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onToggleFavorite={toggleFavorite}
-            onDelete={deleteTeam}
-          />
-        )}
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h2 className="mb-3 font-display text-2xl">Teams</h2>
+
+      {favorites.length > 0 && (
         <TeamGroup
-          title={favorites.length > 0 ? 'Other teams' : 'All teams'}
-          teams={others}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
+          title="My Teams"
+          teams={favorites}
+          selectedId={null}
+          onSelect={open}
           onToggleFavorite={toggleFavorite}
           onDelete={deleteTeam}
         />
-        {teams.length === 0 && <EmptyHint>No teams yet — add your team below.</EmptyHint>}
+      )}
+      <TeamGroup
+        title={favorites.length > 0 ? 'Other teams' : 'All teams'}
+        teams={others}
+        selectedId={null}
+        onSelect={open}
+        onToggleFavorite={toggleFavorite}
+        onDelete={deleteTeam}
+      />
+      {teams.length === 0 && <EmptyHint>No teams yet — add your team below.</EmptyHint>}
 
-        <NewTeamForm onAdd={addTeam} />
-      </section>
-
-      <section>
-        {selected ? (
-          <Roster team={selected} onError={onError} onChange={onChange} />
-        ) : (
-          <div className="flex h-full min-h-40 items-center justify-center border-2 border-dashed border-ink/30 p-6 text-center font-data text-muted-tan">
-            Select a team to manage its roster, or import one from CSV.
-          </div>
-        )}
-      </section>
+      <NewTeamForm onAdd={addTeam} />
     </div>
   )
 }
@@ -846,10 +831,7 @@ function NewTeamForm({ onAdd }: { onAdd: (name: string, season: string, favorite
 
 /* ----------------------------------------------------------------- Roster */
 
-function Roster({ team, onError, onChange }: { team: Team; onError: (m: string) => void; onChange: () => void }) {
-  const [showMembers, setShowMembers] = useState(false)
-  const [showStats, setShowStats] = useState(false)
-  const [showDetails, setShowDetails] = useState(false)
+export function Roster({ team, onError }: { team: Team; onError: (m: string) => void }) {
   const [players, setPlayers] = useState<Player[]>([]) // active roster
   const [archived, setArchived] = useState<Player[]>([]) // soft-deleted
   const [showArchived, setShowArchived] = useState(false)
@@ -997,34 +979,10 @@ function Roster({ team, onError, onChange }: { team: Team; onError: (m: string) 
   return (
     <div className="border-2 border-ink bg-cream-off">
       <div className="flex items-center justify-between gap-3 border-b-2 border-ink bg-white px-4 py-3">
-        <div>
-          <h3 className="font-display text-xl">{team.name}</h3>
-          <p className="font-athletic text-xs uppercase tracking-wide text-muted-tan">
-            {team.season ? `${team.season} · ` : ''}
-            {players.length} player{players.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowDetails(true)}
-            className="border-2 border-ink px-3 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink hover:bg-ink hover:text-cream"
-          >
-            Details
-          </button>
-          <button
-            onClick={() => setShowStats(true)}
-            className="border-2 border-ink px-3 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink hover:bg-ink hover:text-cream"
-          >
-            Stats
-          </button>
-          <button
-            onClick={() => setShowMembers(true)}
-            className="border-2 border-ink px-3 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink hover:bg-ink hover:text-cream"
-          >
-            Members
-          </button>
-          <CodeEditor team={team} onError={onError} />
-        </div>
+        <p className="font-athletic text-xs uppercase tracking-wide text-muted-tan">
+          {players.length} player{players.length === 1 ? '' : 's'}
+        </p>
+        <CodeEditor team={team} onError={onError} />
       </div>
 
       <ul className="flex flex-col">
@@ -1141,12 +1099,6 @@ function Roster({ team, onError, onChange }: { team: Team; onError: (m: string) 
           onCancel={() => setReview(null)}
           onSave={saveScanned}
         />
-      )}
-
-      {showMembers && <TeamMembers team={team} onClose={() => setShowMembers(false)} />}
-      {showStats && <SeasonStats team={team} onClose={() => setShowStats(false)} />}
-      {showDetails && (
-        <TeamDetails team={team} onClose={() => setShowDetails(false)} onSaved={onChange} />
       )}
     </div>
   )

@@ -14,7 +14,7 @@ const ASSIGNABLE: { value: Exclude<Role, 'owner'>; label: string; hint: string }
 
 // Manage who can help run a team: list members, change roles, and mint an invite
 // link (delegation is free — plan §9). Owner/admin can edit; everyone else views.
-export function TeamMembers({ team, onClose }: { team: Team; onClose: () => void }) {
+export function TeamMembers({ team }: { team: Team }) {
   const [members, setMembers] = useState<Member[]>([])
   const [error, setError] = useState<string | null>(null)
   const [inviteRole, setInviteRole] = useState<Exclude<Role, 'owner'>>('scorer')
@@ -82,30 +82,16 @@ export function TeamMembers({ team, onClose }: { team: Team; onClose: () => void
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col border-t-2 border-gold bg-cream text-ink sm:border-2"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
-          <span className="font-display text-lg text-cream">{team.name} · Members</span>
-          <button onClick={onClose} className="font-athletic text-cream">
-            Done
-          </button>
-        </div>
+    <div className="mx-auto max-w-lg">
+      {error && (
+        <p className="mb-3 border-2 border-barn-red bg-barn-red/10 px-3 py-2 font-data text-sm text-barn-red">
+          {error}
+        </p>
+      )}
 
-        {error && (
-          <p className="mx-4 mt-3 border-2 border-barn-red bg-barn-red/10 px-3 py-2 font-data text-sm text-barn-red">
-            {error}
-          </p>
-        )}
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {/* Member list */}
-          <ul className="flex flex-col border-2 border-ink">
+      <div>
+        {/* Member list */}
+        <ul className="flex flex-col border-2 border-ink">
             {members.map((m, i) => (
               <li
                 key={m.user_id}
@@ -213,6 +199,5 @@ export function TeamMembers({ team, onClose }: { team: Team; onClose: () => void
           )}
         </div>
       </div>
-    </div>
   )
 }

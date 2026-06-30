@@ -5,7 +5,7 @@ import type { Team } from '@/lib/types'
 
 // Team season stats — record + per-player batting/pitching, summed across the team's
 // final games. (The same data a public team page would render — see the plan §8.)
-export function SeasonStats({ team, onClose }: { team: Team; onClose: () => void }) {
+export function SeasonStats({ team }: { team: Team }) {
   const [data, setData] = useState<TeamSeason | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
@@ -25,21 +25,7 @@ export function SeasonStats({ team, onClose }: { team: Team; onClose: () => void
     : '—'
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-full max-w-3xl flex-col border-t-2 border-gold bg-cream text-ink sm:border-2"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
-          <span className="font-display text-lg text-cream">{team.name} · Season</span>
-          <button onClick={onClose} className="font-athletic text-cream">
-            Done
-          </button>
-        </div>
-
+    <div className="mx-auto max-w-3xl">
         {/* Record */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b-2 border-ink bg-cream-off px-4 py-3">
           <Stat label="Record" value={recLine} big />
@@ -140,7 +126,6 @@ export function SeasonStats({ team, onClose }: { team: Team; onClose: () => void
             </>
           )}
         </div>
-      </div>
     </div>
   )
 }
