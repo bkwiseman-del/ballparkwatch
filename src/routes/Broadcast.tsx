@@ -43,6 +43,8 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const localRef = useRef<HTMLVideoElement>(null)
   const [ended, setEnded] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const [saveErr, setSaveErr] = useState<string>('')
+  const [recBytes, setRecBytes] = useState(0) // live diagnostic: is the recorder capturing?
   const vstop = v.stop
 
   useEffect(() => {
@@ -77,19 +79,26 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     const { data: sign, error: signErr } = await supabase.functions.invoke('sign-upload', {
       body: { token, path },
     })
-    if (signErr || !sign?.token) return setSaveState('failed')
+    if (signErr || !sign?.token) {
+      setSaveErr(`sign-upload: ${signErr?.message ?? 'no token'}`)
+      return setSaveState('failed')
+    }
     const { error } = await supabase.storage
       .from('bpw-video')
       .uploadToSignedUrl(path, sign.token, new Blob(chunks, { type: full }), { contentType: base })
-    if (error) return setSaveState('failed')
-    const { error: saveErr } = await supabase.rpc('save_recording', {
+    if (error) {
+      setSaveErr(`upload: ${error.message}`)
+      return setSaveState('failed')
+    }
+    const { error: recErr } = await supabase.rpc('save_recording', {
       p_token: token,
       p_path: path,
       p_started_at: new Date(startedAt).toISOString(),
       p_duration_ms: Date.now() - startedAt,
       p_mime: base,
     })
-    setSaveState(saveErr ? 'failed' : 'saved')
+    if (recErr) setSaveErr(`save: ${recErr.message}`)
+    setSaveState(recErr ? 'failed' : 'saved')
   }
 
   useEffect(() => {
@@ -116,7 +125,10 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     recStartedAt.current = Date.now()
     recRef.current = rec
     rec.ondataavailable = (e) => {
-      if (e.data?.size) recChunks.current.push(e.data)
+      if (e.data?.size) {
+        recChunks.current.push(e.data)
+        setRecBytes((b) => b + e.data.size)
+      }
     }
     // Upload whenever the recorder stops — explicit stop, OR auto-stop when the stream's
     // tracks end on teardown. (The old code only uploaded from the cleanup, which the
@@ -184,7 +196,15 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
             <p className="font-data text-sm text-board-green">Replay saved ✓ You can close this screen.</p>
           )}
           {saveState === 'failed' && (
-            <p className="font-data text-sm text-barn-red">Couldn’t save the replay (the game stats are safe).</p>
+            <>
+              <p className="font-data text-sm text-barn-red">Couldn’t save the replay (the game stats are safe).</p>
+              {saveErr && <p className="font-data text-[11px] text-muted-green">{saveErr}</p>}
+            </>
+          )}
+          {saveState === 'idle' && recBytes === 0 && (
+            <p className="font-data text-[11px] text-muted-green">
+              (No video was captured on this device — recording isn’t supported by this browser.)
+            </p>
           )}
           {saveState === 'idle' && (
             <p className="font-data text-sm text-muted-green">The broadcast has ended. You can close this screen.</p>
@@ -207,7 +227,10 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
           <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-black/50 px-4 py-2">
             <span className="flex items-center gap-2 font-athletic text-sm font-semibold uppercase tracking-wide">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
-              Live · {v.viewers} watching
+              Live · {v.viewers} watching ·{' '}
+              <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
+                REC {(recBytes / 1e6).toFixed(1)}MB
+              </span>
             </span>
             <button onClick={endBroadcast} className="bg-barn-red px-4 py-1.5 font-display text-cream">
               Stop
