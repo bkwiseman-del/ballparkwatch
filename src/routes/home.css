@@ -61,8 +61,12 @@ html { scroll-behavior: smooth; }
 
 /* Responsive */
 @media (max-width:900px) {
-  .bb-mkt .hero-grid { grid-template-columns:1fr !important; }
-  .bb-mkt .hero-phone-col { display:none !important; }
+  /* Mobile hero: stack text over the phone mockup (the phone is the whole point —
+     it stays visible). 296px screen + frame ≈ 322px, fits a phone viewport. Let the
+     section grow to fit both instead of locking to 100vh. */
+  .bb-mkt #home { height:auto !important; padding-top:84px !important; padding-bottom:52px !important; }
+  .bb-mkt .hero-grid { grid-template-columns:1fr !important; height:auto !important; gap:36px; }
+  .bb-mkt .hero-phone-col { display:flex !important; }
   .bb-mkt .viewer-grid { grid-template-columns:1fr !important; }
   .bb-mkt .ai-grid { grid-template-columns:1fr !important; }
   .bb-mkt .field-grid { grid-template-columns:1fr !important; }
@@ -74,11 +78,21 @@ html { scroll-behavior: smooth; }
   .bb-mkt .fields-grid { grid-template-columns:1fr !important; }
 }
 @media (max-width:640px) {
-  .bb-mkt .hero-h1 { font-size:58px !important; }
+  /* Alfa Slab is heavy; at 58px "BROADCAST" overran the hero and got clipped.
+     46px keeps the longest word inside a ~360px screen. */
+  .bb-mkt .hero-h1 { font-size:46px !important; }
   .bb-mkt .sec-h2 { font-size:34px !important; }
   .bb-mkt .price-grid { grid-template-columns:1fr !important; }
   .bb-mkt .diff-grid { grid-template-columns:repeat(2,1fr) !important; }
   .bb-mkt .footer-cols { grid-template-columns:1fr 1fr !important; }
+  /* The laptop mockup screen is a fixed 620px; on a phone that overflows and gets
+     clipped. zoom shrinks the whole frame (layout box included) so it fits intact
+     and stays readable, rather than being cut off. */
+  .bb-mkt .mkt-laptop { zoom:0.5; justify-self:center !important; }
+}
+@media (max-width:360px) {
+  .bb-mkt .hero-h1 { font-size:40px !important; }
+  .bb-mkt .mkt-laptop { zoom:0.46; }
 }
 
 /* Stars-and-stripes bunting (matches the app cover screens) */
