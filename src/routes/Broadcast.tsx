@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { usePhoneVideo } from '@/lib/phoneVideo'
@@ -42,7 +42,8 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const v = usePhoneVideo(gameId, true)
   const localRef = useRef<HTMLVideoElement>(null)
   const [ended, setEnded] = useState(false)
-  const stop = v.stop
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  const vstop = v.stop
 
   useEffect(() => {
     if (localRef.current) localRef.current.srcObject = v.local
@@ -56,11 +57,16 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const recChunks = useRef<Blob[]>([])
   const recStartedAt = useRef(0)
   const recMime = useRef('')
+  const recRef = useRef<MediaRecorder | null>(null)
+  const uploadedRef = useRef(false)
 
   async function uploadRecording() {
+    if (uploadedRef.current) return // fire once, however the recorder stopped
     const chunks = recChunks.current
     recChunks.current = []
     if (!chunks.length) return
+    uploadedRef.current = true
+    setSaveState('saving')
     const full = recMime.current || 'video/webm'
     const base = full.split(';')[0] || 'video/webm'
     const startedAt = recStartedAt.current
@@ -71,18 +77,19 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     const { data: sign, error: signErr } = await supabase.functions.invoke('sign-upload', {
       body: { token, path },
     })
-    if (signErr || !sign?.token) return
+    if (signErr || !sign?.token) return setSaveState('failed')
     const { error } = await supabase.storage
       .from('bpw-video')
       .uploadToSignedUrl(path, sign.token, new Blob(chunks, { type: full }), { contentType: base })
-    if (error) return
-    await supabase.rpc('save_recording', {
+    if (error) return setSaveState('failed')
+    const { error: saveErr } = await supabase.rpc('save_recording', {
       p_token: token,
       p_path: path,
       p_started_at: new Date(startedAt).toISOString(),
       p_duration_ms: Date.now() - startedAt,
       p_mime: base,
     })
+    setSaveState(saveErr ? 'failed' : 'saved')
   }
 
   useEffect(() => {
@@ -107,22 +114,37 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     recChunks.current = []
     recMime.current = rec.mimeType || mime || 'video/webm'
     recStartedAt.current = Date.now()
+    recRef.current = rec
     rec.ondataavailable = (e) => {
       if (e.data?.size) recChunks.current.push(e.data)
     }
+    // Upload whenever the recorder stops — explicit stop, OR auto-stop when the stream's
+    // tracks end on teardown. (The old code only uploaded from the cleanup, which the
+    // auto-stop pre-empted, so nothing ever uploaded.)
+    rec.onstop = () => {
+      void uploadRecording()
+    }
     rec.start(4000)
     return () => {
-      if (rec.state !== 'inactive') {
-        rec.onstop = uploadRecording
-        try {
-          rec.stop()
-        } catch {
-          /* ignore */
-        }
+      try {
+        if (rec.state !== 'inactive') rec.stop()
+      } catch {
+        /* ignore */
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v.local])
+
+  // End everything cleanly: flush + stop the recorder (while the stream is still
+  // alive) BEFORE tearing the stream down, so the recording is captured and uploaded.
+  const endBroadcast = useCallback(() => {
+    try {
+      if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop()
+    } catch {
+      /* ignore */
+    }
+    vstop()
+  }, [vstop])
 
   // End the broadcast when the scorer ends the game. Catch it instantly off the
   // scorer's state broadcast, and poll as a fallback in case that event is missed.
@@ -132,7 +154,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
       if (done) return
       done = true
       setEnded(true)
-      stop()
+      endBroadcast()
     }
     const ch = supabase
       .channel(gameChannelName(gameId))
@@ -148,14 +170,25 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
       clearInterval(poll)
       supabase.removeChannel(ch)
     }
-  }, [gameId, stop])
+  }, [gameId, endBroadcast])
 
   if (ended)
     return (
       <Center>
         <div className="space-y-2">
           <p className="font-display text-2xl text-gold">Game over</p>
-          <p className="font-data text-sm text-muted-green">The broadcast has ended. You can close this screen.</p>
+          {saveState === 'saving' && (
+            <p className="font-data text-sm text-gold">Saving the replay… keep this screen open a moment.</p>
+          )}
+          {saveState === 'saved' && (
+            <p className="font-data text-sm text-board-green">Replay saved ✓ You can close this screen.</p>
+          )}
+          {saveState === 'failed' && (
+            <p className="font-data text-sm text-barn-red">Couldn’t save the replay (the game stats are safe).</p>
+          )}
+          {saveState === 'idle' && (
+            <p className="font-data text-sm text-muted-green">The broadcast has ended. You can close this screen.</p>
+          )}
         </div>
       </Center>
     )
@@ -176,7 +209,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
               Live · {v.viewers} watching
             </span>
-            <button onClick={v.stop} className="bg-barn-red px-4 py-1.5 font-display text-cream">
+            <button onClick={endBroadcast} className="bg-barn-red px-4 py-1.5 font-display text-cream">
               Stop
             </button>
           </div>
