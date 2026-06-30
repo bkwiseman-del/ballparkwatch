@@ -21,6 +21,7 @@ export default function Setup() {
   const [states, setStates] = useState<Map<string, GState>>(new Map())
   const [creating, setCreating] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
+  const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -110,6 +111,7 @@ export default function Setup() {
             nameOf={nameOf}
             canSchedule={teams.length >= 2}
             onSchedule={() => setCreating(true)}
+            onSetup={(g) => setVideoGame(g)}
           />
 
           {creating && (
@@ -180,6 +182,10 @@ export default function Setup() {
           )}
         </div>
       </div>
+
+      {videoGame && (
+        <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => load()} />
+      )}
     </div>
   )
 }
@@ -191,12 +197,14 @@ function HeroGame({
   nameOf,
   canSchedule,
   onSchedule,
+  onSetup,
 }: {
   game: Game | null
   state?: GState
   nameOf: (id: string) => string
   canSchedule: boolean
   onSchedule: () => void
+  onSetup: (g: Game) => void
 }) {
   if (!game) {
     return (
@@ -247,7 +255,7 @@ function HeroGame({
         </>
       )}
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <Link to={`/score/${game.id}`} className="flex-1 bg-board-green py-3 text-center font-display text-cream">
           {live ? 'Resume scoring ▸' : 'Start scoring ▸'}
         </Link>
@@ -257,6 +265,12 @@ function HeroGame({
         >
           {live ? 'Watch' : 'Lineup'}
         </Link>
+        <button
+          onClick={() => onSetup(game)}
+          className="border-2 border-cream/40 px-5 py-3 text-center font-display text-cream"
+        >
+          Set up ▸
+        </button>
       </div>
     </section>
   )

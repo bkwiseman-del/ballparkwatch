@@ -4,7 +4,13 @@ import { supabase } from '@/lib/supabase'
 import { parseYouTubeId } from '@/lib/youtube'
 import { usePhoneVideo, type PhoneVideo } from '@/lib/phoneVideo'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
-import type { Game } from '@/lib/types'
+import type { Game, VideoSource } from '@/lib/types'
+
+const SOURCES: { value: VideoSource; label: string }[] = [
+  { value: 'none', label: 'No video' },
+  { value: 'phone_whip', label: 'Another phone' },
+  { value: 'youtube', label: 'External camera' },
+]
 
 // Per-game video setup. Reachable both from game setup (when a camera is picked)
 // and from the live scorer. Branches by source:
@@ -21,11 +27,20 @@ export function VideoSetup({
   onClose: () => void
   onSaved?: (patch: { stat_delay_ms: number; video_config: Record<string, unknown> }) => void
 }) {
-  const isYouTube = game.video_source === 'youtube'
-  const isPhone = game.video_source === 'phone_whip'
+  const [source, setSource] = useState<VideoSource>(game.video_source)
+  const isYouTube = source === 'youtube'
+  const isPhone = source === 'phone_whip'
   // Active viewer connection so the scorer can preview the live feed + remotely
   // terminate it. (Only runs for phone games.)
   const phone = usePhoneVideo(isPhone ? game.id : undefined, isPhone)
+
+  async function changeSource(next: VideoSource) {
+    if (next === source) return
+    setSource(next)
+    const { error } = await supabase.from('games').update({ video_source: next }).eq('id', game.id)
+    if (error) setErr(error.message)
+    else onSaved?.({ stat_delay_ms: delayMs, video_config: (game.video_config ?? {}) as Record<string, unknown> })
+  }
 
   const [url, setUrl] = useState(String(game.video_config?.youtube_url ?? ''))
   const [delayMs, setDelayMs] = useState(game.stat_delay_ms ?? 0)
@@ -72,15 +87,33 @@ export function VideoSetup({
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-cream text-ink">
       <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
-        <span className="font-display text-lg text-cream">
-          {isPhone ? 'Phone broadcast' : 'Video & sync'}
-        </span>
+        <span className="font-display text-lg text-cream">Video &amp; camera</span>
         <button onClick={onClose} className="font-athletic text-cream">
           Done
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
+        {/* Pick the camera source for this game */}
+        <section className="mb-5">
+          <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+            Camera source
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {SOURCES.map((s) => (
+              <button
+                key={s.value}
+                onClick={() => changeSource(s.value)}
+                className={`border-2 px-2 py-2.5 font-display text-sm ${
+                  source === s.value ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
         {isPhone ? (
           <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
         ) : isYouTube ? (

@@ -888,7 +888,9 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           playsInline
           onPlay={() => void audio.enable()}
           onTimeUpdate={onTime}
-          className="aspect-video w-full bg-black object-contain"
+          // The recording is the raw camera (often 4:3 on iOS); center-crop it to
+          // 16:9 to match the live broadcast's framing.
+          className="aspect-video w-full bg-black object-cover"
         />
         <div className="pointer-events-none absolute bottom-2 left-2">
           <ScorebugBar state={board} />

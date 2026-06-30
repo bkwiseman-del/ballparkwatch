@@ -102,8 +102,11 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   }
 
   useEffect(() => {
-    const stream = v.local
-    if (!stream || typeof MediaRecorder === 'undefined') return
+    if (!v.local || typeof MediaRecorder === 'undefined') return // v.local set = we're broadcasting
+    // Record the RAW CAMERA stream, NOT the 16:9 canvas — iOS Safari's MediaRecorder
+    // can't record a canvas.captureStream() (it produces no data). We crop the camera
+    // recording to 16:9 on playback to match the live framing.
+    const stream = v.getCameraStream() ?? v.local
     const mime =
       ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(
         (m) => {

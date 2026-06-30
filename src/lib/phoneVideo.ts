@@ -48,7 +48,8 @@ export type PhoneVideo = {
   isLive: boolean // someone (possibly us) is broadcasting
   isBroadcasting: boolean // we are the broadcaster
   incoming: MediaStream | null // the feed we're watching
-  local: MediaStream | null // our own camera (when broadcasting)
+  local: MediaStream | null // the broadcast feed (16:9 canvas) — what viewers see
+  getCameraStream: () => MediaStream | null // raw camera+mic — recordable on iOS (canvas isn't)
   viewers: number // connected viewers (broadcaster side)
   error: string | null
   cameras: CameraInfo[] // available cameras (e.g. iPhone wide / ultrawide / front)
@@ -439,6 +440,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     isBroadcasting,
     incoming,
     local,
+    getCameraStream: () => camStreamRef.current,
     viewers,
     error,
     cameras,
