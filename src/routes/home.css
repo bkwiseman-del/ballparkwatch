@@ -12,7 +12,12 @@ html { scroll-behavior: smooth; }
 .bb-mkt { font-family: Archivo, sans-serif; background:#1A2A4A; color:#F4ECD8; overflow-x:hidden; }
 
 /* Scroll reveal */
-.bb-mkt [data-visible="true"] .anim { opacity:1; transform:none; }
+/* Revealed state must reset BOTH translateY and the left/right translateX. These
+   selectors match .anim.left/.anim.right specificity AND come later, so they win —
+   otherwise revealed content stays shifted 26px sideways and bleeds off the edge. */
+.bb-mkt [data-visible="true"] .anim,
+.bb-mkt [data-visible="true"] .anim.left,
+.bb-mkt [data-visible="true"] .anim.right { opacity:1; transform:none; }
 .bb-mkt .anim { opacity:0; transform:translateY(22px); transition:opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
 .bb-mkt .anim.left { transform:translateX(-26px); }
 .bb-mkt .anim.right { transform:translateX(26px); }
@@ -84,7 +89,14 @@ html { scroll-behavior: smooth; }
   .bb-mkt .sec-h2 { font-size:34px !important; }
   .bb-mkt .price-grid { grid-template-columns:1fr !important; }
   .bb-mkt .diff-grid { grid-template-columns:repeat(2,1fr) !important; }
-  .bb-mkt .footer-cols { grid-template-columns:1fr 1fr !important; }
+  /* Trust badges: stack as a centered column; the vertical separators only make
+     sense in a row. */
+  .bb-mkt .safety-row { flex-direction:column !important; gap:22px !important; }
+  .bb-mkt .safety-sep { display:none !important; }
+  /* Footer: logo+tagline span the full width (room for the logo, no squish),
+     the three link groups sit below in two columns. */
+  .bb-mkt .footer-cols { grid-template-columns:1fr 1fr !important; gap:28px 24px !important; }
+  .bb-mkt .footer-brand { grid-column:1 / -1 !important; }
   /* The laptop mockup screen is a fixed 620px; on a phone that overflows and gets
      clipped. zoom shrinks the whole frame (layout box included) so it fits intact
      and stays readable, rather than being cut off. */

@@ -1,6 +1,6 @@
 <nav class="site-nav" data-scrolled="false" style="position:fixed;top:0;left:0;right:0;z-index:100;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 5%;background:transparent">
-  <a href="#home" style="text-decoration:none">
-    <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox Live" style="height:36px;width:auto;display:block"/>
+  <a href="#home" style="text-decoration:none;flex:0 0 auto;line-height:0">
+    <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox Live" style="height:36px;width:auto;max-width:none;display:block;flex-shrink:0"/>
   </a>
   <div class="nav-links" style="display:flex;gap:36px">
     <a href="#steps" class="nav-link">HOW IT WORKS</a>
@@ -87,7 +87,7 @@
   <div style="max-width:1280px;margin:0 auto">
     <div style="text-align:center;margin-bottom:56px">
       <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3em;color:#A6342E;margin-bottom:12px">DEAD SIMPLE</div>
-      <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:48px;letter-spacing:.01em;line-height:.95;color:#1A2A4A">STREAM IT. SCORE IT.<br>WATCH IT.</h2>
+      <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:48px;letter-spacing:.01em;line-height:.95;color:#1A2A4A">STREAM IT.<br>SCORE IT.<br>WATCH IT.</h2>
     </div>
     <div class="steps-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(26,42,74,.18)">
       <div class="anim" style="background:#F4ECD8;padding:48px 40px">
@@ -339,13 +339,13 @@
     <div class="anim" style="margin-bottom:28px;display:flex;justify-content:center">
       <svg width="48" height="48" viewBox="0 0 48 48"><path d="M24 4 L40 12 L40 28 Q40 38 24 44 Q8 38 8 28 L8 12 Z" fill="#2C5234" stroke="#C9A14A" stroke-width="2"/><path d="M17 24 L21 28 L31 18" stroke="#F4ECD8" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </div>
-    <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:40px;letter-spacing:.01em;line-height:.95;color:#F4ECD8;margin-bottom:20px">WE PROTECT EVERY KID ON THE FIELD.<br>INCLUDING THE OTHER TEAM'S.</h2>
+    <h2 class="anim d1 sec-h2" style="font-family:'Alfa Slab One',serif;font-size:40px;letter-spacing:.01em;line-height:.95;color:#F4ECD8;margin-bottom:20px">WE PROTECT EVERY KID ON THE FIELD.</h2>
     <p class="anim d2" style="font-size:17px;line-height:1.7;color:rgba(244,236,216,.6);max-width:640px;margin:0 auto 36px">Names show as first name + last initial by default. Streams are private unless you choose to share. You're always in control of who sees what.</p>
-    <div class="anim d3" style="display:flex;align-items:center;justify-content:center;gap:48px;flex-wrap:wrap">
+    <div class="anim d3 safety-row" style="display:flex;align-items:center;justify-content:center;gap:48px;flex-wrap:wrap">
       <div style="text-align:center"><div style="font-family:'Alfa Slab One',serif;font-size:15px;color:#C9A14A;margin-bottom:5px">NAMES PROTECTED</div><div style="font-size:13px;color:rgba(244,236,216,.45)">First name + last initial by default</div></div>
-      <div style="width:1px;height:40px;background:rgba(244,236,216,.1)"></div>
+      <div class="safety-sep" style="width:1px;height:40px;background:rgba(244,236,216,.1)"></div>
       <div style="text-align:center"><div style="font-family:'Alfa Slab One',serif;font-size:15px;color:#C9A14A;margin-bottom:5px">STREAMS PRIVATE</div><div style="font-size:13px;color:rgba(244,236,216,.45)">Share only with who you choose</div></div>
-      <div style="width:1px;height:40px;background:rgba(244,236,216,.1)"></div>
+      <div class="safety-sep" style="width:1px;height:40px;background:rgba(244,236,216,.1)"></div>
       <div style="text-align:center"><div style="font-family:'Alfa Slab One',serif;font-size:15px;color:#C9A14A;margin-bottom:5px">YOU'RE IN CONTROL</div><div style="font-size:13px;color:rgba(244,236,216,.45)">Change anything, anytime</div></div>
     </div>
   </div>
@@ -388,8 +388,8 @@
 <footer style="background:#1A2A4A;padding:56px 5% 36px;border-top:1px solid rgba(201,161,74,.2)">
   <div style="max-width:1280px;margin:0 auto">
     <div class="footer-cols" style="display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:48px;margin-bottom:48px">
-      <div>
-        <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox Live" style="height:40px;width:auto;display:block;margin-bottom:18px"/>
+      <div class="footer-brand">
+        <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox Live" style="height:40px;width:auto;max-width:none;display:block;margin-bottom:18px"/>
         <p style="font-size:14px;line-height:1.65;color:rgba(244,236,216,.38);max-width:240px">Live baseball &amp; softball broadcasting for youth leagues. Free to watch. Always.</p>
       </div>
       <div>
