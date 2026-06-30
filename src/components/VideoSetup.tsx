@@ -82,7 +82,7 @@ export function VideoSetup({
 
       <div className="flex-1 overflow-y-auto p-4">
         {isPhone ? (
-          <PhoneBroadcastSection token={game.share_token} phone={phone} />
+          <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
         ) : isYouTube ? (
           <>
             <section className="mb-6">
@@ -147,14 +147,37 @@ export function VideoSetup({
   )
 }
 
-function PhoneBroadcastSection({ token, phone }: { token: string; phone: PhoneVideo }) {
-  const link = `${window.location.origin}/broadcast/${token}`
+function PhoneBroadcastSection({
+  gameId,
+  shareToken,
+  phone,
+}: {
+  gameId: string
+  shareToken: string
+  phone: PhoneVideo
+}) {
+  const [token, setToken] = useState<string | null>(null)
+  const link = token ? `${window.location.origin}/broadcast/${token}` : ''
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [confirmKill, setConfirmKill] = useState(false)
   const previewRef = useRef<HTMLVideoElement>(null)
 
+  // Mint (or reuse) a scoped, revocable broadcast grant for the filming phone — it's
+  // distinct from the viewer link and can be killed without rotating the share link.
+  // Falls back to the share_token if minting fails (still accepted server-side).
   useEffect(() => {
+    let cancelled = false
+    supabase.rpc('mint_broadcast_grant', { p_game_id: gameId }).then(({ data, error }) => {
+      if (!cancelled) setToken(!error && data ? (data as string) : shareToken)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameId, shareToken])
+
+  useEffect(() => {
+    if (!link) return
     QRCode.toDataURL(link, { margin: 1, width: 320, color: { dark: '#1A2A4A', light: '#F4ECD8' } })
       .then(setQr)
       .catch(() => setQr(null))
@@ -244,28 +267,34 @@ function PhoneBroadcastSection({ token, phone }: { token: string; phone: PhoneVi
         viewers with the watch link can’t.
       </p>
 
-      {qr && (
-        <img src={qr} alt="Broadcast QR" className="mx-auto h-44 w-44 border-2 border-ink" draggable={false} />
+      {link ? (
+        <>
+          {qr && (
+            <img src={qr} alt="Broadcast QR" className="mx-auto h-44 w-44 border-2 border-ink" draggable={false} />
+          )}
+          <div className="mt-3 w-full break-all border-2 border-ink bg-white px-3 py-2 text-center font-data text-xs">
+            {link}
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={copy}
+              className={`flex-1 border-2 border-ink py-2.5 font-display ${copied ? 'bg-board-green text-cream' : 'text-ink'}`}
+            >
+              {copied ? 'Copied ✓' : 'Copy link'}
+            </button>
+            <a
+              href={link}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 border-2 border-ink py-2.5 text-center font-display text-ink"
+            >
+              Open here
+            </a>
+          </div>
+        </>
+      ) : (
+        <p className="py-4 text-center font-data text-sm text-muted-tan">Preparing broadcaster link…</p>
       )}
-      <div className="mt-3 w-full break-all border-2 border-ink bg-white px-3 py-2 text-center font-data text-xs">
-        {link}
-      </div>
-      <div className="mt-2 flex gap-2">
-        <button
-          onClick={copy}
-          className={`flex-1 border-2 border-ink py-2.5 font-display ${copied ? 'bg-board-green text-cream' : 'text-ink'}`}
-        >
-          {copied ? 'Copied ✓' : 'Copy link'}
-        </button>
-        <a
-          href={link}
-          target="_blank"
-          rel="noreferrer"
-          className="flex-1 border-2 border-ink py-2.5 text-center font-display text-ink"
-        >
-          Open here
-        </a>
-      </div>
     </section>
   )
 }

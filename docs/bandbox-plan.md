@@ -91,7 +91,7 @@ broadcasts   (id, owner_type[field|matchup], matchup_id?, field_id?, angle, inge
 Today everything collapses into one `owner_id` + one bearer `share_token` (the token authorizes *both* watching and broadcasting). Split into three independently grantable/revocable rings:
 1. **Membership (identity).** `team_members` with roles **owner · admin · scorer · broadcaster**; invite by **email link** or **role-scoped join code / QR** (`team_invites` — expiring, revocable, max-uses). **Delegation is free** (§9). RLS moves from `owns_game` to role helpers (`can_admin_team` / `can_score_game` / `can_broadcast_game`); backfill an `owner` member for every existing team.
 2. **Broadcast authorization (scoped capability) — never the viewer link.** A signed-in **member** broadcasts by identity (JWT + role). An **unauthenticated phone** (tripod / second device) uses a **member-minted `broadcast_grant`**: single-game, expiring, one-tap-revocable, distinct from the viewer share link; uploads go through a **signed URL minted against a valid grant** (this closes the current open-`bpw-video`-bucket hole). **Field cameras** authenticate with a **`field_devices`** credential and may attach only to matchups at that field **while the field is paid-enabled** (§9 field economics) — field-channel, later.
-3. **Audience visibility (setting).** Who may *watch* (and whether the archive is kept/published) — the 4-rung ladder in §8, kept **separate** from the broadcast/archive axis.
+3. **Audience visibility (setting).** Who may *watch* (and whether the archive is kept/published) — the audience levels in §8 (members-only / link-only / public), kept **separate** from the broadcast/archive axis.
 
 **Migration:** keep `owner_id` (it becomes the implicit `owner` member); **split `share_token`** so it stays the viewer link only and stop honoring it for `resolve_broadcast`/recording; generalize `owns_game` → role helpers.
 
@@ -175,20 +175,28 @@ Counter the #1 lock-in (sunk stat history) with **data portability**. (Rizzler/T
 
 ## 8. Discovery & public surfaces
 
-Filterable directory (state · season · sport · age group) for network effects + SEO — **Managed Teams are discoverable by default**, name-safe, with a 4-rung escalation the team controls.
+Filterable directory (state · season · sport · age group) for network effects + SEO — **Managed Teams are discoverable by default**, name-safe. The admin sets **two independent controls** — the broadcast **audience** and the **discovery** of the data record — with player names governed by a separate rule.
 
 **Only Managed Teams appear.** A **Managed Team** is a real, owned entity (`teams` row + members + roster). An **opponent** is a per-game `opponent_label` string — not an entity, no profile, **never discoverable**. (Cleaner than GC, which spawns ghost opponent-teams that orphan and clutter search.) Bulk-imported **migration stubs are `unclaimed` and hidden until a real owner claims/verifies them** (§7). Opponents are never auto-reconciled into teams.
 
-**The 4-rung visibility ladder** (per team; a per-game override is the kill switch). Stats and video are **separate axes**; full names are the gated rung:
+**Don't conflate the controls** (the trap). There are two independent settings plus one names rule; a per-game override is the kill switch.
 
-| Rung | Stats / score | Public names | Video | In directory |
-|---|---|---|---|---|
-| **Private** (opt-out) | members + link only | — | members + link only | no |
-| **Discoverable** *(default)* | public, indexable | first + last initial | — | yes |
-| **Public** | public | first + last initial | yes | yes |
-| **Public + full names** | public | full names | yes | yes |
+**① Broadcast audience — who can watch the video:**
 
-Logged-in **team members always see full names** regardless of rung; the **Public + full names** rung is the consent-gated admin action (both §4).
+| Audience | Who | Account? | In directory |
+|---|---|---|---|
+| **Members-only** *(max privacy)* | invited family/members only | **yes** — the privacy tradeoff | no |
+| **Link-only** *(default)* | anyone with the share link | no | no |
+| **Public** | anyone | no | yes |
+
+**② Data-record discovery — the stats / score / schedule:** **discoverable by default** (a public, indexable, filterable page, names-down) or **private** (members + link only). Stats can be discoverable while the *video* stays link-only — separate axes.
+
+**③ Names — `displayName(player, viewer)`, keyed on the viewer:**
+- **Team members see full names by default** (a family can opt their own kid *down* — more private, never less).
+- **Everyone else (link-only / public) sees first name + last initial.**
+- The only way the public sees full names is the team turning on **full-names-public** — the one **consent-gated admin action** (§4).
+
+So members-only buys privacy *and* (because members are signed-in) is the circle that safely sees full names; link-only is the everyday, account-free default; public adds findability. Names-down protects everyone the team hasn't deliberately exposed.
 
 **Structured metadata makes filtering work** (controlled vocabularies, not free text): `teams` carry **sport** (baseball/softball), **city / state** (validated list), **country**, **age_group** (8U…HS-V), optional **level / league**; **seasons** are canonical (`year` + `term`), never typed strings. **Require state + season + age_group before a team can leave Private**, so the directory never fills with un-filterable ghosts.
 
@@ -407,7 +415,7 @@ This is the *only* field-layer thing that touches v1, and it's deliberate — it
 - **Matchup-native spine** — Field→Matchup→Team-game; **broadcasts attach to the matchup**; **no scorebook reconciliation**; **`displayName()` chokepoint**. v1 builds the schema; only team-game + pairing-code/QR camera-join + the one-field-pilot are wired.
 - **Team & season identity** (§2) — durable **`teams`** + **`team_seasons`** + canonical **`seasons`**. **Continuity is an *action* (roll over), not a team type:** travel teams roll over (roster copies forward editable, ages up 11U→12U, **career stats accrue**, identity = id not name, optional `birth_year` anchor); rec teams start fresh each season under a durable **`league`**. Owner-linking your *own* teams allowed; **cross-team player identity deferred**.
 - **Identity, roles & access — three rings** (§2). **Membership:** `team_members` roles **owner · admin · scorer · broadcaster** + `team_invites` (email or role-scoped join code), **free delegation**; RLS moves `owns_game` → role helpers. **Broadcast authorization:** by member identity **or** a scoped, revocable **`broadcast_grant`** — **never the viewer share link**; signed-URL uploads close the open-bucket hole; field devices (paid-enabled fields only) later. **Visibility** is a separate setting (the §8 ladder).
-- **Discovery — Managed Teams are discoverable by default** (§8), name-safe. **4-rung ladder:** Private → **Discoverable (default: stats + first/last-initial, no video)** → Public (+video) → Public + full names (**consent-gated admin rung**). Members always see full names; **live location coarsened for anon**; **structured metadata** (state/season/sport/age_group) required before leaving Private. **Opponents never discoverable; migration stubs unclaimed/hidden.** *(Resolves the old "Discovery default" open question — default is Discoverable, not opt-in.)*
+- **Discovery & visibility (§8)** — two independent controls + a names rule. **Broadcast audience:** members-only / **link-only (default)** / public. **Data-record discovery:** **discoverable by default** (stats/score page, names-down) or private. **Names:** **members see full names by default**; link-only/public see first + last initial unless the team enables **full-names-public** (the one **consent-gated admin action**). Live location coarsened for anon; **structured metadata** (state/season/sport/age_group) required before a team leaves private. **Opponents never discoverable; migration stubs unclaimed/hidden.** *(Resolves the old "Discovery default" open question.)*
 - **Monetization (§9): "watch it live free + 24h replay; keep it, pay."** Free = live moment + data record (scoring, scoreboard, **full stats kept**, **live P2P video + 24h replay**, **multi-user delegation**). Paid = produced/kept/scaled (scaled video, AI, **permanent recording/archive**, highlights). Two goods: **broadcast production** (shared → **Single-game ~$8** or **Team ~$149/season** hero; **all paid broadcasts capped at 50 viewers**, bigger = priced upgrade) vs **personal extras** (private → **Family ~$29/season**). **Facility** post-v1. **Sponsor offset** can zero it out; caps/breaker are internal guardrails.
 - **24-hour free replay** (the taste); permanent keep = paid. *(Resolved: 24h, not a hard gate.)*
 - **Multi-user delegation is FREE** (admins/scorers/broadcasters) — match GC, never paywall it; org/league hierarchies are Facility-tier. General rule: don't gate what GC gives free.

@@ -66,9 +66,15 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     const startedAt = recStartedAt.current
     const ext = base.includes('mp4') ? 'mp4' : 'webm'
     const path = `recordings/${gameId}/${startedAt}.${ext}`
+    // The bpw-video bucket isn't openly writable — ask sign-upload for a path-scoped
+    // signed URL (authorized by our broadcast token), then upload to that.
+    const { data: sign, error: signErr } = await supabase.functions.invoke('sign-upload', {
+      body: { token, path },
+    })
+    if (signErr || !sign?.token) return
     const { error } = await supabase.storage
       .from('bpw-video')
-      .upload(path, new Blob(chunks, { type: full }), { contentType: base, upsert: true })
+      .uploadToSignedUrl(path, sign.token, new Blob(chunks, { type: full }), { contentType: base })
     if (error) return
     await supabase.rpc('save_recording', {
       p_token: token,
