@@ -46,23 +46,54 @@ Event-sourced: **`game_events` is the immutable truth; `game_state` is a cached 
 
 ### Target schema (evolve the current `games`-centric model toward this)
 ```
-teams        (id, owner_id, name, season, public_profile, name_display_default, …)
-players      (id, team_id, name, number, …, name_display, do_not_stream)
-fields       (id, facility_id?, name, qr_slug, policy, sponsors, …)   -- pilot/later
-facilities   (id, owner_id, name, …)                                  -- later
-matchups     (id, field_id?, slot, claim_status, created_by, …)       -- the physical game
-team_games   (id, matchup_id, team_id?, opponent_label?, lineup, privacy, owner_id, …)
+-- Identity (durable) -----------------------------------------------------
+leagues      (id, name, city, state, owner_id?, …)                  -- durable org; the rec through-line; later
+teams        (id, owner_id, league_id?, canonical_name, sport, city, state, country,
+              birth_year?, discovery, claim_status, …)              -- DURABLE team identity
+seasons      (id, year, term[spring|summer|fall|winter], label)     -- canonical, platform/league seeded
+team_seasons (id, team_id, season_id, display_name, age_group, level?, …)  -- a team's run in ONE season; games attach here
+players      (id, team_id, name, number, …, name_display, name_consent?, do_not_stream)
+roster_entries (team_season_id, player_id, batting_order?, position?)      -- per-season roster
+
+-- Membership & access ----------------------------------------------------
+team_members (team_id, user_id, role[owner|admin|scorer|broadcaster], status, invited_by, …)
+team_invites (id, team_id, role, email?, token, expires_at, max_uses, uses, created_by, revoked_at)
+broadcast_grants (id, matchup_id?, team_game_id?, token, label, created_by, expires_at, revoked_at, last_used_at)
+field_devices    (id, field_id, credential, status, …)             -- field-mounted cameras; later
+
+-- Physical event & books -------------------------------------------------
+fields       (id, facility_id?, name, qr_slug, policy, sponsors, …)  -- pilot/later
+facilities   (id, owner_id, name, …)                                 -- later
+matchups     (id, field_id?, slot, claim_status, created_by, …)      -- the physical game
+team_games   (id, matchup_id, team_season_id?, opponent_label?, lineup, visibility?, owner_id, …)
 game_events  (id, team_game_id, seq, wall_clock_ts, inning, half, event_type, payload, …)
 game_state   (team_game_id PK, inning, half, outs, balls, strikes, scores, runners, …)
 broadcasts   (id, owner_type[field|matchup], matchup_id?, field_id?, angle, ingest_id,
               status, delay_ms, …)
 ```
 - **`game_events`/`game_state` key on `team_game_id`** (each book is its own log/projection).
+- **A team-game attaches to a `team_season`** (a Managed Team's run that season) **or carries an `opponent_label`** (a per-game string — never an entity, never discoverable).
 - **`broadcasts` attach to a matchup** (a phone angle) **or a field** (a field cam that *promotes* into whatever matchup claims its field — later).
 - **Viewer** = all `broadcasts` on the active matchup (shared angles + switcher) **+** the chosen **team-game's** `game_state` for that side's scorebug, aligned by the per-camera delay buffer.
-- **RLS / ownership** stays ownership-based (`owner_id = auth.uid()`); a team-game inherits to its scorer; a matchup is co-context for up to two owners. Field/facility bind later. (Keep the `bpw` schema.)
+- **Access is role-based, not single-owner** (see "Identity, roles & access" below): `team_members` grant owner/admin/scorer/broadcaster; RLS helpers (`can_admin_team` / `can_score_game` / `can_broadcast_game`) replace bare `owns_game`. Broadcasting is by **member identity or a scoped, revocable grant — never the viewer link**. Field/facility bind later. (Keep the `bpw` schema.)
 
 **v1 migration note:** the current app is `games (home_team_id, away_team_id)`-centric with a shared log. The v1 refactor splits that into **matchup + up to two team-games, each with its own event log**, and moves broadcast association onto the matchup. This is the single most important v1 foundation task — cheap now, painful later.
+
+### Team & season identity — durable vs per-season (travel ↔ rec)
+**Continuity is an *action*, not a team type.** Every team is the same object; the only fork is whether you **roll it over** into the next season or **start fresh**. The system never *assumes* continuity, so rec teams don't get wrongly merged and travel teams get it in one tap.
+- **`teams` is a durable identity; `team_seasons` is its run in one canonical `season`** (roster, schedule, games attach to the team-season). Identity is the `teams` id (+ optional **`birth_year`** cohort anchor), **not the name** — so a travel team can age up **11U → 12U** (per-season `display_name` / `age_group`) without breaking follows or career stats.
+- **Travel / all-star (durable):** one team, many `team_seasons`. "Continue into next season" **copies the roster forward (bring everyone, then edit), bumps the age, suggests the name** — and **career stats accrue across all the team's seasons**. Families follow the durable id and keep following as it ages up.
+- **Rec (ephemeral):** create a **new team each season** (the default action); each is one team with one season — no false continuity from last year's different kids. The durable through-line is the **`league`**, which groups each season's fresh set of teams.
+- **Owner-linking is safe** (unlike opponent reconciliation, which we don't do): the *same owner* may link two of *their own* teams into one lineage after the fact. Low priority.
+- **Deferred:** cross-*team* player identity (same kid on rec **and** travel) — genuinely hard, GC barely does it; **player career stays scoped to a team's lineage** for now.
+
+### Identity, roles & access — three rings
+Today everything collapses into one `owner_id` + one bearer `share_token` (the token authorizes *both* watching and broadcasting). Split into three independently grantable/revocable rings:
+1. **Membership (identity).** `team_members` with roles **owner · admin · scorer · broadcaster**; invite by **email link** or **role-scoped join code / QR** (`team_invites` — expiring, revocable, max-uses). **Delegation is free** (§9). RLS moves from `owns_game` to role helpers (`can_admin_team` / `can_score_game` / `can_broadcast_game`); backfill an `owner` member for every existing team.
+2. **Broadcast authorization (scoped capability) — never the viewer link.** A signed-in **member** broadcasts by identity (JWT + role). An **unauthenticated phone** (tripod / second device) uses a **member-minted `broadcast_grant`**: single-game, expiring, one-tap-revocable, distinct from the viewer share link; uploads go through a **signed URL minted against a valid grant** (this closes the current open-`bpw-video`-bucket hole). **Field cameras** authenticate with a **`field_devices`** credential and may attach only to matchups at that field **while the field is paid-enabled** (§9 field economics) — field-channel, later.
+3. **Audience visibility (setting).** Who may *watch* (and whether the archive is kept/published) — the 4-rung ladder in §8, kept **separate** from the broadcast/archive axis.
+
+**Migration:** keep `owner_id` (it becomes the implicit `owner` member); **split `share_token`** so it stays the viewer link only and stop honoring it for `resolve_broadcast`/recording; generalize `owns_game` → role helpers.
 
 ### Name-safety chokepoint (build requirement)
 **All name rendering runs through one shared `displayName(player, context)`** that *every* surface calls — scorebug, box score, play-by-play, **AI commentary audio** (it must not *say* a name shown only as an initial), highlight tags, share links, exports. Centralize it → leaks are impossible by construction. Scatter it → you'll expose a full name in the one place you forgot. (See §4.)
@@ -94,11 +125,12 @@ Calibrate to **light-touch** (a product that over-restricts broadcasts nothing) 
 
 **Opt-out = de-identification, not de-filming.** A wide shot of a public game is covered by the league's media release + fence notice; the real concern is *naming / profiling / permanent findability*, which lives in the **data layer**. So an opt-out is a **database flag, not a video problem** (GC's own remedy for a minor is to *anonymize*, not delete).
 
-**Names-down by default, opt up — system-wide (all via `displayName()`):**
-- **Public default = first name + last initial** everywhere public-facing.
-- **Full last names = league/team opt-*in*,** enabled only by the party that collected & certified consent — never by us, never by one parent unilaterally.
-- **Per-family downgrade always available** (to first-initial, number-only, or no individual stat line). Defaults cascade; individuals can be *more* private, never less.
-- **Appearing at all = league policy, not engineering.** For must-not-appear cases (custody/safety): no promised real-time blur — the league flags `do_not_stream`, doesn't stream that field, or hits the kill switch.
+**Names-down by default, opt up — system-wide (all via `displayName(player, viewer)`):**
+- **Public default = first name + last initial** everywhere public-facing — the discovery default (§8). The render keys on the **viewer**: a **logged-in member of that team always sees full names** (they're the kids' own families/coaches); the public sees the team's chosen rung.
+- **Full last names public = the one consent-gated rung.** An **admin/owner action tied to a "we hold consent for these players" attestation** (`players.name_consent` — timestamp + who certified), enabled only by the party that collected consent — never by us, never by one parent unilaterally. The first three discovery rungs (incl. names-down) are low-risk; **this rung is the legal one** (COPPA + state child-privacy).
+- **Per-family downgrade always available** (first-initial, number-only, or no individual stat line). Defaults cascade; individuals can be *more* private, never less.
+- **Live location is coarsened for anon.** A public/discoverable live game exposes **city/state + that it's live**, but **withholds precise field + exact timing from non-members** — "a 10U game in Austin is live" is fine; "this child is at this field right now" is not. Members and link-holders still get full detail.
+- **Appearing at all = league policy, not engineering.** Must-not-appear (custody/safety): the league flags `do_not_stream`, doesn't stream that field, or hits the kill switch.
 
 **Consent pushed upstream, three layers** (the league does the consenting; we make it easy + provable) — **field-channel scope, not v1 team product:**
 1. **Contractual** — facility/league agreement: rep-and-warranty of obtained media releases, covenant to display signage + include release language, a **certification**, and **indemnification**.
@@ -143,11 +175,26 @@ Counter the #1 lock-in (sunk stat history) with **data portability**. (Rizzler/T
 
 ## 8. Discovery & public surfaces
 
-Filterable directory (state/season/sport) for network effects + SEO, **privacy-gated & opt-in**:
-- **Discoverable = opt-in public Managed Teams (and, later, Fields).** Game-scoped opponents never appear.
-- **Public (safe):** team name, record, schedule, scores/stats, that a game is live — each public game an indexable page. **Gated/opt-in:** rosters (names-down by default), and **video** (unlisted by default; team must explicitly publish).
-- **Two modes:** **share-link** (no-account, always works) + **directory/search** (opt-in profiles). On an enabled field, the **fence QR resolves to the live matchup** — casual attendee scans, picks a side (or neutral scoreboard), no code shared.
-- **Per-team setting:** `Private` · `Discoverable (stats only)` · `Public (with video)`; COPPA-minded defaults.
+Filterable directory (state · season · sport · age group) for network effects + SEO — **Managed Teams are discoverable by default**, name-safe, with a 4-rung escalation the team controls.
+
+**Only Managed Teams appear.** A **Managed Team** is a real, owned entity (`teams` row + members + roster). An **opponent** is a per-game `opponent_label` string — not an entity, no profile, **never discoverable**. (Cleaner than GC, which spawns ghost opponent-teams that orphan and clutter search.) Bulk-imported **migration stubs are `unclaimed` and hidden until a real owner claims/verifies them** (§7). Opponents are never auto-reconciled into teams.
+
+**The 4-rung visibility ladder** (per team; a per-game override is the kill switch). Stats and video are **separate axes**; full names are the gated rung:
+
+| Rung | Stats / score | Public names | Video | In directory |
+|---|---|---|---|---|
+| **Private** (opt-out) | members + link only | — | members + link only | no |
+| **Discoverable** *(default)* | public, indexable | first + last initial | — | yes |
+| **Public** | public | first + last initial | yes | yes |
+| **Public + full names** | public | full names | yes | yes |
+
+Logged-in **team members always see full names** regardless of rung; the **Public + full names** rung is the consent-gated admin action (both §4).
+
+**Structured metadata makes filtering work** (controlled vocabularies, not free text): `teams` carry **sport** (baseball/softball), **city / state** (validated list), **country**, **age_group** (8U…HS-V), optional **level / league**; **seasons** are canonical (`year` + `term`), never typed strings. **Require state + season + age_group before a team can leave Private**, so the directory never fills with un-filterable ghosts.
+
+**A game is discoverable transitively** — it lists if a Managed Team attached to it is discoverable, rendered from *that* team's names-down perspective; the opponent side stays a bare label. Durable **travel** teams are **one** directory entry with multi-season history; **rec** teams are **separate** entries per season (correct — they really are different teams), so the directory neither bloats with a travel team's copies nor falsely merges unrelated rec "Red Sox."
+
+**Two reach modes:** **share-link** (no-account, always works, even for Private) + **directory/search** (the discoverable-by-default profiles). On an enabled field, the **fence QR resolves to the live matchup** — casual attendee scans, picks a side (or neutral scoreboard), no code shared. (Anon still gets the coarsened live-location per §4.)
 
 ---
 
@@ -212,9 +259,11 @@ benefits — ~$90 under GC, and we *never* wall fans). Single-game + Family-prem
 individual is never blocked or forced into a season commitment.
 
 **Multi-user delegation is FREE — we don't paywall what GC gives away.** A team can have
-multiple **admins, scorers, and broadcasters** (roles: owner · staff/manage · scorer · camera)
+multiple **admins, scorers, and broadcasters** (roles: owner · admin · scorer · broadcaster;
+invite by email or role-scoped join code — see §2 "Identity, roles & access")
 at no cost — matching GC's free team management, with a cleaner permission model tied to our
-ownership/matchup design (each team-game has an owner; cameras *join* the matchup). Paid tiers
+ownership/matchup design (each team-game has an owner; cameras *join* the matchup via a scoped,
+revocable grant). Paid tiers
 gate *broadcast production*, never *who can help run the team*. (Org/league-wide hierarchies
 across many teams are a Facility-tier feature.) **General rule: never gate behind paid anything
 GC gives free — delegation, scoring, stats — or the "obviously better value" claim breaks.**
@@ -315,6 +364,7 @@ This is the *only* field-layer thing that touches v1, and it's deliberate — it
 
 **Phase V1 — the personal app, rock-solid (the proof + the demo).** Get streaming-plus-stats genuinely great for your own kids' games. Within V1:
 1. **Matchup-native + name-safe refactor** — evolve `games` → matchup + team-games (per-book event logs); broadcasts attach to matchup; the `displayName()` chokepoint. *(The forward-compat foundation — do this before piling on features.)*
+1b. **Identity, roles & access + team/season model** (§2) — durable `teams` + `team_seasons` + `seasons`; `team_members`/`team_invites` (free delegation) with role-based RLS; **split `share_token`** so broadcasting moves to scoped `broadcast_grant`s (closes the open-bucket hole). The membership + broadcast-auth substrate everything else leans on.
 2. **Offline-first scoring** — local event queue + `seq` reconcile.
 3. **Stat depth** (season/career, per player & team) — projections; own-team rollups.
 4. **Recording → R2** — `MediaRecorder` chunked upload (P2P/SFU); replay from R2; retention.
@@ -355,6 +405,9 @@ This is the *only* field-layer thing that touches v1, and it's deliberate — it
 - **Rebrand → Bandbox / BANDBOX LIVE** (bandbox.tv); `bpw` infra schema unchanged.
 - **Unified plan** — this doc supersedes product-strategy.md; wedge doc kept as the vision reference.
 - **Matchup-native spine** — Field→Matchup→Team-game; **broadcasts attach to the matchup**; **no scorebook reconciliation**; **`displayName()` chokepoint**. v1 builds the schema; only team-game + pairing-code/QR camera-join + the one-field-pilot are wired.
+- **Team & season identity** (§2) — durable **`teams`** + **`team_seasons`** + canonical **`seasons`**. **Continuity is an *action* (roll over), not a team type:** travel teams roll over (roster copies forward editable, ages up 11U→12U, **career stats accrue**, identity = id not name, optional `birth_year` anchor); rec teams start fresh each season under a durable **`league`**. Owner-linking your *own* teams allowed; **cross-team player identity deferred**.
+- **Identity, roles & access — three rings** (§2). **Membership:** `team_members` roles **owner · admin · scorer · broadcaster** + `team_invites` (email or role-scoped join code), **free delegation**; RLS moves `owns_game` → role helpers. **Broadcast authorization:** by member identity **or** a scoped, revocable **`broadcast_grant`** — **never the viewer share link**; signed-URL uploads close the open-bucket hole; field devices (paid-enabled fields only) later. **Visibility** is a separate setting (the §8 ladder).
+- **Discovery — Managed Teams are discoverable by default** (§8), name-safe. **4-rung ladder:** Private → **Discoverable (default: stats + first/last-initial, no video)** → Public (+video) → Public + full names (**consent-gated admin rung**). Members always see full names; **live location coarsened for anon**; **structured metadata** (state/season/sport/age_group) required before leaving Private. **Opponents never discoverable; migration stubs unclaimed/hidden.** *(Resolves the old "Discovery default" open question — default is Discoverable, not opt-in.)*
 - **Monetization (§9): "watch it live free + 24h replay; keep it, pay."** Free = live moment + data record (scoring, scoreboard, **full stats kept**, **live P2P video + 24h replay**, **multi-user delegation**). Paid = produced/kept/scaled (scaled video, AI, **permanent recording/archive**, highlights). Two goods: **broadcast production** (shared → **Single-game ~$8** or **Team ~$149/season** hero; **all paid broadcasts capped at 50 viewers**, bigger = priced upgrade) vs **personal extras** (private → **Family ~$29/season**). **Facility** post-v1. **Sponsor offset** can zero it out; caps/breaker are internal guardrails.
 - **24-hour free replay** (the taste); permanent keep = paid. *(Resolved: 24h, not a hard gate.)*
 - **Multi-user delegation is FREE** (admins/scorers/broadcasters) — match GC, never paywall it; org/league hierarchies are Facility-tier. General rule: don't gate what GC gives free.
@@ -376,6 +429,8 @@ This is the *only* field-layer thing that touches v1, and it's deliberate — it
 - **Native trigger timing** — wrap the scorer in Capacitor now (de-risk capture) or strictly after the PWA reliability tests fail?
 - **Migration scope** — CSV-only first, or also the stats-page OCR? How many past seasons.
 - **v1 stat list** — how far into advanced/fielding; any paid stats vs all-free.
-- **Discovery default** — `Private`/share-link vs `Discoverable (stats only)`; COPPA posture.
 - **Recording retention window** (30/45/season); **paid TURN** provider.
+- **Cross-team player identity** — same kid on rec **and** travel; deferred (hard, GC barely does it). Revisit if career profiles demand it.
+- **League modeling depth** — how much org/season hierarchy to build now vs stub (rec through-line vs the later facility/consent anchor).
+- **Consent-attestation UX** — the exact admin flow + audit record that gates the Public-+-full-names rung (the COPPA-sensitive one), and the youth-privacy legal review that should precede it.
 - **Pilot target** — which local complex/tournament, and when.

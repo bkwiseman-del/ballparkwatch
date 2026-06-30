@@ -7,6 +7,7 @@ import Lineup from './routes/Lineup'
 import Score from './routes/Score'
 import Watch from './routes/Watch'
 import Broadcast from './routes/Broadcast'
+import Join from './routes/Join'
 
 export default function App() {
   return (
@@ -42,6 +43,9 @@ export default function App() {
       <Route path="/watch/:gameId" element={<Watch />} />
       {/* Broadcaster — reached only via the scorer's private token link/QR. */}
       <Route path="/broadcast/:token" element={<Broadcast />} />
+      {/* Accept a team invite — sign-in required, but NOT the beta allowlist
+          (accepting the invite is what grants access). */}
+      <Route path="/join/:token" element={<Join />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

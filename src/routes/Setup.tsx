@@ -8,6 +8,7 @@ import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
 import { VideoSetup } from '@/components/VideoSetup'
 import { ShareSheet } from '@/components/ShareSheet'
+import { TeamMembers } from '@/components/TeamMembers'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -844,6 +845,7 @@ function NewTeamForm({ onAdd }: { onAdd: (name: string, season: string, favorite
 /* ----------------------------------------------------------------- Roster */
 
 function Roster({ team, onError }: { team: Team; onError: (m: string) => void }) {
+  const [showMembers, setShowMembers] = useState(false)
   const [players, setPlayers] = useState<Player[]>([]) // active roster
   const [archived, setArchived] = useState<Player[]>([]) // soft-deleted
   const [showArchived, setShowArchived] = useState(false)
@@ -998,7 +1000,15 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
             {players.length} player{players.length === 1 ? '' : 's'}
           </p>
         </div>
-        <CodeEditor team={team} onError={onError} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowMembers(true)}
+            className="border-2 border-ink px-3 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink hover:bg-ink hover:text-cream"
+          >
+            Members
+          </button>
+          <CodeEditor team={team} onError={onError} />
+        </div>
       </div>
 
       <ul className="flex flex-col">
@@ -1116,6 +1126,8 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
           onSave={saveScanned}
         />
       )}
+
+      {showMembers && <TeamMembers team={team} onClose={() => setShowMembers(false)} />}
     </div>
   )
 }
