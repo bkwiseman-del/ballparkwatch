@@ -2,17 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
-import { Roster } from '@/routes/Setup'
-import { TeamSchedule } from '@/components/TeamSchedule'
+import { Roster, GamesView } from '@/routes/Setup'
 import { SeasonStats } from '@/components/SeasonStats'
 import { TeamMembers } from '@/components/TeamMembers'
 import { TeamDetails } from '@/components/TeamDetails'
-import type { Team } from '@/lib/types'
+import { useAuth } from '@/auth/AuthProvider'
+import type { Game, Team } from '@/lib/types'
 
 type Tab = 'roster' | 'schedule' | 'stats' | 'members' | 'settings'
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'roster', label: 'Roster' },
   { id: 'schedule', label: 'Schedule' },
+  { id: 'roster', label: 'Roster' },
   { id: 'stats', label: 'Stats' },
   { id: 'members', label: 'Members' },
   { id: 'settings', label: 'Settings' },
@@ -21,9 +21,12 @@ const TABS: { id: Tab; label: string }[] = [
 // The team hub — one page per team, tabbed (plan §8). Replaces the modal pile on the
 // Setup screen; it's also the owner-edit mirror of the public /t/<slug> page.
 export default function TeamHub() {
+  const { user } = useAuth()
   const { id } = useParams()
   const [team, setTeam] = useState<Team | null>(null)
-  const [tab, setTab] = useState<Tab>('roster')
+  const [teams, setTeams] = useState<Team[]>([])
+  const [games, setGames] = useState<Game[]>([])
+  const [tab, setTab] = useState<Tab>('schedule')
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState(false)
 
@@ -39,6 +42,19 @@ export default function TeamHub() {
         if (!data) return setMissing(true)
         setTeam(data as Team)
       })
+    // All teams (for the opponent picker + name lookup) and all games (GamesView
+    // filters to this team via teamId).
+    supabase
+      .from('teams')
+      .select('*')
+      .order('is_favorite', { ascending: false })
+      .order('name')
+      .then(({ data }) => setTeams((data ?? []) as Team[]))
+    supabase
+      .from('games')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setGames((data ?? []) as Game[]))
   }, [id])
   useEffect(load, [load])
 
@@ -114,8 +130,19 @@ export default function TeamHub() {
               )}
 
               <div className="mt-5">
+                {tab === 'schedule' &&
+                  (user ? (
+                    <GamesView
+                      teams={teams}
+                      games={games}
+                      userId={user.id}
+                      teamId={team.id}
+                      heading={null}
+                      onChange={load}
+                      onError={setError}
+                    />
+                  ) : null)}
                 {tab === 'roster' && <Roster team={team} onError={setError} />}
-                {tab === 'schedule' && <TeamSchedule team={team} />}
                 {tab === 'stats' && <SeasonStats team={team} />}
                 {tab === 'members' && <TeamMembers team={team} />}
                 {tab === 'settings' && <TeamDetails team={team} onSaved={load} />}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Season, Team, TeamDiscovery, TeamSport } from '@/lib/types'
@@ -33,6 +34,7 @@ function attestation(d: TeamDiscovery): string {
 // public team page need.
 export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void }) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [seasons, setSeasons] = useState<Season[]>([])
   const [saved, setSaved] = useState(false)
   // Pre-checked only if the team is already public (consent previously given); a move
@@ -87,6 +89,21 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
     onSaved()
     setSaved(true)
     window.setTimeout(() => setSaved(false), 1800)
+  }
+
+  async function deleteTeam() {
+    setErr(null)
+    const { count } = await supabase
+      .from('games')
+      .select('id', { count: 'exact', head: true })
+      .or(`away_team_id.eq.${team.id},home_team_id.eq.${team.id}`)
+    if (count && count > 0) {
+      return setErr(`Can’t delete — this team is in ${count} game${count === 1 ? '' : 's'}. Delete those first.`)
+    }
+    if (!window.confirm(`Delete ${team.name} and its whole roster? This can’t be undone.`)) return
+    const { error } = await supabase.from('teams').delete().eq('id', team.id)
+    if (error) return setErr(error.message)
+    navigate('/setup')
   }
 
   const input = 'w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green'
@@ -228,6 +245,16 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
             {busy ? 'Saving…' : 'Save details'}
           </button>
           {saved && <span className="font-data text-sm text-board-green">Saved ✓</span>}
+        </div>
+
+        <div className="mt-6 border-2 border-barn-red/40 p-3">
+          <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">Danger zone</p>
+          <button
+            onClick={deleteTeam}
+            className="mt-2 border-2 border-barn-red px-4 py-2 font-display text-sm text-barn-red hover:bg-barn-red hover:text-cream"
+          >
+            Delete team
+          </button>
         </div>
     </div>
   )
