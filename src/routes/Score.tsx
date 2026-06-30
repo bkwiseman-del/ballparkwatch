@@ -723,11 +723,8 @@ function BetweenInnings({
         >
           Edit full lineup
         </Link>
-        <button
-          onClick={onEndEarly}
-          className="border-2 border-barn-red py-2.5 font-athletic text-xs font-bold uppercase tracking-[.12em] text-barn-red"
-        >
-          End game early ▸
+        <button onClick={onEndEarly} className="bg-barn-red py-3.5 font-display text-base text-cream">
+          End game ▸
         </button>
       </div>
     </div>
