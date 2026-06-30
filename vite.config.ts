@@ -19,6 +19,11 @@ export default defineConfig({
         name: 'Bandbox',
         short_name: 'Bandbox',
         description: 'Live baseball scoring & streaming for youth and amateur leagues.',
+        // The installed app is the operator's tool — open it AT the app, not the
+        // public marketing page at '/' (which hijacks login to the waitlist).
+        // Not signed in → RequireAuth sends to /login.
+        start_url: '/setup',
+        scope: '/',
         theme_color: '#1A2A4A',
         background_color: '#F4ECD8',
         display: 'standalone',

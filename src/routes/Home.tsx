@@ -69,8 +69,10 @@ export default function Home() {
       raf = requestAnimationFrame(tick)
     }, 500)
 
-    // Every primary CTA (still pointing at /login in the markup) opens the waitlist.
-    const ctas = Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href="/login"]'))
+    // Every primary CTA (still pointing at /login in the markup) opens the waitlist —
+    // EXCEPT a link explicitly marked data-app-login (the operator sign-in escape
+    // hatch), which navigates to /login normally.
+    const ctas = Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href="/login"]:not([data-app-login])'))
     const openWaitlist = (ev: Event) => {
       ev.preventDefault()
       setStatus('idle')
