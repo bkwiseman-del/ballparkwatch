@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { BrandLogo } from '@/components/Logo'
+import { PublicFooter, PublicNav } from '@/components/PublicChrome'
 
 type Game = {
   id: string
@@ -50,30 +50,26 @@ export default function Team() {
     })
   }, [slug])
 
-  if (state === 'loading') return <Shell><p className="font-data text-muted-tan">Loading…</p></Shell>
-  if (state === 'missing' || !team)
-    return (
-      <Shell>
-        <p className="font-display text-2xl text-ink">Team not found</p>
-        <p className="mt-1 font-data text-sm text-muted-tan">This team is private or the link is wrong.</p>
-      </Shell>
-    )
-
-  const rec = team.record
-  const sub = [team.age_group, cap(team.sport), [team.city, team.state].filter(Boolean).join(', '), team.season]
-    .filter(Boolean)
-    .join(' · ')
+  const rec = team?.record
+  const sub = team
+    ? [team.age_group, cap(team.sport), [team.city, team.state].filter(Boolean).join(', '), team.season]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
 
   return (
-    <div className="min-h-full bg-cream text-ink">
-      <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
-        <BrandLogo className="h-7 w-auto" />
-        <Link to="/" className="font-athletic text-sm uppercase tracking-wide text-gold">
-          Bandbox
-        </Link>
-      </header>
-
-      <div className="mx-auto max-w-2xl px-4 pb-16 pt-6">
+    <div className="flex min-h-full flex-col bg-cream text-ink">
+      <PublicNav />
+      <main className="flex-1">
+        {state === 'loading' && <Centered>Loading…</Centered>}
+        {state === 'missing' && (
+          <Centered>
+            <p className="font-display text-2xl text-ink">Team not found</p>
+            <p className="mt-1 font-data text-sm text-muted-tan">This team is private or the link is wrong.</p>
+          </Centered>
+        )}
+        {state === 'ok' && team && rec && (
+          <div className="mx-auto max-w-2xl px-4 pb-16 pt-6">
         {/* Team identity */}
         <h1 className="font-display text-3xl leading-tight text-ink">{team.name}</h1>
         {sub && <p className="mt-1 font-athletic text-sm uppercase tracking-wide text-muted-tan">{sub}</p>}
@@ -142,7 +138,10 @@ export default function Team() {
         <p className="mt-8 text-center font-athletic text-[11px] uppercase tracking-[.16em] text-muted-tan">
           Player names shown as first name + last initial
         </p>
-      </div>
+          </div>
+        )}
+      </main>
+      <PublicFooter />
     </div>
   )
 }
@@ -157,9 +156,11 @@ function Result({ my, opp }: { my: number; opp: number }) {
   )
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-cream p-6 text-center">{children}</div>
+    <div className="flex min-h-[40vh] flex-col items-center justify-center p-6 text-center font-data text-muted-tan">
+      {children}
+    </div>
   )
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
