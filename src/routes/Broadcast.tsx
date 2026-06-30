@@ -117,11 +117,18 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
           }
         },
       ) ?? ''
+    // Cap the bitrate — iOS records at a very high default, which blows past upload
+    // size limits even for short clips. ~2 Mbps is plenty for a 720p replay.
+    const recOpts: MediaRecorderOptions = { videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 96_000 }
     let rec: MediaRecorder
     try {
-      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime, ...recOpts }) : new MediaRecorder(stream, recOpts)
     } catch {
-      return
+      try {
+        rec = new MediaRecorder(stream)
+      } catch {
+        return
+      }
     }
     recChunks.current = []
     recMime.current = rec.mimeType || mime || 'video/webm'
