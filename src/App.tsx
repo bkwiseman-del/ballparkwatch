@@ -8,6 +8,7 @@ import Score from './routes/Score'
 import Watch from './routes/Watch'
 import Broadcast from './routes/Broadcast'
 import Join from './routes/Join'
+import Team from './routes/Team'
 
 export default function App() {
   return (
@@ -41,6 +42,8 @@ export default function App() {
       />
       {/* Viewer is public — reached via an unguessable share link, no account. */}
       <Route path="/watch/:gameId" element={<Watch />} />
+      {/* Public team page — visibility-gated server-side (private teams 404). */}
+      <Route path="/t/:slug" element={<Team />} />
       {/* Broadcaster — reached only via the scorer's private token link/QR. */}
       <Route path="/broadcast/:token" element={<Broadcast />} />
       {/* Accept a team invite — sign-in required, but NOT the beta allowlist
