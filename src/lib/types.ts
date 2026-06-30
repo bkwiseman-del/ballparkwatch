@@ -15,15 +15,32 @@ export type Half = 'top' | 'bottom'
 
 export type Handedness = 'L' | 'R' | 'S' // S = switch (bats only)
 
+export type TeamSport = 'baseball' | 'softball'
+export type TeamDiscovery = 'private' | 'discoverable' | 'public'
+
 export type Team = {
   id: string
   owner_id: string
   name: string
   code: string | null
-  season: string | null
+  season: string | null // legacy free-text; superseded by season_id
   is_favorite: boolean
   created_at: string
+  // Durable identity & discovery metadata (20260630030000_team_identity).
+  sport: TeamSport
+  city: string | null
+  state: string | null
+  country: string
+  age_group: string | null
+  level: string | null
+  birth_year: number | null
+  season_id: string | null
+  slug: string | null
+  discovery: TeamDiscovery
+  claim_status: string
 }
+
+export type Season = { id: string; year: number; term: string; label: string }
 
 export type Player = {
   id: string

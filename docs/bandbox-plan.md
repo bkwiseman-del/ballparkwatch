@@ -204,6 +204,14 @@ So members-only buys privacy *and* (because members are signed-in) is the circle
 
 **Two reach modes:** **share-link** (no-account, always works, even for Private) + **directory/search** (the discoverable-by-default profiles). On an enabled field, the **fence QR resolves to the live matchup** — casual attendee scans, picks a side (or neutral scoreboard), no code shared. (Anon still gets the coarsened live-location per §4.)
 
+### The team page — the hub everything converges on
+A **claimed (Managed) team gets a durable public page** at a stable slug (`bandbox.tv/t/<slug>`) — the **profile** in the directory and the destination for a share. It renders, with the §4 names rule + the team's visibility level applied:
+- **Seasons** — the durable team's history (one page, season-by-season; this is what the durable-team / `team_seasons` model unlocks — career totals across seasons).
+- **Stats** — the season/career rollups (record, run diff, per-player batting/pitching) — *the data layer already exists* (`seasonStats.ts`); the page is the surface.
+- **Game replays** — each finished game links to its recording + synced scorebug (recording/replay is built).
+- **Schedule / record / roster** — names-down for the public, full for members.
+Served by a visibility-gated public RPC keyed on the slug (mirrors `get_public_game`): **private** → members/link only; **discoverable** → stats page, names-down, no video; **public** → + replays. **Dependencies:** the durable team **slug + metadata** (added now) and the **`team_seasons`** model (so "seasons" means something) — then the page is a thin read-only render over data we already produce.
+
 ---
 
 ## 9. Monetization — the model

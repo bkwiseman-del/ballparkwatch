@@ -10,6 +10,7 @@ import { VideoSetup } from '@/components/VideoSetup'
 import { ShareSheet } from '@/components/ShareSheet'
 import { TeamMembers } from '@/components/TeamMembers'
 import { SeasonStats } from '@/components/SeasonStats'
+import { TeamDetails } from '@/components/TeamDetails'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type Tab = 'games' | 'teams'
@@ -735,7 +736,7 @@ function TeamsView({
 
       <section>
         {selected ? (
-          <Roster team={selected} onError={onError} />
+          <Roster team={selected} onError={onError} onChange={onChange} />
         ) : (
           <div className="flex h-full min-h-40 items-center justify-center border-2 border-dashed border-ink/30 p-6 text-center font-data text-muted-tan">
             Select a team to manage its roster, or import one from CSV.
@@ -845,9 +846,10 @@ function NewTeamForm({ onAdd }: { onAdd: (name: string, season: string, favorite
 
 /* ----------------------------------------------------------------- Roster */
 
-function Roster({ team, onError }: { team: Team; onError: (m: string) => void }) {
+function Roster({ team, onError, onChange }: { team: Team; onError: (m: string) => void; onChange: () => void }) {
   const [showMembers, setShowMembers] = useState(false)
   const [showStats, setShowStats] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
   const [players, setPlayers] = useState<Player[]>([]) // active roster
   const [archived, setArchived] = useState<Player[]>([]) // soft-deleted
   const [showArchived, setShowArchived] = useState(false)
@@ -1002,7 +1004,13 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
             {players.length} player{players.length === 1 ? '' : 's'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowDetails(true)}
+            className="border-2 border-ink px-3 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink hover:bg-ink hover:text-cream"
+          >
+            Details
+          </button>
           <button
             onClick={() => setShowStats(true)}
             className="border-2 border-ink px-3 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink hover:bg-ink hover:text-cream"
@@ -1137,6 +1145,9 @@ function Roster({ team, onError }: { team: Team; onError: (m: string) => void })
 
       {showMembers && <TeamMembers team={team} onClose={() => setShowMembers(false)} />}
       {showStats && <SeasonStats team={team} onClose={() => setShowStats(false)} />}
+      {showDetails && (
+        <TeamDetails team={team} onClose={() => setShowDetails(false)} onSaved={onChange} />
+      )}
     </div>
   )
 }
