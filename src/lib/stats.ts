@@ -95,7 +95,28 @@ export type BattingLine = {
   hr: number
   bb: number
   k: number
+  hbp: number
+  sb: number
   avg: number // H / AB
+}
+
+// Derived rate stats from a (single-game or season-summed) batting line.
+export function battingRates(l: BattingLine): { tb: number; avg: number; obp: number; slg: number; ops: number } {
+  const singles = Math.max(0, l.h - l.doubles - l.triples - l.hr)
+  const tb = singles + 2 * l.doubles + 3 * l.triples + 4 * l.hr
+  const avg = l.ab > 0 ? l.h / l.ab : 0
+  const onBaseDen = l.ab + l.bb + l.hbp // no sac flies tracked; rare in youth ball
+  const obp = onBaseDen > 0 ? (l.h + l.bb + l.hbp) / onBaseDen : 0
+  const slg = l.ab > 0 ? tb / l.ab : 0
+  return { tb, avg, obp, slg, ops: obp + slg }
+}
+
+// Derived rate stats from a pitching line (outs → IP).
+export function pitchingRates(l: PitchingLine): { era: number; whip: number } {
+  return {
+    era: l.outs > 0 ? (l.er * 27) / l.outs : 0, // ER * 9 / (outs/3)
+    whip: l.outs > 0 ? ((l.bb + l.h) * 3) / l.outs : 0, // (BB+H) / (outs/3)
+  }
 }
 
 export type BattingLines = { away: BattingLine[]; home: BattingLine[] }
@@ -136,7 +157,7 @@ export function computeBattingLines(
     if (!e) {
       e = {
         top,
-        line: { playerId: id, name: batterName(id) ?? '—', ab: 0, r: 0, h: 0, rbi: 0, doubles: 0, triples: 0, hr: 0, bb: 0, k: 0, avg: 0 },
+        line: { playerId: id, name: batterName(id) ?? '—', ab: 0, r: 0, h: 0, rbi: 0, doubles: 0, triples: 0, hr: 0, bb: 0, k: 0, hbp: 0, sb: 0, avg: 0 },
       }
       acc.set(id, e)
     }
@@ -160,11 +181,16 @@ export function computeBattingLines(
       if (ev.event_type === 'home_run') l.hr += 1
       if (ev.event_type === 'walk') l.bb += 1
       if (ev.event_type === 'strikeout') l.k += 1
+      if (ev.event_type === 'hit_by_pitch') l.hbp += 1
       if (runs > 0 && RBI_TYPES.has(ev.event_type)) l.rbi += runs
     }
     // Credit the run to whoever crossed the plate (runners are on the batting team).
     if (runs > 0) {
       for (const sid of scorersOf(ev, before, runs)) ensure(sid, before.half === 'top').r += 1
+    }
+    // Steals are credited to the runner (on the batting team).
+    if (ev.event_type === 'stolen_base' && ev.payload?.runner) {
+      ensure(ev.payload.runner as string, before.half === 'top').sb += 1
     }
   }
 
