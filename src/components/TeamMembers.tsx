@@ -10,7 +10,7 @@ type Invite = { id: string; email: string; role: Role; token: string; created_at
 // Staff run the team; family follow it. Split so inviting a parent can't be
 // confused with handing someone scoring/broadcast powers.
 const STAFF: { value: Exclude<Role, 'owner' | 'family'>; label: string; hint: string }[] = [
-  { value: 'admin', label: 'Admin', hint: 'Roster, schedule, members' },
+  { value: 'admin', label: 'Admin', hint: 'Coach — roster, schedule, members' },
   { value: 'scorer', label: 'Scorer', hint: 'Score games' },
   { value: 'broadcaster', label: 'Broadcaster', hint: 'Film / stream only' },
 ]

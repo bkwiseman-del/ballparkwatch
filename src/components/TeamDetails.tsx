@@ -6,7 +6,14 @@ import { Select, fieldClass } from '@/components/Select'
 import type { Season, Team, TeamDiscovery, TeamSport } from '@/lib/types'
 
 const AGE_GROUPS = ['6U', '7U', '8U', '9U', '10U', '11U', '12U', '13U', '14U', 'HS-JV', 'HS-V', 'Adult']
-const LEVELS = ['', 'rec', 'travel', 'school', 'league']
+const LEVELS: { value: string; label: string }[] = [
+  { value: '', label: '—' },
+  { value: 'rec', label: 'Rec' },
+  { value: 'travel', label: 'Travel' },
+  { value: 'allstar', label: 'All Star' },
+  { value: 'school', label: 'School' },
+  { value: 'league', label: 'League' },
+]
 // Each option spells out EXACTLY what it exposes — this is minors' data, so it must be
 // a deliberate choice, not a vague toggle (plan §4).
 const DISCOVERY: { value: TeamDiscovery; label: string; hint: string }[] = [
@@ -201,8 +208,8 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
               <span className={labelCls}>Level</span>
               <Select value={level} onChange={setLevel}>
                 {LEVELS.map((l) => (
-                  <option key={l} value={l}>
-                    {l ? l[0].toUpperCase() + l.slice(1) : '—'}
+                  <option key={l.value} value={l.value}>
+                    {l.label}
                   </option>
                 ))}
               </Select>
