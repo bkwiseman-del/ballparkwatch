@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
+import { scanLineupImage } from '@/lib/scanLineup'
 import { HeaderWordmark } from '@/components/Logo'
 import type { Game, LineupEntry, Player, Team } from '@/lib/types'
 
@@ -276,6 +277,8 @@ function TeamLineup({
   const [nm, setNm] = useState('')
   const [jn, setJn] = useState('')
   const [busy, setBusy] = useState(false)
+  const [scanMsg, setScanMsg] = useState<string | null>(null)
+  const scanRef = useRef<HTMLInputElement>(null)
   async function submitAdd() {
     if (!nm.trim() || busy) return
     setBusy(true)
@@ -284,6 +287,18 @@ function TeamLineup({
     setNm('')
     setJn('')
     // keep the form open so several new arrivals can be added back-to-back
+  }
+  // Build a roster from a photo/screenshot of a lineup — the fast way to fill in an
+  // opponent (or your own team). Adds every player the scan reads into the order.
+  async function onScan(file: File) {
+    setScanMsg('Reading lineup…')
+    try {
+      const found = await scanLineupImage(file)
+      for (const p of found) await onAddPlayer(p.name, p.number)
+      setScanMsg(`Added ${found.length} player${found.length === 1 ? '' : 's'}.`)
+    } catch (e) {
+      setScanMsg(e instanceof Error ? e.message : 'Scan failed.')
+    }
   }
   // Archived players drop out of the "add to lineup" pool, but anyone already in
   // this game's order still shows (history stays intact).
@@ -474,12 +489,32 @@ function TeamLineup({
             </button>
           </div>
         ) : (
-          <button
-            onClick={() => setAdding(true)}
-            className="font-athletic text-xs font-semibold uppercase tracking-[.1em] text-board-green"
-          >
-            {roster.length === 0 ? `+ Add the first player to ${team.name}` : '+ Add a player'}
-          </button>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button
+              onClick={() => setAdding(true)}
+              className="font-athletic text-xs font-semibold uppercase tracking-[.1em] text-board-green"
+            >
+              {roster.length === 0 ? `+ Add the first player to ${team.name}` : '+ Add a player'}
+            </button>
+            <button
+              onClick={() => scanRef.current?.click()}
+              className="font-athletic text-xs font-semibold uppercase tracking-[.1em] text-board-green"
+            >
+              ⤒ Scan a lineup
+            </button>
+            <input
+              ref={scanRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.currentTarget.value = ''
+                if (f) onScan(f)
+              }}
+            />
+            {scanMsg && <span className="font-data text-xs text-muted-tan">{scanMsg}</span>}
+          </div>
         )}
       </div>
     </section>

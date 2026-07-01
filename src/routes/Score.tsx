@@ -249,6 +249,15 @@ export default function Score() {
                 if (filled.length) setRosterNote(filled)
               }
               act('game_start')
+              // Notify followers the game is live (fire-and-forget; ghost opponents
+              // have no members so their call is a harmless no-op).
+              const title = `${teams?.away.name ?? 'Away'} vs ${teams?.home.name ?? 'Home'} is live`
+              for (const tid of [s.game?.away_team_id, s.game?.home_team_id]) {
+                if (tid)
+                  void supabase.functions.invoke('send-push', {
+                    body: { team_id: tid, title, body: 'Tap to watch live ▸', url: `/watch/${gameId}` },
+                  })
+              }
             }}
             className="bg-gold px-8 py-4 font-display text-xl text-ink"
           >
