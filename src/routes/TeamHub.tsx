@@ -149,18 +149,16 @@ export default function TeamHub() {
               <div className="mt-5">
                 {tab === 'schedule' &&
                   (user ? (
-                    <>
-                      <GamesView
-                        teams={teams}
-                        games={games}
-                        userId={user.id}
-                        teamId={team.id}
-                        heading={null}
-                        onChange={load}
-                        onError={setError}
-                      />
-                      <TeamEvents team={team} canManage={canManage} />
-                    </>
+                    <GamesView
+                      teams={teams}
+                      games={games}
+                      userId={user.id}
+                      teamId={team.id}
+                      heading={null}
+                      onChange={load}
+                      onError={setError}
+                      afterUpcoming={<TeamEvents team={team} canManage={canManage} />}
+                    />
                   ) : null)}
                 {tab === 'news' && <TeamPosts team={team} canPost={isStaff} />}
                 {tab === 'roster' && <Roster team={team} onError={setError} />}

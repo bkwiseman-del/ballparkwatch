@@ -607,6 +607,7 @@ export function GamesView({
   onError,
   teamId,
   heading = 'Games',
+  afterUpcoming,
 }: {
   teams: Team[]
   games: Game[]
@@ -615,49 +616,14 @@ export function GamesView({
   onError: (m: string) => void
   teamId?: string // scope to one team's games + lock it into new games
   heading?: string | null
+  afterUpcoming?: React.ReactNode // rendered between Upcoming and Past (e.g. practices)
 }) {
   const [creating, setCreating] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [watchGame, setWatchGame] = useState<Game | null>(null)
   const [shareGame, setShareGame] = useState<Game | null>(null)
-  const [showPast, setShowPast] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [eAway, setEAway] = useState('')
-  const [eHome, setEHome] = useState('')
-  const [eWhen, setEWhen] = useState('')
-  const [eLoc, setELoc] = useState('')
-  const favorites = teams.filter((t) => t.is_favorite)
-
-  function startEdit(game: Game) {
-    setEditId(game.id)
-    setEAway(game.away_team_id)
-    setEHome(game.home_team_id)
-    setEWhen(toLocalInput(game.scheduled_at))
-    setELoc(game.location ?? '')
-  }
-
-  async function saveEdit(game: Game) {
-    if (!eAway || !eHome) return onError('Pick both teams.')
-    if (eAway === eHome) return onError('Away and home must be different teams.')
-    const { error } = await supabase
-      .from('games')
-      .update({
-        away_team_id: eAway,
-        home_team_id: eHome,
-        scheduled_at: eWhen ? new Date(eWhen).toISOString() : null,
-        location: eLoc.trim() || null,
-      })
-      .eq('id', game.id)
-    if (error) return onError(error.message)
-    // If a team was actually replaced (not just home/away swapped), its lineup no
-    // longer applies — clear the game's lineups so they're rebuilt. A pure swap
-    // keeps the same team_ids, so lineups stay valid.
-    const before = [game.away_team_id, game.home_team_id].sort().join()
-    const after = [eAway, eHome].sort().join()
-    if (before !== after) await supabase.from('lineup_entries').delete().eq('game_id', game.id)
-    setEditId(null)
-    onChange()
-  }
+  const [editGame, setEditGame] = useState<Game | null>(null)
+  const [pastShown, setPastShown] = useState(5) // paginate finished games
 
   async function deleteGame(game: Game) {
     if (!window.confirm('Delete this game and all its plays, stats, and recap? This can’t be undone.'))
@@ -667,13 +633,88 @@ export function GamesView({
     else onChange()
   }
 
-  // Keep the list short: upcoming/live games first, then just the few most recent
-  // finals; the rest are tucked behind a "past games" toggle.
-  const RECENT_FINALS = 3
+  // Upcoming/live at the top (soonest first); finished games at the bottom, most
+  // recent first, paginated.
   const mine = teamId ? games.filter((g) => g.home_team_id === teamId || g.away_team_id === teamId) : games
-  const active = mine.filter((g) => g.status !== 'final')
-  const finals = mine.filter((g) => g.status === 'final')
-  const visibleGames = [...active, ...(showPast ? finals : finals.slice(0, RECENT_FINALS))]
+  const byWhenAsc = (a: Game, b: Game) => whenMs(a.scheduled_at) - whenMs(b.scheduled_at)
+  const active = mine.filter((g) => g.status !== 'final').sort(byWhenAsc)
+  const finals = mine.filter((g) => g.status === 'final').sort((a, b) => byWhenAsc(b, a))
+  const shownFinals = finals.slice(0, pastShown)
+
+  const renderRow = (game: Game) => {
+    const away = teams.find((t) => t.id === game.away_team_id)
+    const home = teams.find((t) => t.id === game.home_team_id)
+    const isFinal = game.status === 'final'
+    return (
+      <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-display text-lg">
+              {away?.name ?? '?'} <span className="text-muted-tan">at</span> {home?.name ?? '?'}
+            </p>
+            <p className="mt-0.5 font-athletic text-xs uppercase tracking-wide text-muted-tan">
+              <StatusPill status={game.status} /> · {videoLabel(game.video_source)}
+              {game.scheduled_at ? ` · ${formatWhen(game.scheduled_at)}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {isFinal ? (
+              <button
+                onClick={() => setWatchGame(game)}
+                className="bg-board-green px-4 py-2 font-display text-sm text-cream"
+              >
+                Game summary ▸
+              </button>
+            ) : (
+              <>
+                <Link to={`/lineup/${game.id}`} className="border-2 border-ink px-4 py-2 font-display text-sm text-ink">
+                  Lineup
+                </Link>
+                {game.video_source !== 'none' && (
+                  <button
+                    onClick={() => setVideoGame(game)}
+                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                  >
+                    Video
+                  </button>
+                )}
+                <Link to={`/score/${game.id}`} className="bg-board-green px-4 py-2 font-display text-sm text-cream">
+                  Score ▸
+                </Link>
+                <button
+                  onClick={() => setShareGame(game)}
+                  className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                >
+                  Share
+                </button>
+                <button
+                  onClick={() => setWatchGame(game)}
+                  className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
+                >
+                  Watch
+                </button>
+              </>
+            )}
+            {game.status === 'scheduled' && (
+              <button
+                onClick={() => setEditGame(game)}
+                className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-ink"
+              >
+                Edit
+              </button>
+            )}
+            <button
+              onClick={() => deleteGame(game)}
+              title="Delete game"
+              className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </li>
+    )
+  }
 
   return (
     <section>
@@ -704,158 +745,38 @@ export function GamesView({
         />
       )}
 
-      <ul className="mt-4 flex flex-col gap-3">
-        {visibleGames.map((game) => {
-          const away = teams.find((t) => t.id === game.away_team_id)
-          const home = teams.find((t) => t.id === game.home_team_id)
-          const isFinal = game.status === 'final'
-          if (editId === game.id) {
-            return (
-              <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
-                <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-                  <TeamSelect label="Away" value={eAway} onChange={setEAway} teams={teams} favorites={favorites} />
-                  <button
-                    onClick={() => {
-                      const a = eAway
-                      setEAway(eHome)
-                      setEHome(a)
-                    }}
-                    title="Swap home/away"
-                    className="mb-1.5 border-2 border-ink px-2 py-2 font-display text-ink"
-                  >
-                    ⇄
-                  </button>
-                  <TeamSelect label="Home" value={eHome} onChange={setEHome} teams={teams} favorites={favorites} accent />
-                </div>
-                <label className="mb-3 block">
-                  <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-                    Date & time (optional)
-                  </span>
-                  <div className="flex w-full items-center border-2 border-ink bg-white px-3 py-2 focus-within:border-board-green">
-                    <input
-                      type="datetime-local"
-                      value={eWhen}
-                      onChange={(e) => setEWhen(e.target.value)}
-                      className="min-w-0 flex-1 bg-transparent font-data text-ink outline-none"
-                    />
-                  </div>
-                </label>
-                <label className="mb-3 block">
-                  <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-                    Location (optional)
-                  </span>
-                  <input
-                    value={eLoc}
-                    onChange={(e) => setELoc(e.target.value)}
-                    placeholder="e.g. Cedar Park · Field 2"
-                    className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
-                  />
-                </label>
-                <div className="flex gap-2">
-                  <button onClick={() => saveEdit(game)} className="bg-gold px-4 py-2 font-display text-sm text-ink">
-                    Save
-                  </button>
-                  <button
-                    onClick={() => setEditId(null)}
-                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </li>
-            )
-          }
-          return (
-            <li key={game.id} className="border-2 border-ink bg-cream-off p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-display text-lg">
-                    {away?.name ?? '?'} <span className="text-muted-tan">at</span> {home?.name ?? '?'}
-                  </p>
-                  <p className="mt-0.5 font-athletic text-xs uppercase tracking-wide text-muted-tan">
-                    <StatusPill status={game.status} /> · {videoLabel(game.video_source)}
-                    {game.scheduled_at ? ` · ${formatWhen(game.scheduled_at)}` : ''}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {isFinal ? (
-                    // A finished game: the full final view (recap + box + stats +
-                    // plays tabs) lives at /watch; show it in-app via the iframe
-                    // modal (opening it directly gets trapped in the iOS PWA).
-                    <button
-                      onClick={() => setWatchGame(game)}
-                      className="bg-board-green px-4 py-2 font-display text-sm text-cream"
-                    >
-                      Game summary ▸
-                    </button>
-                  ) : (
-                    <>
-                      <Link
-                        to={`/lineup/${game.id}`}
-                        className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                      >
-                        Lineup
-                      </Link>
-                      {game.video_source !== 'none' && (
-                        <button
-                          onClick={() => setVideoGame(game)}
-                          className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                        >
-                          Video
-                        </button>
-                      )}
-                      <Link
-                        to={`/score/${game.id}`}
-                        className="bg-board-green px-4 py-2 font-display text-sm text-cream"
-                      >
-                        Score ▸
-                      </Link>
-                      <button
-                        onClick={() => setShareGame(game)}
-                        className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                      >
-                        Share
-                      </button>
-                      <button
-                        onClick={() => setWatchGame(game)}
-                        className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                      >
-                        Watch
-                      </button>
-                    </>
-                  )}
-                  {game.status === 'scheduled' && (
-                    <button
-                      onClick={() => startEdit(game)}
-                      className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-ink"
-                    >
-                      Edit
-                    </button>
-                  )}
-                  <button
-                    onClick={() => deleteGame(game)}
-                    title="Delete game"
-                    className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </li>
-          )
-        })}
-        {games.length === 0 && teams.length >= 2 && !creating && (
-          <EmptyHint>No games yet — tap “New Game” to schedule one.</EmptyHint>
+      {/* Upcoming & live — the top of the page */}
+      <p className="mb-2 mt-4 font-athletic text-xs font-semibold uppercase tracking-[.14em] text-muted-tan">
+        Upcoming
+      </p>
+      <ul className="flex flex-col gap-3">
+        {active.map(renderRow)}
+        {active.length === 0 && (
+          <EmptyHint>
+            {teams.length >= 2 ? 'Nothing scheduled yet.' : 'Add a team to schedule a game.'}
+          </EmptyHint>
         )}
       </ul>
 
-      {finals.length > RECENT_FINALS && (
-        <button
-          onClick={() => setShowPast((v) => !v)}
-          className="mt-3 w-full border-2 border-ink/30 py-2 font-athletic text-sm font-semibold uppercase tracking-wide text-muted-tan"
-        >
-          {showPast ? 'Hide past games' : `Show all past games (${finals.length})`}
-        </button>
+      {/* Practices & events slot (games + practices both live at the top) */}
+      {afterUpcoming}
+
+      {/* Past games — bottom of the page, paginated */}
+      {finals.length > 0 && (
+        <div className="mt-8">
+          <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.14em] text-muted-tan">
+            Past games
+          </p>
+          <ul className="flex flex-col gap-3">{shownFinals.map(renderRow)}</ul>
+          {finals.length > pastShown && (
+            <button
+              onClick={() => setPastShown((n) => n + 10)}
+              className="mt-3 w-full border-2 border-ink/30 py-2 font-athletic text-sm font-semibold uppercase tracking-wide text-muted-tan"
+            >
+              Show more ({finals.length - pastShown} older)
+            </button>
+          )}
+        </div>
       )}
 
       {videoGame && (
@@ -880,6 +801,22 @@ export function GamesView({
             teams.find((t) => t.id === shareGame.home_team_id)?.name ?? 'Home'
           }`}
           onClose={() => setShareGame(null)}
+        />
+      )}
+
+      {editGame && (
+        <GameEditor
+          game={editGame}
+          teams={teams}
+          userId={userId}
+          onClose={() => setEditGame(null)}
+          onSaved={() => onChange()}
+          onError={onError}
+          onVideo={() => {
+            const g = editGame
+            setEditGame(null)
+            setVideoGame(g)
+          }}
         />
       )}
     </section>
@@ -1217,70 +1154,6 @@ function PickerOpt({ name, onPick }: { name: string; onPick: () => void }) {
     >
       {name}
     </button>
-  )
-}
-
-function TeamSelect({
-  label,
-  value,
-  onChange,
-  teams,
-  favorites,
-  accent = false,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  teams: Team[]
-  favorites: Team[]
-  accent?: boolean
-}) {
-  const others = teams.filter((t) => !t.is_favorite)
-  return (
-    <label className="block">
-      <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-        {label}
-      </span>
-      {/* appearance-none so iOS uses our square styling on BOTH (a light-bg select
-          otherwise keeps iOS's native rounded corners); caret added back manually. */}
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full appearance-none rounded-none border-2 px-3 py-2 pr-8 font-display outline-none ${
-            accent ? 'border-ink bg-ink text-gold' : 'border-ink bg-white text-ink'
-          }`}
-        >
-          <option value="">Select…</option>
-        {favorites.length > 0 && (
-          <optgroup label="My Teams">
-            {favorites.map((t) => (
-              <option key={t.id} value={t.id}>
-                ★ {t.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-          {others.length > 0 && (
-            <optgroup label="Other teams">
-              {others.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-        <span
-          aria-hidden
-          className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs ${
-            accent ? 'text-gold' : 'text-ink'
-          }`}
-        >
-          ▾
-        </span>
-      </div>
-    </label>
   )
 }
 
@@ -1901,6 +1774,11 @@ function StatusPill({ status }: { status: Game['status'] }) {
     final: 'text-ink',
   }
   return <span className={`font-semibold ${map[status]}`}>{status.toUpperCase()}</span>
+}
+
+// Sort key for a game's scheduled time; undated sort last in ascending order.
+function whenMs(iso: string | null): number {
+  return iso ? Date.parse(iso) : Number.POSITIVE_INFINITY
 }
 
 function videoLabel(v: VideoSource): string {
