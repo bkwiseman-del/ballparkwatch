@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Select, fieldClass } from '@/components/Select'
+import { RsvpRoster } from '@/components/RsvpRoster'
 import type { Team, TeamEvent } from '@/lib/types'
 
 // Practices + non-game calendar items for a team. Staff add/edit; every member
@@ -163,9 +164,15 @@ export function TeamEvents({ team, canManage }: { team: Team; canManage: boolean
               <p className="font-data text-xs text-muted-tan">
                 {fmtTime(ev.starts_at)}
                 {ev.location ? ` · ${ev.location}` : ''}
-                {going[ev.id] ? ` · ${going[ev.id]} going` : ''}
               </p>
               {ev.notes && <p className="mt-0.5 font-data text-xs text-ink/70">{ev.notes}</p>}
+              <RsvpRoster
+                teamId={team.id}
+                targetType="event"
+                targetId={ev.id}
+                goingCount={going[ev.id] ?? 0}
+                staff={canManage}
+              />
             </div>
             {canManage && (
               <button

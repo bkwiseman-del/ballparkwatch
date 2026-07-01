@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
+import { Select } from '@/components/Select'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Team } from '@/lib/types'
 
-// One item from bpw.team_upcoming(): a game or a practice/event.
 type FeedItem = {
   type: 'game' | 'practice' | 'event'
   id: string
@@ -18,15 +18,45 @@ type FeedItem = {
   title?: string | null
   notes?: string | null
   recording_started_at?: string | null
-  my_rsvp?: RsvpStatus | null
   going_count?: number
 }
 type RsvpStatus = 'going' | 'maybe' | 'not'
-type FollowedTeam = { team: Team; role: string; feed: FeedItem[] }
+type LinkedPlayer = { player_id: string; name: string; jersey: string | null }
+type RosterPlayer = { id: string; name: string; jersey_number: string | null }
+type FollowedTeam = {
+  team: Team
+  role: string
+  feed: FeedItem[]
+  myPlayers: LinkedPlayer[]
+  roster: RosterPlayer[]
+  rsvps: Record<string, RsvpStatus> // `${target_id}:${player_id}` -> status
+}
 
-// The family / follower home: the teams you follow, what's live or next, and replays.
-// Read-only — no scoring, no roster edits. This is the front door for a 'family' member
-// (and any operator who also follows other teams).
+// Load everything one followed team needs: the upcoming feed, which players are MINE
+// (member_players), the roster (to link a kid), and my kids' RSVP statuses.
+async function loadOne(team: Team, role: string, userId: string): Promise<FollowedTeam> {
+  const teamId = team.id
+  const [feedRes, mpRes, rosterRes] = await Promise.all([
+    supabase.rpc('team_upcoming', { p_team_id: teamId }),
+    supabase.from('member_players').select('player_id, players(name, jersey_number)').eq('team_id', teamId).eq('user_id', userId),
+    supabase.from('players').select('id, name, jersey_number').eq('team_id', teamId).is('archived_at', null).order('jersey_number'),
+  ])
+  const myPlayers: LinkedPlayer[] = ((mpRes.data ?? []) as Array<{ player_id: string; players: { name?: string; jersey_number?: string } | null }>).map(
+    (m) => ({ player_id: m.player_id, name: m.players?.name ?? '—', jersey: m.players?.jersey_number ?? null }),
+  )
+  const rsvps: Record<string, RsvpStatus> = {}
+  const myIds = myPlayers.map((p) => p.player_id)
+  if (myIds.length) {
+    const { data: rv } = await supabase.from('rsvps').select('target_id, player_id, status').eq('team_id', teamId).in('player_id', myIds)
+    for (const x of (rv ?? []) as Array<{ target_id: string; player_id: string; status: RsvpStatus }>) {
+      rsvps[`${x.target_id}:${x.player_id}`] = x.status
+    }
+  }
+  return { team, role, feed: (feedRes.data ?? []) as FeedItem[], myPlayers, roster: (rosterRes.data ?? []) as RosterPlayer[], rsvps }
+}
+
+// The family / follower home. Read-only for games/scores; families link their kid(s)
+// and RSVP each one for games and practices.
 export default function Following() {
   const { user } = useAuth()
   const [teams, setTeams] = useState<FollowedTeam[]>([])
@@ -34,34 +64,28 @@ export default function Following() {
 
   const load = useCallback(async () => {
     if (!user) return
-    // Every team I'm a member of (any role), with my role.
-    const { data: mems } = await supabase
-      .from('team_members')
-      .select('role, team:teams(*)')
-      .eq('user_id', user.id)
+    const { data: mems } = await supabase.from('team_members').select('role, team:teams(*)').eq('user_id', user.id)
     const rows = (mems ?? []) as unknown as { role: string; team: Team }[]
-    const withFeeds = await Promise.all(
-      rows
-        .filter((r) => r.team)
-        .map(async (r) => {
-          const { data } = await supabase.rpc('team_upcoming', { p_team_id: r.team.id })
-          return { team: r.team, role: r.role, feed: (data ?? []) as FeedItem[] }
-        }),
-    )
-    // Live games first, then teams with something coming up soonest.
-    withFeeds.sort((a, b) => rank(a) - rank(b))
-    setTeams(withFeeds)
+    const data = await Promise.all(rows.filter((r) => r.team).map((r) => loadOne(r.team, r.role, user.id)))
+    data.sort((a, b) => rank(a) - rank(b))
+    setTeams(data)
     setLoading(false)
   }, [user])
   useEffect(() => {
     load()
   }, [load])
 
-  // Re-pull one team's feed after an RSVP so my status + the going count update.
-  const refreshTeam = useCallback(async (teamId: string) => {
-    const { data } = await supabase.rpc('team_upcoming', { p_team_id: teamId })
-    setTeams((prev) => prev.map((t) => (t.team.id === teamId ? { ...t, feed: (data ?? []) as FeedItem[] } : t)))
-  }, [])
+  // Re-pull one team after an RSVP or a player link so counts + statuses update.
+  const refreshTeam = useCallback(
+    async (teamId: string) => {
+      if (!user) return
+      const cur = teams.find((t) => t.team.id === teamId)
+      if (!cur) return
+      const fresh = await loadOne(cur.team, cur.role, user.id)
+      setTeams((prev) => prev.map((t) => (t.team.id === teamId ? fresh : t)))
+    },
+    [user, teams],
+  )
 
   useEffect(() => {
     const prev = document.body.style.backgroundColor
@@ -92,7 +116,7 @@ export default function Following() {
           ) : (
             <div className="space-y-5">
               {teams.map((t) => (
-                <TeamCard key={t.team.id} data={t} userId={user?.id ?? ''} onRsvp={refreshTeam} />
+                <TeamCard key={t.team.id} data={t} userId={user?.id ?? ''} onRefresh={refreshTeam} />
               ))}
             </div>
           )}
@@ -102,15 +126,12 @@ export default function Following() {
   )
 }
 
-// Lower rank sorts first: live now, then soonest upcoming, then the rest.
 function rank(t: FollowedTeam): number {
   if (t.feed.some((i) => i.type === 'game' && i.status === 'live')) return 0
   const next = nextUpcoming(t.feed)
   if (next?.starts_at) return new Date(next.starts_at).getTime()
   return Number.MAX_SAFE_INTEGER
 }
-
-// Future (and just-started) games + practices, soonest first.
 function upcomingItems(feed: FeedItem[]): FeedItem[] {
   const cutoff = Date.now() - 3 * 3600 * 1000
   return feed
@@ -124,44 +145,44 @@ function nextUpcoming(feed: FeedItem[]): FeedItem | null {
 function TeamCard({
   data,
   userId,
-  onRsvp,
+  onRefresh,
 }: {
   data: FollowedTeam
   userId: string
-  onRsvp: (teamId: string) => void | Promise<void>
+  onRefresh: (teamId: string) => void | Promise<void>
 }) {
-  const { team, feed } = data
+  const { team, feed, myPlayers, roster, rsvps } = data
+  const [adding, setAdding] = useState(false)
   const live = feed.find((i) => i.type === 'game' && i.status === 'live')
   const upcoming = upcomingItems(feed)
   const next = upcoming[0] ?? null
   const rest = upcoming.slice(1, 5)
-
-  async function rsvp(item: FeedItem, status: RsvpStatus) {
-    if (!userId) return
-    // Tap the active choice again to clear it.
-    if (item.my_rsvp === status) {
-      await supabase
-        .from('rsvps')
-        .delete()
-        .eq('user_id', userId)
-        .eq('target_type', item.type === 'game' ? 'game' : 'event')
-        .eq('target_id', item.id)
-    } else {
-      await supabase.from('rsvps').upsert({
-        user_id: userId,
-        team_id: team.id,
-        target_type: item.type === 'game' ? 'game' : 'event',
-        target_id: item.id,
-        status,
-      })
-    }
-    await onRsvp(team.id)
-  }
-
   const replays = feed
     .filter((i) => i.type === 'game' && i.recording_started_at)
     .sort((a, b) => new Date(b.starts_at ?? 0).getTime() - new Date(a.starts_at ?? 0).getTime())
     .slice(0, 4)
+  const linkedIds = new Set(myPlayers.map((p) => p.player_id))
+  const addable = roster.filter((p) => !linkedIds.has(p.id))
+
+  async function setRsvp(item: FeedItem, playerId: string, status: RsvpStatus) {
+    const tt = item.type === 'game' ? 'game' : 'event'
+    if (rsvps[`${item.id}:${playerId}`] === status) {
+      await supabase.from('rsvps').delete().eq('target_type', tt).eq('target_id', item.id).eq('player_id', playerId)
+    } else {
+      await supabase.from('rsvps').upsert({ team_id: team.id, target_type: tt, target_id: item.id, player_id: playerId, status })
+    }
+    await onRefresh(team.id)
+  }
+  async function linkPlayer(playerId: string) {
+    if (!playerId) return
+    await supabase.from('member_players').insert({ team_id: team.id, user_id: userId, player_id: playerId })
+    setAdding(false)
+    await onRefresh(team.id)
+  }
+  async function unlinkPlayer(playerId: string) {
+    await supabase.from('member_players').delete().eq('user_id', userId).eq('player_id', playerId)
+    await onRefresh(team.id)
+  }
 
   return (
     <section className="border-2 border-ink bg-cream-off">
@@ -169,6 +190,53 @@ function TeamCard({
         <h2 className="font-display text-lg">{team.name}</h2>
         {data.role === 'family' && (
           <span className="font-athletic text-[10px] uppercase tracking-wide text-muted-tan">Following</span>
+        )}
+      </div>
+
+      {/* Your players — link a kid so you can RSVP for them. */}
+      <div className="border-b-2 border-ink px-4 py-2.5">
+        <p className="mb-1 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">
+          Your player{myPlayers.length === 1 ? '' : 's'}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {myPlayers.map((p) => (
+            <span key={p.player_id} className="flex items-center gap-1.5 border-2 border-ink bg-white px-2 py-1">
+              <span className="font-data text-sm text-ink">
+                {p.jersey ? <b className="text-barn-red">{p.jersey} </b> : ''}
+                {p.name}
+              </span>
+              <button onClick={() => unlinkPlayer(p.player_id)} className="text-ink/40 hover:text-barn-red" title="Remove">
+                ✕
+              </button>
+            </span>
+          ))}
+          {addable.length > 0 &&
+            (adding ? (
+              <span className="flex items-center gap-1.5">
+                <Select value="" onChange={linkPlayer} className="min-w-[10rem]">
+                  <option value="">Pick your player…</option>
+                  {addable.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.jersey_number ? `#${p.jersey_number} ` : ''}
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+                <button onClick={() => setAdding(false)} className="font-athletic text-xs uppercase text-ink/50">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setAdding(true)}
+                className="border-2 border-dashed border-ink/50 bg-white px-2.5 py-1 font-athletic text-xs font-bold uppercase tracking-wide text-board-green"
+              >
+                {myPlayers.length === 0 ? '+ Add your player' : '+ Add'}
+              </button>
+            ))}
+        </div>
+        {myPlayers.length === 0 && (
+          <p className="mt-1 font-data text-xs text-muted-tan">Add your player to RSVP for games and practices.</p>
         )}
       </div>
 
@@ -188,46 +256,20 @@ function TeamCard({
         </Link>
       )}
 
-      {/* Next up */}
+      {/* Next up + upcoming */}
       <div className="px-4 py-3">
         <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">Next up</p>
         {next ? (
-          <div className="mt-1">
-            <p className="font-display text-base">
-              {next.type !== 'game' && <KindTag kind={next.type} />}
-              {itemTitle(next)}
-            </p>
-            <p className="font-data text-xs text-muted-tan">
-              {next.starts_at ? fmtWhen(next.starts_at) : 'Time TBD'}
-              {next.location ? ` · ${next.location}` : ''}
-            </p>
-            {next.notes && <p className="mt-1 font-data text-sm text-ink/80">{next.notes}</p>}
-            <RsvpBar item={next} onPick={(s) => rsvp(next, s)} />
-          </div>
+          <ItemBlock item={next} myPlayers={myPlayers} rsvps={rsvps} onPick={setRsvp} big />
         ) : (
           <p className="mt-1 font-data text-sm text-muted-tan">Nothing scheduled yet.</p>
         )}
 
-        {/* Everything else coming up — practices carry their location + notes too. */}
         {rest.length > 0 && (
-          <ul className="mt-3 flex flex-col gap-2 border-t border-ink/12 pt-3">
+          <ul className="mt-3 flex flex-col divide-y divide-ink/12 border-t border-ink/12">
             {rest.map((i) => (
-              <li key={i.id} className="flex gap-3">
-                <span className="w-12 shrink-0 font-data text-xs text-muted-tan">
-                  {i.starts_at ? fmtDate(i.starts_at) : 'TBD'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-data text-sm text-ink">
-                    {i.type !== 'game' && <KindTag kind={i.type} />}
-                    {itemTitle(i)}
-                  </p>
-                  <p className="font-data text-xs text-muted-tan">
-                    {i.starts_at ? fmtTime(i.starts_at) : ''}
-                    {i.location ? ` · ${i.location}` : ''}
-                  </p>
-                  {i.notes && <p className="mt-0.5 font-data text-xs text-ink/70">{i.notes}</p>}
-                  <RsvpBar item={i} onPick={(s) => rsvp(i, s)} compact />
-                </div>
+              <li key={i.id} className="pt-3 first:pt-3">
+                <ItemBlock item={i} myPlayers={myPlayers} rsvps={rsvps} onPick={setRsvp} />
               </li>
             ))}
           </ul>
@@ -237,9 +279,7 @@ function TeamCard({
       {/* Replays */}
       {replays.length > 0 && (
         <div className="border-t-2 border-ink px-4 py-3">
-          <p className="mb-1.5 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">
-            Replays
-          </p>
+          <p className="mb-1.5 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">Replays</p>
           <ul className="flex flex-col gap-1">
             {replays.map((r) => (
               <li key={r.id}>
@@ -261,27 +301,77 @@ function TeamCard({
   )
 }
 
+function ItemBlock({
+  item,
+  myPlayers,
+  rsvps,
+  onPick,
+  big = false,
+}: {
+  item: FeedItem
+  myPlayers: LinkedPlayer[]
+  rsvps: Record<string, RsvpStatus>
+  onPick: (item: FeedItem, playerId: string, status: RsvpStatus) => void
+  big?: boolean
+}) {
+  return (
+    <div className={big ? 'mt-1' : ''}>
+      <p className={big ? 'font-display text-base' : 'font-data text-sm text-ink'}>
+        {item.type !== 'game' && <KindTag kind={item.type} />}
+        {itemTitle(item)}
+      </p>
+      <p className="font-data text-xs text-muted-tan">
+        {item.starts_at ? fmtWhen(item.starts_at) : 'Time TBD'}
+        {item.location ? ` · ${item.location}` : ''}
+      </p>
+      {item.notes && <p className="mt-0.5 font-data text-xs text-ink/70">{item.notes}</p>}
+
+      {/* One RSVP row per kid. */}
+      {myPlayers.length > 0 ? (
+        <div className="mt-1.5 flex flex-col gap-1.5">
+          {myPlayers.map((p) => (
+            <KidRsvp
+              key={p.player_id}
+              name={p.name}
+              multi={myPlayers.length > 1}
+              status={rsvps[`${item.id}:${p.player_id}`]}
+              onPick={(s) => onPick(item, p.player_id, s)}
+            />
+          ))}
+          {typeof item.going_count === 'number' && item.going_count > 0 && (
+            <span className="font-data text-xs text-muted-tan">{item.going_count} going</span>
+          )}
+        </div>
+      ) : (
+        typeof item.going_count === 'number' &&
+        item.going_count > 0 && <p className="mt-1 font-data text-xs text-muted-tan">{item.going_count} going</p>
+      )}
+    </div>
+  )
+}
+
 const RSVP_OPTS: { value: RsvpStatus; label: string }[] = [
   { value: 'going', label: 'Going' },
   { value: 'maybe', label: 'Maybe' },
   { value: 'not', label: 'Can’t' },
 ]
-// Going / Maybe / Can't for a game or practice, with a live "N going" count. Tapping
-// the active choice again clears it. `compact` for the smaller rows in the list.
-function RsvpBar({
-  item,
+// RSVP buttons for one kid on one game/practice. Tap the active one to clear.
+function KidRsvp({
+  name,
+  status,
   onPick,
-  compact = false,
+  multi,
 }: {
-  item: FeedItem
+  name: string
+  status?: RsvpStatus
   onPick: (s: RsvpStatus) => void
-  compact?: boolean
+  multi: boolean
 }) {
-  const count = item.going_count ?? 0
   return (
-    <div className={`flex flex-wrap items-center gap-1.5 ${compact ? 'mt-1.5' : 'mt-2'}`}>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {multi && <span className="mr-0.5 w-16 shrink-0 truncate font-data text-xs text-ink/70">{name}</span>}
       {RSVP_OPTS.map((o) => {
-        const on = item.my_rsvp === o.value
+        const on = status === o.value
         const tone = on
           ? o.value === 'not'
             ? 'border-barn-red bg-barn-red text-cream'
@@ -291,22 +381,16 @@ function RsvpBar({
           <button
             key={o.value}
             onClick={() => onPick(o.value)}
-            className={`border-2 px-2.5 font-athletic text-xs font-bold uppercase tracking-wide ${
-              compact ? 'py-0.5' : 'py-1'
-            } ${tone}`}
+            className={`border-2 px-2.5 py-0.5 font-athletic text-xs font-bold uppercase tracking-wide ${tone}`}
           >
             {o.label}
           </button>
         )
       })}
-      {count > 0 && (
-        <span className="ml-0.5 font-data text-xs text-muted-tan">
-          {count} going
-        </span>
-      )}
     </div>
   )
 }
+
 function KindTag({ kind }: { kind: 'practice' | 'event' }) {
   return (
     <span className="mr-1.5 bg-ink/10 px-1.5 py-0.5 font-athletic text-[9px] font-bold uppercase tracking-wide text-ink/60">
@@ -318,9 +402,6 @@ function itemTitle(i: FeedItem): string {
   if (i.type === 'game') return `${i.away} @ ${i.home}`
   if (i.type === 'practice') return i.title || 'Practice'
   return i.title || 'Team event'
-}
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 function fmtWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
