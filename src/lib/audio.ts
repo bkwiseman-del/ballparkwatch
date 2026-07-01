@@ -31,6 +31,7 @@ class AudioManager {
   private enabled = false
   private crowdOn = false
   private queue: string[] = [] // voice clip URLs only — FX play immediately
+  private bedUrls = new Set<string>() // voice URLs to play the long 'charge' riff under
   private playing = false
   private voiceCache = new Map<string, AudioBuffer>()
   // Stadium reverb bus for the announcer voice (big-PA echo).
@@ -253,8 +254,11 @@ class AudioManager {
     }
   }
 
-  enqueueVoice(url: string) {
+  // `bed` = play the long "charge" organ riff quietly UNDER this line (used for the
+  // between-innings recap, where the extra length isn't a problem — a rally-organ bed).
+  enqueueVoice(url: string, bed = false) {
     if (!this.enabled) return
+    if (bed) this.bedUrls.add(url)
     this.queue.push(url)
     if (this.queue.length > 8) this.queue.splice(0, this.queue.length - 8)
     void this.pump()
@@ -264,6 +268,7 @@ class AudioManager {
   // commentary from before the seek doesn't keep playing.
   flushVoice() {
     this.queue = []
+    this.bedUrls.clear()
   }
 
   // Play the organ stinger at the top of an inning. Goes through the voice queue
@@ -301,7 +306,10 @@ class AudioManager {
           }
         }
         this.rampCrowd(CROWD_BASE * 0.55)
+        // A recap line gets the long charge riff as a quiet bed underneath.
+        const stopBed = this.bedUrls.delete(url) ? this.startBed(this.fx['charge'] ?? null, 0.16) : null
         await this.playAndWait(buf ?? null, 1)
+        stopBed?.()
         this.rampCrowd(CROWD_BASE)
       }
     } catch {
@@ -324,6 +332,31 @@ class AudioManager {
       src.onended = () => resolve()
       src.start()
     })
+  }
+
+  // Start a low-volume background bed (the charge riff under a recap). Returns a stop
+  // function that fades it out — so it never outlasts the line it's ducked beneath.
+  private startBed(buf: AudioBuffer | null, gain: number): () => void {
+    if (!buf || !this.ctx) return () => {}
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    const g = this.ctx.createGain()
+    g.gain.value = gain
+    src.connect(g)
+    g.connect(this.ctx.destination)
+    if (this.verbInput) g.connect(this.verbInput)
+    src.start()
+    let stopped = false
+    return () => {
+      if (stopped || !this.ctx) return
+      stopped = true
+      try {
+        g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2)
+        src.stop(this.ctx.currentTime + 0.7)
+      } catch {
+        /* already stopped */
+      }
+    }
   }
 }
 

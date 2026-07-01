@@ -305,11 +305,11 @@ export default function Watch() {
         audio.playFx(fxCues(newest.event_type))
         if (['single', 'double', 'triple', 'home_run', 'manual_run'].includes(newest.event_type))
           audio.swellCrowd()
-        // Inning-intro stinger ahead of the commentary: the "charge!" rally riff
-        // when the home team comes up (bottom half), the short organ otherwise.
+        // Inning-intro stinger ahead of the commentary: the SHORT organ every half
+        // (the long charge riff is too long to hold up the start of an inning — it
+        // now plays ducked under the between-innings recap instead).
         if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) {
-          if (project(events).half === 'bottom') audio.enqueueCharge()
-          else audio.enqueueOrgan()
+          audio.enqueueOrgan()
         }
 
         if (gameId) {
@@ -333,7 +333,7 @@ export default function Watch() {
                 const { data } = await supabase.functions.invoke('commentary', {
                   body: { gameId, seq: c.key, text: c.text, kind: c.kind },
                 })
-                if (data?.url) audio.enqueueVoice(data.url)
+                if (data?.url) audio.enqueueVoice(data.url, c.kind === 'summary')
               } catch {
                 /* skip this line */
               }
@@ -869,8 +869,7 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     if (['single', 'double', 'triple', 'home_run', 'manual_run'].includes(newest.event_type)) audio.swellCrowd()
     const fresh = upTo.filter((e) => e.seq > sinceSeq)
     if (fresh.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) {
-      if (project(upTo).half === 'bottom') audio.enqueueCharge()
-      else audio.enqueueOrgan()
+      audio.enqueueOrgan()
     }
     const cues = freshCues(upTo, sinceSeq, cueNameOf, lineups, { away: teams.away.name, home: teams.home.name })
     void (async () => {
@@ -879,7 +878,8 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           const { data } = await supabase.functions.invoke('commentary', {
             body: { gameId, seq: c.key, text: c.text, kind: c.kind },
           })
-          if (data?.url) audio.enqueueVoice(String(data.url))
+          // The between-innings recap ('summary') gets the charge organ under it.
+          if (data?.url) audio.enqueueVoice(String(data.url), c.kind === 'summary')
         } catch {
           /* skip this line */
         }
