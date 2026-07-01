@@ -38,6 +38,8 @@ export default function Score() {
   const [showVideo, setShowVideo] = useState(false)
   const [editPlayer, setEditPlayer] = useState<Player | null>(null)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
+  // Teams whose lineup we auto-filled from their roster at start (dismissible note).
+  const [rosterNote, setRosterNote] = useState<string[] | null>(null)
   // Live health of the phone broadcast (for the indicator in the header).
   const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
   // Scoring mode is chosen at game start and locked for the game (Full default).
@@ -80,6 +82,22 @@ export default function Score() {
 
   return (
     <div className="mx-auto flex h-[100dvh] max-w-[430px] flex-col overflow-hidden bg-night-green text-cream">
+      {rosterNote && (
+        <div className="flex items-center gap-2 border-b-2 border-gold bg-board-green px-3 py-2 text-cream">
+          <p className="min-w-0 flex-1 font-data text-xs">
+            Filled {rosterNote.join(' & ')}’s lineup from the roster.{' '}
+            <Link to={`/lineup/${gameId}`} className="font-bold underline">
+              Edit lineup ▸
+            </Link>
+          </p>
+          <button
+            onClick={() => setRosterNote(null)}
+            className="shrink-0 font-athletic text-xs font-bold uppercase tracking-wide text-cream/70"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))]">
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
           ← Setup
@@ -215,11 +233,16 @@ export default function Score() {
           </div>
           <button
             onClick={async () => {
-              // Full mode needs a batting order; drop in generic players for any team
-              // without a lineup. Scoreboard mode needs no lineup at all.
+              // Full mode needs a batting order. For a team with a roster (yours / a
+              // claimed team) start its order from that roster; a rosterless ghost
+              // opponent falls back to generic "Player 1, 2…". Scoreboard needs none.
               if (!scoreboard) {
-                if (!s.lineups.away.length) await s.fillGenericLineup('away')
-                if (!s.lineups.home.length) await s.fillGenericLineup('home')
+                const filled: string[] = []
+                if (!s.lineups.away.length && (await s.fillLineupFromRoster('away')) === 'roster')
+                  filled.push(teams?.away.name ?? 'Away')
+                if (!s.lineups.home.length && (await s.fillLineupFromRoster('home')) === 'roster')
+                  filled.push(teams?.home.name ?? 'Home')
+                if (filled.length) setRosterNote(filled)
               }
               act('game_start')
             }}
@@ -229,9 +252,9 @@ export default function Score() {
           </button>
           {!scoreboard && (!s.lineups.away.length || !s.lineups.home.length) && (
             <p className="max-w-xs font-data text-xs text-muted-tan">
-              No lineup for {!s.lineups.away.length ? teams?.away.name : teams?.home.name}? We’ll add
-              generic players (Player 1, 2, …) — tap a batter or use Substitution to set their number
-              and name as you go.
+              No lineup set? We’ll fill each team’s batting order from its roster — edit anytime from the
+              Lineup screen. A brand-new opponent with no roster gets numbered placeholders you can name as
+              you go.
             </p>
           )}
         </div>

@@ -259,6 +259,44 @@ export function useScorer(gameId: string | undefined) {
     [game, gameId, reloadRoster],
   )
 
+  // Start a team's batting order from its EXISTING roster (your team / a claimed team)
+  // rather than generic "Player 1, 2…" — the latter only makes sense for a brand-new
+  // ghost opponent with no roster. Returns 'roster' if real players were used, or
+  // 'generic' if it fell back (no roster). Order = jersey order; default positions kept.
+  const fillLineupFromRoster = useCallback(
+    async (teamKey: 'away' | 'home'): Promise<'roster' | 'generic'> => {
+      if (!game) return 'generic'
+      const teamId = teamKey === 'away' ? game.away_team_id : game.home_team_id
+      const { data: roster } = await supabase
+        .from('players')
+        .select('id, default_position')
+        .eq('team_id', teamId)
+        .is('archived_at', null)
+        .order('jersey_number', { nullsFirst: false })
+      const players = (roster ?? []) as { id: string; default_position: string | null }[]
+      if (players.length === 0) {
+        await fillGenericLineup(teamKey)
+        return 'generic'
+      }
+      const entries = players.map((p, i) => ({
+        game_id: gameId,
+        team_id: teamId,
+        player_id: p.id,
+        batting_order: i + 1,
+        position: p.default_position ?? GENERIC_FIELD[i] ?? 'BENCH',
+        is_starter: true,
+      }))
+      const { error } = await supabase.from('lineup_entries').insert(entries)
+      if (error) {
+        setError(error.message)
+        return 'generic'
+      }
+      await reloadRoster()
+      return 'roster'
+    },
+    [game, gameId, reloadRoster, fillGenericLineup],
+  )
+
   // Project the CURRENT lineups (starters + substitutions applied in order).
   const subs = extractSubs(events)
   const projectTeam = (key: 'away' | 'home'): LineupPlayer[] => {
@@ -425,6 +463,7 @@ export function useScorer(gameId: string | undefined) {
     abPitches,
     editPlayer,
     fillGenericLineup,
+    fillLineupFromRoster,
     deleteEvent,
   }
 }
