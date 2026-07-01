@@ -94,15 +94,18 @@ export default function Setup() {
   // games are sorted by scheduled_at ascending → reverse the finals for "most recent".
   const recentFinals = games.filter((g) => g.status === 'final').reverse().slice(0, 4)
 
-  async function addTeam(name: string, season: string, favorite: boolean) {
-    const { error } = await supabase
+  // A team you manage. Just take a name, create it as one of "My Teams", and drop
+  // straight into its hub to add the roster + details. (Opponents are NOT created
+  // here — they're added inline while scheduling a game.)
+  async function addTeam(name: string) {
+    const { data, error } = await supabase
       .from('teams')
-      .insert({ name, season: season || null, is_favorite: favorite, owner_id: user!.id })
-    if (error) setError(error.message)
-    else {
-      setShowAddTeam(false)
-      load()
-    }
+      .insert({ name: name.trim(), is_favorite: true, owner_id: user!.id })
+      .select('id')
+      .single()
+    if (error) return setError(error.message)
+    setShowAddTeam(false)
+    navigate(`/team/${data.id}`)
   }
   async function toggleFav(team: Team) {
     const { error } = await supabase.from('teams').update({ is_favorite: !team.is_favorite }).eq('id', team.id)
@@ -1160,43 +1163,35 @@ function PickerOpt({ name, onPick }: { name: string; onPick: () => void }) {
 /* ------------------------------------------------------------------ Teams */
 
 
-function NewTeamForm({ onAdd }: { onAdd: (name: string, season: string, favorite: boolean) => void }) {
+function NewTeamForm({ onAdd }: { onAdd: (name: string) => void }) {
   const [name, setName] = useState('')
-  const [season, setSeason] = useState('')
-  const [favorite, setFavorite] = useState(true)
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault()
         if (!name.trim()) return
-        onAdd(name.trim(), season.trim(), favorite)
+        onAdd(name.trim())
         setName('')
-        setSeason('')
       }}
       className="mt-2 border-2 border-ink bg-cream-off p-3"
     >
-      <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-        Add a team
+      <p className="mb-1 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+        Create a team
       </p>
-      <div className="flex flex-col gap-2">
+      <p className="mb-2 font-data text-xs text-muted-tan">
+        A team you manage — you’ll add the roster and details next. (Opponents are added right when you
+        schedule a game.)
+      </p>
+      <div className="flex gap-2">
         <input
-          className="border-2 border-ink bg-white px-2 py-1.5 font-data outline-none focus:border-board-green"
+          autoFocus
+          className="min-w-0 flex-1 appearance-none rounded-none border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
           placeholder="Team name"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <input
-          className="border-2 border-ink bg-white px-2 py-1.5 font-data outline-none focus:border-board-green"
-          placeholder="Season (e.g. 2026)"
-          value={season}
-          onChange={(e) => setSeason(e.target.value)}
-        />
-        <label className="flex items-center gap-2 font-data text-sm">
-          <input type="checkbox" checked={favorite} onChange={(e) => setFavorite(e.target.checked)} />
-          Add to <b>My Teams</b> (pre-selected for future games)
-        </label>
-        <button className="bg-gold py-2 font-display text-ink" type="submit">
-          Add Team
+        <button className="shrink-0 bg-gold px-4 py-2 font-display text-ink" type="submit">
+          Create ▸
         </button>
       </div>
     </form>
