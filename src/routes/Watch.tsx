@@ -872,6 +872,9 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
   const [live, setLive] = useState<LiveGame>(() => ({ ...INITIAL_LIVE }))
   // Events reached at the current video position — drives the synced field/batter view.
   const [visible, setVisible] = useState<ViewerEvent[]>([])
+  // Current playback position as a game wall-clock (ms) — lets the spray flash for a
+  // fixed window after contact and then clear, mirroring the live view.
+  const [posMs, setPosMs] = useState(0)
 
   const tsOf = (e: ViewerEvent) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0)
 
@@ -915,6 +918,7 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     const upTo = sorted.filter((e) => tsOf(e) <= virtualMs)
     setLive(project(upTo))
     setVisible(upTo)
+    setPosMs(virtualMs)
     const newMax = upTo.length ? upTo[upTo.length - 1].seq : 0
     const seeked = Math.abs(cur - lastTime.current) > 1.5 || cur < lastTime.current
     if (seeked) {
@@ -964,7 +968,12 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     const p = e.payload as { hit?: unknown; spray?: unknown; fielders?: unknown[] } | undefined
     return !!(p && (p.hit || p.spray || (Array.isArray(p.fielders) && p.fielders.length)))
   })
-  const spray = newestLoc ? buildViz(newestLoc.payload, newestLoc.seq) : null
+  // Flash the spray only for ~4.5s of game-time after contact, then clear it — matching
+  // the live view (which sets `flash` and clears it on a timer). Keyed off the video
+  // position, so scrubbing shows a spray only when parked right after that play.
+  const SPRAY_FLASH_MS = 4500
+  const spray =
+    newestLoc && posMs - tsOf(newestLoc) <= SPRAY_FLASH_MS ? buildViz(newestLoc.payload, newestLoc.seq) : null
 
   return (
     <div className="mx-auto w-full max-w-2xl">
