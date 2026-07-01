@@ -8,6 +8,7 @@ import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
 import { VideoSetup } from '@/components/VideoSetup'
 import { ShareSheet } from '@/components/ShareSheet'
+import { fieldClass } from '@/components/Select'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
 type TeamRecord = { w: number; l: number; t: number; rf: number; ra: number }
@@ -22,6 +23,7 @@ export default function Setup() {
   const [creating, setCreating] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
+  const [editGame, setEditGame] = useState<Game | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hasFollows, setHasFollows] = useState(false)
 
@@ -138,6 +140,7 @@ export default function Setup() {
             canSchedule={teams.length >= 2}
             onSchedule={() => setCreating(true)}
             onSetup={(g) => setVideoGame(g)}
+            onEdit={(g) => setEditGame(g)}
           />
 
           {creating && (
@@ -212,6 +215,22 @@ export default function Setup() {
       {videoGame && (
         <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => load()} />
       )}
+
+      {editGame && (
+        <GameEditor
+          game={editGame}
+          teams={teams}
+          userId={user!.id}
+          onClose={() => setEditGame(null)}
+          onSaved={() => load()}
+          onError={setError}
+          onVideo={() => {
+            const g = editGame
+            setEditGame(null)
+            setVideoGame(g)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -224,6 +243,7 @@ function HeroGame({
   canSchedule,
   onSchedule,
   onSetup,
+  onEdit,
 }: {
   game: Game | null
   state?: GState
@@ -231,6 +251,7 @@ function HeroGame({
   canSchedule: boolean
   onSchedule: () => void
   onSetup: (g: Game) => void
+  onEdit: (g: Game) => void
 }) {
   if (!game) {
     return (
@@ -292,10 +313,16 @@ function HeroGame({
           {live ? 'Watch' : 'Lineup'}
         </Link>
         <button
-          onClick={() => onSetup(game)}
-          className="border-2 border-cream/40 px-5 py-3 text-center font-display text-cream"
+          onClick={() => onEdit(game)}
+          className="border-2 border-cream/40 px-4 py-3 text-center font-display text-cream"
         >
-          Set up ▸
+          Edit ▸
+        </button>
+        <button
+          onClick={() => onSetup(game)}
+          className="border-2 border-cream/40 px-4 py-3 text-center font-display text-cream"
+        >
+          Video ▸
         </button>
       </div>
     </section>
@@ -307,6 +334,146 @@ function ScoreSide({ name, score, right }: { name: string; score: number; right?
     <div className={`min-w-0 flex-1 ${right ? 'text-right' : ''}`}>
       <div className="truncate font-display text-sm text-cream/80">{name}</div>
       <div className="font-display text-4xl tabular">{score}</div>
+    </div>
+  )
+}
+
+// Edit a game's details — home/away (searchable), date/time, location — from wherever
+// you see the game (dashboard hero, schedule). This is the "who's home, what time"
+// editor people were hunting for; video/camera lives behind its own button.
+function GameEditor({
+  game,
+  teams,
+  userId,
+  onClose,
+  onSaved,
+  onError,
+  onVideo,
+}: {
+  game: Game
+  teams: Team[]
+  userId: string
+  onClose: () => void
+  onSaved: () => void
+  onError: (m: string) => void
+  onVideo?: () => void
+}) {
+  const [extraTeams, setExtraTeams] = useState<Team[]>([])
+  const allTeams = [...teams, ...extraTeams]
+  const [away, setAway] = useState(game.away_team_id)
+  const [home, setHome] = useState(game.home_team_id)
+  const [when, setWhen] = useState(toLocalInput(game.scheduled_at))
+  const [loc, setLoc] = useState(game.location ?? '')
+  const [busy, setBusy] = useState(false)
+
+  async function createTeam(name: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('teams')
+      .insert({ name: name.trim(), owner_id: userId, is_favorite: false })
+      .select('*')
+      .single()
+    if (error) {
+      onError(error.message)
+      return null
+    }
+    const t = data as Team
+    setExtraTeams((p) => [...p, t])
+    return t.id
+  }
+
+  async function save() {
+    if (!away || !home) return onError('Pick both teams.')
+    if (away === home) return onError('Away and home must be different teams.')
+    setBusy(true)
+    const { error } = await supabase
+      .from('games')
+      .update({
+        away_team_id: away,
+        home_team_id: home,
+        scheduled_at: when ? new Date(when).toISOString() : null,
+        location: loc.trim() || null,
+      })
+      .eq('id', game.id)
+    if (error) {
+      setBusy(false)
+      return onError(error.message)
+    }
+    // If a team was actually replaced (not just swapped), its lineup no longer applies.
+    const before = [game.away_team_id, game.home_team_id].sort().join()
+    const after = [away, home].sort().join()
+    if (before !== after) await supabase.from('lineup_entries').delete().eq('game_id', game.id)
+    setBusy(false)
+    onSaved()
+    onClose()
+  }
+
+  async function del() {
+    if (!window.confirm('Delete this game and its lineups? This can’t be undone.')) return
+    const { error } = await supabase.from('games').delete().eq('id', game.id)
+    if (error) return onError(error.message)
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/60 sm:items-center" onClick={onClose}>
+      <div
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto border-2 border-ink bg-cream p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-display text-xl text-ink">Edit game</h2>
+          <button onClick={onClose} className="font-athletic text-sm uppercase tracking-wide text-muted-tan">
+            Close ✕
+          </button>
+        </div>
+
+        <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+          <TeamPicker label="Away" value={away} onChange={setAway} teams={allTeams} onCreate={createTeam} />
+          <span className="pt-7 font-athletic text-sm uppercase text-muted-tan">at</span>
+          <TeamPicker label="Home" value={home} onChange={setHome} teams={allTeams} onCreate={createTeam} accent />
+        </div>
+
+        <label className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+          Date &amp; time
+        </label>
+        <input
+          type="datetime-local"
+          value={when}
+          onChange={(e) => setWhen(e.target.value)}
+          className={`${fieldClass} mb-3`}
+        />
+
+        <label className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+          Location
+        </label>
+        <input
+          value={loc}
+          onChange={(e) => setLoc(e.target.value)}
+          placeholder="Field / park (optional)"
+          className={`${fieldClass} mb-4`}
+        />
+
+        <button onClick={save} disabled={busy} className="w-full bg-gold py-3 font-display text-ink disabled:opacity-60">
+          {busy ? 'Saving…' : 'Save game'}
+        </button>
+
+        {onVideo && (
+          <button
+            onClick={onVideo}
+            className="mt-2 w-full border-2 border-ink py-2.5 font-display text-sm text-ink"
+          >
+            Video &amp; camera ▸
+          </button>
+        )}
+
+        <button
+          onClick={del}
+          className="mt-4 font-athletic text-xs font-bold uppercase tracking-wide text-barn-red"
+        >
+          Delete game
+        </button>
+      </div>
     </div>
   )
 }
