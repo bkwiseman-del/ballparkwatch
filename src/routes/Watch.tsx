@@ -427,6 +427,10 @@ export default function Watch() {
             home: { name: info.home.name, code: board.home.code },
           },
           cueNameOf: (id) => (id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null),
+          // Enough to re-render the LIVE field + batter/pitcher, projected to the video's
+          // position, so the replay mirrors what viewers saw.
+          lineupsRaw: { away: info.lineups?.away ?? [], home: info.lineups?.home ?? [] },
+          players: info.players ?? {},
         }
       : null
 
@@ -851,20 +855,32 @@ type ReplayProps = {
   lineups: { away: { name: string; jersey: string | null }[]; home: { name: string; jersey: string | null }[] }
   teams: { away: { name: string; code: string }; home: { name: string; code: string } }
   cueNameOf: (id: string | null | undefined) => string | null
+  lineupsRaw: { away: LineupSlot[]; home: LineupSlot[] }
+  players: Record<string, { name: string; jersey: string | null }>
 }
 
 // Replay the recorded broadcast with the scorebug + AI commentary re-synced to the
 // video clock: as the video plays, each event fires at wall_clock_ts − started_at into
 // it (FX immediately; the spoken lines through the same cached-TTS queue as live), and
 // the scorebug is projected from the events reached so far. Scrubbing re-syncs both.
-function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf }: ReplayProps) {
+function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players }: ReplayProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const sorted = useMemo(() => [...events].sort((a, b) => a.seq - b.seq), [events])
   const firedSeq = useRef(0)
   const lastTime = useRef(0)
+  const didSeek = useRef(false)
   const [live, setLive] = useState<LiveGame>(() => ({ ...INITIAL_LIVE }))
+  // Events reached at the current video position — drives the synced field/batter view.
+  const [visible, setVisible] = useState<ViewerEvent[]>([])
 
   const tsOf = (e: ViewerEvent) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0)
+
+  // The recording starts when the CAMERA started (before first pitch). Skip that dead
+  // pre-game footage: jump the video to where game_start actually happened.
+  const startOffsetSec = (() => {
+    const gs = sorted.find((e) => e.event_type === 'game_start')
+    return gs ? Math.max(0, (tsOf(gs) - startedAtMs) / 1000) : 0
+  })()
 
   function fire(sinceSeq: number, upTo: ViewerEvent[]) {
     const newest = upTo[upTo.length - 1]
@@ -898,6 +914,7 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     const virtualMs = startedAtMs + cur * 1000
     const upTo = sorted.filter((e) => tsOf(e) <= virtualMs)
     setLive(project(upTo))
+    setVisible(upTo)
     const newMax = upTo.length ? upTo[upTo.length - 1].seq : 0
     const seeked = Math.abs(cur - lastTime.current) > 1.5 || cur < lastTime.current
     if (seeked) {
@@ -928,6 +945,27 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
       </div>
     )
 
+  // Re-render the live field + batter/pitcher, projected to the video's position, so the
+  // replay mirrors what viewers saw (not just the raw clip).
+  const subs = extractSubs(visible)
+  const resolveTeam = (key: 'away' | 'home'): LiveSlot[] => {
+    const initial = (lineupsRaw[key] ?? [])
+      .filter((s): s is LineupSlot & { id: string } => !!s.id)
+      .map((s) => ({ playerId: s.id, position: s.pos }))
+    return projectSlots(initial, subs, key).map((s) => {
+      const pl = players[s.playerId]
+      const nm = displayName(pl?.name) || (pl?.jersey ? `#${pl.jersey}` : '—')
+      return { id: s.playerId, name: nm, jersey: pl?.jersey ?? null, pos: s.position }
+    })
+  }
+  const rLineups: LiveLineups = { away: resolveTeam('away'), home: resolveTeam('home') }
+  const hasLineups = !!(lineupsRaw.away?.length || lineupsRaw.home?.length)
+  const newestLoc = [...visible].reverse().find((e) => {
+    const p = e.payload as { hit?: unknown; spray?: unknown; fielders?: unknown[] } | undefined
+    return !!(p && (p.hit || p.spray || (Array.isArray(p.fielders) && p.fielders.length)))
+  })
+  const spray = newestLoc ? buildViz(newestLoc.payload, newestLoc.seq) : null
+
   return (
     <div className="mx-auto w-full max-w-2xl">
       <div className="relative bg-black">
@@ -939,6 +977,12 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           playsInline
           onPlay={() => void audio.enable()}
           onTimeUpdate={onTime}
+          onLoadedMetadata={() => {
+            const v = videoRef.current
+            if (!v || didSeek.current) return
+            didSeek.current = true
+            if (startOffsetSec > 1 && startOffsetSec < (v.duration || Infinity) - 1) v.currentTime = startOffsetSec
+          }}
           // The recording is the raw camera (often 4:3 on iOS); center-crop it to
           // 16:9 to match the live broadcast's framing.
           className="aspect-video w-full bg-black object-cover"
@@ -947,8 +991,19 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           <ScorebugBar state={board} />
         </div>
       </div>
+
+      {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video. */}
+      {hasLineups && (
+        <>
+          <BatterPitcherStrip lineups={rLineups} live={live} events={visible} />
+          <div className="mt-3">
+            <FieldTab lineups={rLineups} live={live} events={visible} spray={spray} />
+          </div>
+        </>
+      )}
+
       <p className="mt-3 text-center font-data text-xs text-muted-green">
-        Game replay — the scorebug and AI commentary play back in sync. Tap play to enable sound.
+        Game replay — mirrors the live view, synced to the video. Tap play to enable sound.
       </p>
     </div>
   )

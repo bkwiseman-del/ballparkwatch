@@ -137,8 +137,10 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         },
       ) ?? ''
     // Cap the bitrate — iOS records at a very high default, which blows past upload
-    // size limits even for short clips. ~2 Mbps is plenty for a 720p replay.
-    const recOpts: MediaRecorderOptions = { videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 96_000 }
+    // size limits even for short clips. ~1.2 Mbps is plenty for a 720p replay on a
+    // phone screen. (iOS Safari sometimes ignores this cap; the durable fix is moving
+    // recordings to R2 with 24h retention — see the build plan.)
+    const recOpts: MediaRecorderOptions = { videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 96_000 }
     let rec: MediaRecorder
     try {
       rec = mime ? new MediaRecorder(stream, { mimeType: mime, ...recOpts }) : new MediaRecorder(stream, recOpts)
