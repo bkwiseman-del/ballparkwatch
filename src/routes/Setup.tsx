@@ -431,9 +431,20 @@ function GameEditor({
           </button>
         </div>
 
-        <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+        <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-start gap-2">
           <TeamPicker label="Away" value={away} onChange={setAway} teams={allTeams} onCreate={createTeam} />
-          <span className="pt-7 font-athletic text-sm uppercase text-muted-tan">at</span>
+          <button
+            type="button"
+            onClick={() => {
+              const a = away
+              setAway(home)
+              setHome(a)
+            }}
+            title="Swap home / away"
+            className="mt-6 border-2 border-ink px-2 py-2 font-display text-ink"
+          >
+            ⇄
+          </button>
           <TeamPicker label="Home" value={home} onChange={setHome} teams={allTeams} onCreate={createTeam} accent />
         </div>
 
