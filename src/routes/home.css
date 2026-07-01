@@ -8,6 +8,8 @@ html { scroll-behavior: smooth; }
 @keyframes spray-hit { 0%,100% { stroke-dashoffset:640; opacity:0 } 8% { opacity:.75; stroke-dashoffset:640 } 52% { stroke-dashoffset:0; opacity:.75 } 62% { stroke-dashoffset:0; opacity:0 } }
 @keyframes runner-appear { 0%,32%,90%,100% { opacity:0 } 37%,85% { opacity:1 } }
 @keyframes bb-waveform { 0%,100% { height:5px } 50% { height:26px } }
+/* Hand-drawn call-out circle around the sponsor strip: draw on, hold, fade, loop. */
+@keyframes sponsor-draw { 0% { stroke-dashoffset:640; opacity:0 } 8% { opacity:1 } 32% { stroke-dashoffset:0; opacity:1 } 82% { stroke-dashoffset:0; opacity:1 } 100% { stroke-dashoffset:0; opacity:0 } }
 
 .bb-mkt { font-family: Archivo, sans-serif; background:#1A2A4A; color:#F4ECD8; overflow-x:hidden; }
 
