@@ -879,10 +879,14 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
   const tsOf = (e: ViewerEvent) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0)
 
   // The recording starts when the CAMERA started (before first pitch). Skip that dead
-  // pre-game footage: jump the video to where game_start actually happened.
+  // pre-game footage: jump to just BEFORE game_start. A small pre-roll matters — if we
+  // land exactly on game_start, onTime treats the jump as a seek, marks that event as
+  // already-fired and flushes the voice queue, so the opening AI commentary is skipped.
+  // Starting a few seconds early lets game_start fire naturally during playback.
+  const PREROLL_SEC = 3
   const startOffsetSec = (() => {
     const gs = sorted.find((e) => e.event_type === 'game_start')
-    return gs ? Math.max(0, (tsOf(gs) - startedAtMs) / 1000) : 0
+    return gs ? Math.max(0, (tsOf(gs) - startedAtMs) / 1000 - PREROLL_SEC) : 0
   })()
 
   function fire(sinceSeq: number, upTo: ViewerEvent[]) {
