@@ -44,6 +44,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const [ended, setEnded] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [saveErr, setSaveErr] = useState<string>('')
+  const [progress, setProgress] = useState('')
   const [recBytes, setRecBytes] = useState(0) // live diagnostic: is the recorder capturing?
   const vstop = v.stop
 
@@ -62,6 +63,22 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const recRef = useRef<MediaRecorder | null>(null)
   const uploadedRef = useRef(false)
 
+  // Upload one part to a signed URL, with a few retries (mobile networks blip).
+  async function uploadPart(path: string, body: Blob, contentType: string): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: sign, error: signErr } = await supabase.functions.invoke('sign-upload', {
+        body: { token, path },
+      })
+      if (!signErr && sign?.token) {
+        const { error } = await supabase.storage
+          .from('bpw-video')
+          .uploadToSignedUrl(path, sign.token, body, { contentType })
+        if (!error) return true
+      }
+    }
+    return false
+  }
+
   async function uploadRecording() {
     if (uploadedRef.current) return // fire once, however the recorder stopped
     const chunks = recChunks.current
@@ -73,29 +90,31 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     const base = full.split(';')[0] || 'video/webm'
     const startedAt = recStartedAt.current
     const ext = base.includes('mp4') ? 'mp4' : 'webm'
-    const path = `recordings/${gameId}/${startedAt}.${ext}`
-    // The bpw-video bucket isn't openly writable — ask sign-upload for a path-scoped
-    // signed URL (authorized by our broadcast token), then upload to that.
-    const { data: sign, error: signErr } = await supabase.functions.invoke('sign-upload', {
-      body: { token, path },
-    })
-    if (signErr || !sign?.token) {
-      setSaveErr(`sign-upload: ${signErr?.message ?? 'no token'}`)
-      return setSaveState('failed')
-    }
-    const { error } = await supabase.storage
-      .from('bpw-video')
-      .uploadToSignedUrl(path, sign.token, new Blob(chunks, { type: full }), { contentType: base })
-    if (error) {
-      setSaveErr(`upload: ${error.message}`)
-      return setSaveState('failed')
+    // Record is ONE file; upload it in small byte-slices so a dropped part retries
+    // instead of losing the whole game. The viewer concatenates the parts back into
+    // the original file (they're contiguous slices), so the replay is still one video.
+    const blob = new Blob(chunks, { type: full })
+    const PART = 5 * 1024 * 1024
+    const nParts = Math.max(1, Math.ceil(blob.size / PART))
+    const dir = `recordings/${gameId}/${startedAt}`
+    const paths: string[] = []
+    for (let i = 0; i < nParts; i++) {
+      setProgress(`part ${i + 1} of ${nParts}`)
+      const slice = blob.slice(i * PART, Math.min((i + 1) * PART, blob.size), base)
+      const path = `${dir}/p-${String(i).padStart(4, '0')}.${ext}`
+      if (!(await uploadPart(path, slice, base))) {
+        setSaveErr(`upload failed at part ${i + 1}/${nParts}`)
+        return setSaveState('failed')
+      }
+      paths.push(path)
     }
     const { error: recErr } = await supabase.rpc('save_recording', {
       p_token: token,
-      p_path: path,
+      p_path: paths[0] ?? null,
       p_started_at: new Date(startedAt).toISOString(),
       p_duration_ms: Date.now() - startedAt,
       p_mime: base,
+      p_segments: paths,
     })
     if (recErr) setSaveErr(`save: ${recErr.message}`)
     setSaveState(recErr ? 'failed' : 'saved')
@@ -200,7 +219,9 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         <div className="space-y-2">
           <p className="font-display text-2xl text-gold">Game over</p>
           {saveState === 'saving' && (
-            <p className="font-data text-sm text-gold">Saving the replay… keep this screen open a moment.</p>
+            <p className="font-data text-sm text-gold">
+              Saving the replay{progress ? ` (${progress})` : ''}… keep this screen open.
+            </p>
           )}
           {saveState === 'saved' && (
             <p className="font-data text-sm text-board-green">Replay saved ✓ You can close this screen.</p>

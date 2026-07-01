@@ -51,6 +51,7 @@ type PublicGame = {
   recording_started_at?: string | null
   recording_mime?: string | null
   recording_duration_ms?: number | null
+  recording_segments?: string[] | null
 }
 
 type LineupSlot = { id?: string; name: string; jersey: string | null; pos: string | null }
@@ -354,6 +355,45 @@ export default function Watch() {
     return () => window.clearTimeout(t)
   }, [halfEnded])
 
+  // Build the replay URL. Single-file recordings play directly; a chunked recording
+  // (recording_segments) is fetched part-by-part and concatenated back into the
+  // original file (contiguous byte-slices), then played as one blob — so the ReplayView
+  // and its scorebug sync are unchanged.
+  const [replayUrl, setReplayUrl] = useState<string | null>(null)
+  const recStarted = info?.recording_started_at ?? null
+  const recPath = info?.recording_path ?? null
+  const recMime = info?.recording_mime ?? null
+  const recSegKey = (info?.recording_segments ?? []).join('|')
+  useEffect(() => {
+    if (!recStarted) return setReplayUrl(null)
+    const segs = recSegKey ? recSegKey.split('|') : []
+    if (segs.length) {
+      let cancelled = false
+      let objUrl: string | null = null
+      ;(async () => {
+        try {
+          const blobs: Blob[] = []
+          for (const p of segs) {
+            const u = supabase.storage.from('bpw-video').getPublicUrl(p).data.publicUrl
+            const r = await fetch(u)
+            if (!r.ok) throw new Error('part fetch failed')
+            blobs.push(await r.blob())
+          }
+          if (cancelled) return
+          objUrl = URL.createObjectURL(new Blob(blobs, { type: recMime ?? 'video/webm' }))
+          setReplayUrl(objUrl)
+        } catch {
+          if (!cancelled) setReplayUrl(null)
+        }
+      })()
+      return () => {
+        cancelled = true
+        if (objUrl) URL.revokeObjectURL(objUrl)
+      }
+    }
+    setReplayUrl(recPath ? supabase.storage.from('bpw-video').getPublicUrl(recPath).data.publicUrl : null)
+  }, [recStarted, recPath, recMime, recSegKey])
+
   if (error) return <Center>{error}</Center>
   if (!info) return <Center>Loading…</Center>
 
@@ -370,9 +410,9 @@ export default function Watch() {
 
   // Replay of the recorded broadcast (shown on the Final screen) if one was saved.
   const replay: ReplayProps | null =
-    info.recording_path && info.recording_started_at
+    info.recording_started_at
       ? {
-          url: supabase.storage.from('bpw-video').getPublicUrl(info.recording_path).data.publicUrl,
+          url: replayUrl ?? '',
           startedAtMs: new Date(info.recording_started_at).getTime(),
           gameId: info.id,
           events,
@@ -876,6 +916,13 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     outs: live.outs,
     runners: occupancy(live.bases),
   }
+
+  if (!url)
+    return (
+      <div className="mx-auto flex aspect-video w-full max-w-2xl items-center justify-center bg-black font-data text-sm text-cream/60">
+        Loading replay…
+      </div>
+    )
 
   return (
     <div className="mx-auto w-full max-w-2xl">
