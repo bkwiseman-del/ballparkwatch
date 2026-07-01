@@ -7,12 +7,14 @@ import { SeasonStats } from '@/components/SeasonStats'
 import { TeamMembers } from '@/components/TeamMembers'
 import { TeamDetails } from '@/components/TeamDetails'
 import { TeamEvents } from '@/components/TeamEvents'
+import { TeamPosts } from '@/components/TeamPosts'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Game, Team } from '@/lib/types'
 
-type Tab = 'roster' | 'schedule' | 'stats' | 'members' | 'settings'
+type Tab = 'roster' | 'schedule' | 'news' | 'stats' | 'members' | 'settings'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'schedule', label: 'Schedule' },
+  { id: 'news', label: 'News' },
   { id: 'roster', label: 'Roster' },
   { id: 'stats', label: 'Stats' },
   { id: 'members', label: 'Members' },
@@ -31,6 +33,7 @@ export default function TeamHub() {
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState(false)
   const [canManage, setCanManage] = useState(false)
+  const [isStaff, setIsStaff] = useState(false)
 
   const load = useCallback(() => {
     if (!id) return
@@ -65,7 +68,10 @@ export default function TeamHub() {
         .eq('team_id', id)
         .eq('user_id', user.id)
         .maybeSingle()
-        .then(({ data }) => setCanManage(data?.role === 'owner' || data?.role === 'admin'))
+        .then(({ data }) => {
+          setCanManage(data?.role === 'owner' || data?.role === 'admin')
+          setIsStaff(!!data && data.role !== 'family')
+        })
   }, [id, user])
   useEffect(load, [load])
 
@@ -156,6 +162,7 @@ export default function TeamHub() {
                       <TeamEvents team={team} canManage={canManage} />
                     </>
                   ) : null)}
+                {tab === 'news' && <TeamPosts team={team} canPost={isStaff} />}
                 {tab === 'roster' && <Roster team={team} onError={setError} />}
                 {tab === 'stats' && <SeasonStats team={team} />}
                 {tab === 'members' && <TeamMembers team={team} />}

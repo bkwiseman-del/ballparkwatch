@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
 import { Select } from '@/components/Select'
+import { fmtAgo } from '@/components/TeamPosts'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Team } from '@/lib/types'
 
@@ -23,6 +24,7 @@ type FeedItem = {
 type RsvpStatus = 'going' | 'maybe' | 'not'
 type LinkedPlayer = { player_id: string; name: string; jersey: string | null }
 type RosterPlayer = { id: string; name: string; jersey_number: string | null }
+type Post = { id: string; body: string; author: string; created_at: string }
 type FollowedTeam = {
   team: Team
   role: string
@@ -30,16 +32,18 @@ type FollowedTeam = {
   myPlayers: LinkedPlayer[]
   roster: RosterPlayer[]
   rsvps: Record<string, RsvpStatus> // `${target_id}:${player_id}` -> status
+  posts: Post[]
 }
 
 // Load everything one followed team needs: the upcoming feed, which players are MINE
 // (member_players), the roster (to link a kid), and my kids' RSVP statuses.
 async function loadOne(team: Team, role: string, userId: string): Promise<FollowedTeam> {
   const teamId = team.id
-  const [feedRes, mpRes, rosterRes] = await Promise.all([
+  const [feedRes, mpRes, rosterRes, postsRes] = await Promise.all([
     supabase.rpc('team_upcoming', { p_team_id: teamId }),
     supabase.from('member_players').select('player_id, players(name, jersey_number)').eq('team_id', teamId).eq('user_id', userId),
     supabase.from('players').select('id, name, jersey_number').eq('team_id', teamId).is('archived_at', null).order('jersey_number'),
+    supabase.rpc('team_posts_list', { p_team_id: teamId, p_limit: 5 }),
   ])
   const myPlayers: LinkedPlayer[] = ((mpRes.data ?? []) as Array<{ player_id: string; players: { name?: string; jersey_number?: string } | null }>).map(
     (m) => ({ player_id: m.player_id, name: m.players?.name ?? '—', jersey: m.players?.jersey_number ?? null }),
@@ -52,7 +56,15 @@ async function loadOne(team: Team, role: string, userId: string): Promise<Follow
       rsvps[`${x.target_id}:${x.player_id}`] = x.status
     }
   }
-  return { team, role, feed: (feedRes.data ?? []) as FeedItem[], myPlayers, roster: (rosterRes.data ?? []) as RosterPlayer[], rsvps }
+  return {
+    team,
+    role,
+    feed: (feedRes.data ?? []) as FeedItem[],
+    myPlayers,
+    roster: (rosterRes.data ?? []) as RosterPlayer[],
+    rsvps,
+    posts: (postsRes.data ?? []) as Post[],
+  }
 }
 
 // The family / follower home. Read-only for games/scores; families link their kid(s)
@@ -151,7 +163,7 @@ function TeamCard({
   userId: string
   onRefresh: (teamId: string) => void | Promise<void>
 }) {
-  const { team, feed, myPlayers, roster, rsvps } = data
+  const { team, feed, myPlayers, roster, rsvps, posts } = data
   const [adding, setAdding] = useState(false)
   const live = feed.find((i) => i.type === 'game' && i.status === 'live')
   const upcoming = upcomingItems(feed)
@@ -192,6 +204,23 @@ function TeamCard({
           <span className="font-athletic text-[10px] uppercase tracking-wide text-muted-tan">Following</span>
         )}
       </div>
+
+      {/* Latest announcements from the coach. */}
+      {posts.length > 0 && (
+        <div className="border-b-2 border-ink bg-white px-4 py-2.5">
+          <p className="mb-1.5 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">News</p>
+          <ul className="flex flex-col gap-2">
+            {posts.slice(0, 3).map((p) => (
+              <li key={p.id}>
+                <p className="whitespace-pre-wrap font-data text-sm text-ink">{p.body}</p>
+                <p className="font-data text-[11px] text-muted-tan">
+                  {p.author} · {fmtAgo(p.created_at)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Your players — link a kid so you can RSVP for them. */}
       <div className="border-b-2 border-ink px-4 py-2.5">
