@@ -50,6 +50,29 @@ export type Resolution = {
   runners: Record<string, Dest>
 }
 
+// A categorical hit location — direction (pull-agnostic: absolute field side) × depth.
+// Chosen from a labeled zone grid (a menu, NOT a tap on a field diagram), so it stays
+// clear of the tap-the-field patent while still feeding a spray chart.
+export type HitDir = 'L' | 'C' | 'R'
+export type HitDepth = 'IF' | 'shallow' | 'deep'
+export type HitZone = { dir: HitDir; depth: HitDepth }
+
+// Reconstruct an approximate field point (FieldDiamond viewBox coords; home ≈ 170,330)
+// from a categorical zone, so the spray chart is roughly accurate without a pixel tap.
+export function hitPoint(z: HitZone): { x: number; y: number } {
+  const y = { IF: 250, shallow: 190, deep: 150 }[z.depth]
+  // The fan widens with depth so deep balls reach the corners, shallow ones stay tighter.
+  const spread = { IF: 42, shallow: 66, deep: 84 }[z.depth]
+  const x = 170 + { L: -1, C: 0, R: 1 }[z.dir] * spread
+  return { x, y }
+}
+
+// The spray point for a play: the new categorical zone, or a legacy tapped point.
+export function sprayFor(payload: EventPayload | null | undefined): { x: number; y: number } | null {
+  if (payload?.hit) return hitPoint(payload.hit)
+  return payload?.spray ?? null
+}
+
 export type EventPayload = {
   resolution?: Resolution
   // per-runner movement for play-by-play detail (from/to bases; 0=out, 4=home)
@@ -62,7 +85,10 @@ export type EventPayload = {
   // fielders involved (e.g. [6,4,3]) and rbi credited — for stats/PBP
   fielders?: number[]
   rbi?: number
-  // free-form landing point for hits, or zone label for outs
+  // Categorical hit location (the IP-safe replacement for tapping the field): a
+  // direction × depth zone. The spray chart is reconstructed from it (see hitPoint).
+  hit?: HitZone
+  // Legacy free-form landing point (old events) — still rendered if present.
   spray?: { x: number; y: number }
   location?: string
   // substitution: team + one or more moves (bench swap or position change)

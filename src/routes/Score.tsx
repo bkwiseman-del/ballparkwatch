@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useScorer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
@@ -15,10 +15,14 @@ import { buildPlayByPlay, computeBattingLines, computeBoxScore } from '@/lib/sta
 import {
   EVENT_LABELS,
   occupancy,
+  hitPoint,
   type Dest,
   type EventPayload,
   type EventType,
   type GameEventRow,
+  type HitDir,
+  type HitDepth,
+  type HitZone,
   type LiveGame,
   type Resolution,
 } from '@/lib/engine'
@@ -1228,8 +1232,9 @@ function InPlayFlow({
   onCancel: () => void
   onConfirm: (result: EventType, payload: EventPayload) => void
 }) {
-  const [result, setResult] = useState<EventType>('single')
-  const [landing, setLanding] = useState<{ x: number; y: number } | null>(null) // field coords (hits)
+  // No outcome chosen yet — the batter-first grid is the whole first screen.
+  const [result, setResult] = useState<EventType | null>(null)
+  const [zone, setZone] = useState<HitZone | null>(null)
   const [fielders, setFielders] = useState<number[]>([])
   const [extraOuts, setExtraOuts] = useState(0) // 0 = normal, 1 = double play, 2 = triple play
 
@@ -1239,13 +1244,13 @@ function InPlayFlow({
     runners.third && { key: 'third' as const, from: 3, player: runners.third },
   ].filter(Boolean) as OnBase[]
 
-  // Fielder credit only matters when someone's out (or an error was made).
-  const isOut = ['groundout', 'flyout', 'lineout', 'fielders_choice'].includes(result)
+  const isOut = !!result && ['groundout', 'flyout', 'lineout', 'fielders_choice'].includes(result)
   const isError = result === 'error'
-  const isHit = ['single', 'double', 'triple', 'home_run'].includes(result)
+  const isCleanHit = !!result && ['single', 'double', 'triple'].includes(result)
   const showCredit = isOut || isError
+  // A clean hit with the bases empty needs no runner resolution → the zone tap commits.
+  const autoHit = isCleanHit && onBase.length === 0
 
-  // current runners as id-based bases + a name resolver, for the tap field
   const baseIds = {
     first: runners.first?.id ?? null,
     second: runners.second?.id ?? null,
@@ -1257,123 +1262,218 @@ function InPlayFlow({
     return null
   }
 
+  // Pick an outcome. A home run is unambiguous — everyone scores — so it commits
+  // immediately (no further taps).
   const pickResult = (t: EventType) => {
+    if (t === 'home_run') {
+      onConfirm('home_run', {
+        resolution: { batter: 4, runners: Object.fromEntries(onBase.map((r) => [r.player.id, 4 as Dest])) },
+        rbi: onBase.length + 1,
+        advances: onBase.map((r) => ({ id: r.player.id, from: r.from, to: 4 as Dest })),
+      })
+      return
+    }
     setResult(t)
-    setExtraOuts(0) // re-decide per result
-    if (!['groundout', 'flyout', 'lineout', 'fielders_choice', 'error'].includes(t)) {
-      setFielders([])
+    setZone(null)
+    setExtraOuts(0)
+    setFielders([])
+  }
+
+  // Chosen a hit location. For a bases-empty clean hit this IS the commit; otherwise it
+  // just records the zone and the runner resolver (below) commits.
+  const onZone = (z: HitZone | null) => {
+    setZone(z)
+    if (autoHit && result) {
+      onConfirm(result, {
+        resolution: { batter: BATTER_DEST[result] ?? 1, runners: {} },
+        rbi: 0,
+        advances: [],
+        ...(z ? { hit: z } : {}),
+      })
     }
   }
-  // Double/triple plays only make sense on an out with runners who can be doubled
-  // off. One extra out per runner on base (a triple play needs at least two on).
-  const isOutResult = ['groundout', 'lineout', 'flyout'].includes(result)
+
+  const isOutResult = !!result && ['groundout', 'lineout', 'flyout'].includes(result)
   const maxExtraOuts = isOutResult ? Math.min(onBase.length, 2) : 0
+  const chosenLabel = result ? (RESULTS.find((r) => r.type === result)?.label ?? '') : ''
 
   return (
     <div className="fixed inset-0 z-20 mx-auto flex max-w-[430px] flex-col bg-night-green text-cream">
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
-        <span className="font-display text-lg text-cream">Ball in Play</span>
+        <span className="font-display text-lg text-cream">Ball in play</span>
         <button onClick={onCancel} className="font-athletic text-sm uppercase tracking-wide text-gold">
           Cancel ✕
         </button>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {/* result */}
-        <SectionLabel>Result</SectionLabel>
-        <div className="mb-2 grid grid-cols-4 gap-2">
-          {RESULTS.filter((r) => r.group === 'hit').map((r) => (
-            <ResultBtn key={r.type} active={result === r.type} onClick={() => pickResult(r.type)} gold>
-              {r.label}
-            </ResultBtn>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {RESULTS.filter((r) => r.group !== 'hit').map((r) => (
-            <ResultBtn key={r.type} active={result === r.type} onClick={() => pickResult(r.type)}>
-              {r.label}
-            </ResultBtn>
-          ))}
-        </div>
-
-        {/* double / triple play — pre-marks the lead forced runners out so the
-            scorer doesn't redo it (triple play only offered with two-plus on base) */}
-        {maxExtraOuts > 0 && (
-          <div className="mt-2 flex gap-2">
-            <button
-              onClick={() => setExtraOuts((v) => (v === 1 ? 0 : 1))}
-              className={`flex-1 border-2 py-2.5 font-display text-sm ${
-                extraOuts === 1 ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
-              }`}
-            >
-              {extraOuts === 1 ? 'DOUBLE PLAY ✓' : 'DOUBLE PLAY'}
-            </button>
-            {maxExtraOuts >= 2 && (
+        {result === null ? (
+          /* Step 1 — batter-first outcome grid. */
+          <>
+            <SectionLabel>What happened?</SectionLabel>
+            <div className="mb-2 grid grid-cols-4 gap-2">
+              {RESULTS.filter((r) => r.group === 'hit').map((r) => (
+                <ResultBtn key={r.type} active={false} onClick={() => pickResult(r.type)} gold>
+                  {r.label}
+                </ResultBtn>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {RESULTS.filter((r) => r.group !== 'hit').map((r) => (
+                <ResultBtn key={r.type} active={false} onClick={() => pickResult(r.type)}>
+                  {r.label}
+                </ResultBtn>
+              ))}
+            </div>
+          </>
+        ) : (
+          /* Step 2 — resolve the chosen outcome. */
+          <>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="bg-gold px-3 py-1 font-display text-ink">{chosenLabel}</span>
               <button
-                onClick={() => setExtraOuts((v) => (v === 2 ? 0 : 2))}
-                className={`flex-1 border-2 py-2.5 font-display text-sm ${
-                  extraOuts === 2 ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
-                }`}
+                onClick={() => setResult(null)}
+                className="font-athletic text-xs font-bold uppercase tracking-wide text-gold"
               >
-                {extraOuts === 2 ? 'TRIPLE PLAY ✓' : 'TRIPLE PLAY'}
+                ‹ Change
+              </button>
+            </div>
+
+            {/* Double / triple play — pre-marks the lead forced runners out. */}
+            {maxExtraOuts > 0 && (
+              <div className="mb-1 flex gap-2">
+                <button
+                  onClick={() => setExtraOuts((v) => (v === 1 ? 0 : 1))}
+                  className={`flex-1 border-2 py-2.5 font-display text-sm ${
+                    extraOuts === 1 ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
+                  }`}
+                >
+                  {extraOuts === 1 ? 'DOUBLE PLAY ✓' : 'DOUBLE PLAY'}
+                </button>
+                {maxExtraOuts >= 2 && (
+                  <button
+                    onClick={() => setExtraOuts((v) => (v === 2 ? 0 : 2))}
+                    className={`flex-1 border-2 py-2.5 font-display text-sm ${
+                      extraOuts === 2 ? 'border-barn-red bg-barn-red text-cream' : 'border-cream/30 text-cream'
+                    }`}
+                  >
+                    {extraOuts === 2 ? 'TRIPLE PLAY ✓' : 'TRIPLE PLAY'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Who made the out / error — position keypad (fielder-based, not a field tap). */}
+            {showCredit && (
+              <>
+                <SectionLabel>
+                  {isError ? 'Who made the error?' : 'Who made the out?'}
+                  {fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
+                </SectionLabel>
+                <FielderGrid
+                  sequence={fielders}
+                  onAppend={(n) => setFielders((s) => [...s, n])}
+                  onClear={() => setFielders([])}
+                />
+              </>
+            )}
+
+            {/* Where did it go — a labeled direction × depth zone (a menu, not a field
+                tap), feeding the spray chart. Required to commit a bases-empty hit;
+                optional enrichment otherwise. */}
+            <SectionLabel>{autoHit ? 'Where did it go? · tap to record' : 'Where did it go? · optional'}</SectionLabel>
+            <ZoneGrid selected={zone} onPick={onZone} />
+            {autoHit && (
+              <button
+                onClick={() => onZone(null)}
+                className="mt-2 w-full border-2 border-cream/30 py-2 font-athletic text-xs font-semibold uppercase tracking-wide text-cream/70"
+              >
+                Commit — location not sure
               </button>
             )}
-          </div>
-        )}
 
-        {/* where did the ball go — tap the field; on outs tap fielders for the putout */}
-        <SectionLabel>
-          {isHit ? 'Where did it land? · tap the field' : 'Tap where it went · then tap fielders for the out'}
-        </SectionLabel>
-        <div className="mx-auto w-full max-w-[300px] border-2 border-gold/40">
-          <FieldDiamond
-            bases={baseIds}
-            nameOf={runnerName}
-            fielders={defense}
-            batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
-            onFieldTap={setLanding}
-            marker={landing}
-            onFielderTap={showCredit ? (num) => setFielders((s) => [...s, num]) : undefined}
-            sequence={showCredit ? fielders : undefined}
-            className="block w-full"
-          />
-        </div>
+            {/* Display-only field: shows the runners + a preview of the picked zone. */}
+            <div className="mx-auto mt-3 w-full max-w-[280px] border-2 border-gold/40">
+              <FieldDiamond
+                bases={baseIds}
+                nameOf={runnerName}
+                fielders={defense}
+                batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
+                marker={zone ? hitPoint(zone) : null}
+                className="block w-full"
+              />
+            </div>
 
-        {/* who made the out / error — only when relevant */}
-        {showCredit && (
-          <>
-            <SectionLabel>
-              {isError ? 'Who made the error?' : 'Who made the out?'}
-              {fielders.length ? ` · ${fielders.join('–')}` : ' · tap in order'}
-            </SectionLabel>
-            <FielderGrid
-              sequence={fielders}
-              onAppend={(n) => setFielders((s) => [...s, n])}
-              onClear={() => setFielders([])}
-            />
+            {/* Runner resolution + commit — for everything except a bases-empty clean hit. */}
+            {!autoHit && (
+              <Resolver
+                key={`${result}:${extraOuts}`}
+                result={result}
+                batter={batter}
+                onBase={onBase}
+                extraOuts={extraOuts}
+                locked={false}
+                hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
+                onResolve={(resolution, runs, advances) =>
+                  onConfirm(result, {
+                    resolution,
+                    rbi: runs,
+                    advances,
+                    ...(zone ? { hit: zone } : {}),
+                    ...(fielders.length ? { fielders } : {}),
+                  })
+                }
+              />
+            )}
           </>
         )}
-
-        {/* resolve each runner (re-keyed so defaults follow the result + DP toggle) */}
-        <Resolver
-          key={`${result}:${extraOuts}`}
-          result={result}
-          batter={batter}
-          onBase={onBase}
-          extraOuts={extraOuts}
-          locked={result === 'home_run'}
-          hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
-          onResolve={(resolution, runs, advances) =>
-            onConfirm(result, {
-              resolution,
-              rbi: runs,
-              advances,
-              ...(landing ? { spray: landing } : {}),
-              ...(fielders.length ? { fielders } : {}),
-            })
-          }
-        />
       </div>
+    </div>
+  )
+}
+
+const ZONE_ROWS: { depth: HitDepth; label: string }[] = [
+  { depth: 'deep', label: 'Deep' },
+  { depth: 'shallow', label: 'Shallow' },
+  { depth: 'IF', label: 'Infield' },
+]
+const ZONE_DIRS: { dir: HitDir; label: string }[] = [
+  { dir: 'L', label: 'Left' },
+  { dir: 'C', label: 'Center' },
+  { dir: 'R', label: 'Right' },
+]
+// A labeled direction × depth grid — categorical menu selection, not a tap on a field
+// diagram. One tap captures both axes; it maps to an approximate point for the spray chart.
+function ZoneGrid({ selected, onPick }: { selected: HitZone | null; onPick: (z: HitZone) => void }) {
+  return (
+    <div className="grid grid-cols-[3.4rem_1fr_1fr_1fr] gap-1.5">
+      <span />
+      {ZONE_DIRS.map((d) => (
+        <span key={d.dir} className="text-center font-athletic text-[10px] font-semibold uppercase text-muted-green">
+          {d.label}
+        </span>
+      ))}
+      {ZONE_ROWS.map((r) => (
+        <Fragment key={r.depth}>
+          <span className="self-center font-athletic text-[10px] font-semibold uppercase text-muted-green">
+            {r.label}
+          </span>
+          {ZONE_DIRS.map((d) => {
+            const on = selected?.dir === d.dir && selected?.depth === r.depth
+            return (
+              <button
+                key={d.dir}
+                onClick={() => onPick({ dir: d.dir, depth: r.depth })}
+                className={`flex h-10 items-center justify-center border-2 ${
+                  on ? 'border-gold bg-gold text-ink' : 'border-cream/25 text-cream/40'
+                }`}
+              >
+                {on ? '●' : ''}
+              </button>
+            )
+          })}
+        </Fragment>
+      ))}
     </div>
   )
 }

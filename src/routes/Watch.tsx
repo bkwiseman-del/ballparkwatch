@@ -6,7 +6,7 @@ import { ScorebugBar } from '@/components/Scorebug'
 import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type SprayViz } from '@/components/FieldDiamond'
 import { HeaderWordmark } from '@/components/Logo'
 import { resolveCode, type ScoreboardState } from '@/lib/scoreboard'
-import { INITIAL_LIVE, occupancy, project, type GameEventRow, type LiveGame } from '@/lib/engine'
+import { INITIAL_LIVE, occupancy, project, sprayFor, type GameEventRow, type LiveGame } from '@/lib/engine'
 import {
   buildPlayByPlay,
   computeBattingLines,
@@ -59,18 +59,19 @@ type LineupSlot = { id?: string; name: string; jersey: string | null; pos: strin
 type LiveSlot = { id: string; name: string; jersey: string | null; pos: string | null }
 type LiveLineups = { away: LiveSlot[]; home: LiveSlot[] }
 
-// Build the animated spray for a play. Hits carry a free landing point captured
-// on the same field geometry the viewer uses, so it's drawn as-is. Outs use the
-// fielder putout sequence (contact = first fielder, throws = the rest).
+// Build the animated spray for a play. The contact point comes from the categorical
+// hit zone (reconstructed via hitPoint) or a legacy tapped point; outs use the fielder
+// putout sequence (contact = first fielder, throws = the rest).
 function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null {
   if (!payload) return null
   const pts = (Array.isArray(payload.fielders) ? payload.fielders : [])
     .map((n) => FIELDER_POS[POS_BY_NUM[n]])
     .filter((p): p is { x: number; y: number } => !!p)
-  // Tapped contact point + throw sequence: ball goes to where it was hit, then
-  // the throws (skip the first fielder since that's ~where it was fielded).
-  if (payload.spray && pts.length) return { contact: payload.spray, throws: pts.slice(1), nonce: seq }
-  if (payload.spray) return { contact: payload.spray, nonce: seq }
+  const contact = sprayFor(payload)
+  // Ball goes to where it was hit, then the throws (skip the first fielder since that's
+  // ~where it was fielded).
+  if (contact && pts.length) return { contact, throws: pts.slice(1), nonce: seq }
+  if (contact) return { contact, nonce: seq }
   if (pts.length) return { contact: pts[0], throws: pts.slice(1), nonce: seq }
   return null
 }
