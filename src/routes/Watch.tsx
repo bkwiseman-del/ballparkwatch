@@ -968,7 +968,9 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <div className="relative bg-black">
+      {/* Match the live layout: video, then the scorebug bar BELOW it (never over the
+          player controls). */}
+      <div className="bg-black">
         <video
           ref={videoRef}
           src={url}
@@ -987,10 +989,8 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           // 16:9 to match the live broadcast's framing.
           className="aspect-video w-full bg-black object-cover"
         />
-        <div className="pointer-events-none absolute bottom-2 left-2">
-          <ScorebugBar state={board} />
-        </div>
       </div>
+      <ScorebugBar state={board} />
 
       {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video. */}
       {hasLineups && (
