@@ -23,17 +23,36 @@ export default function Setup() {
   const [showAddTeam, setShowAddTeam] = useState(false)
   const [videoGame, setVideoGame] = useState<Game | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hasFollows, setHasFollows] = useState(false)
 
   const load = useCallback(async () => {
+    if (!user) return
     setError(null)
-    const [t, g] = await Promise.all([
+    const [t, g, m] = await Promise.all([
       supabase.from('teams').select('*').order('is_favorite', { ascending: false }).order('name'),
       supabase.from('games').select('*').order('scheduled_at', { ascending: true, nullsFirst: false }),
+      supabase.from('team_members').select('team_id, role').eq('user_id', user.id),
     ])
     if (t.error) return setError(t.error.message)
     if (g.error) return setError(g.error.message)
-    const gs = g.data as Game[]
-    setTeams(t.data as Team[])
+
+    // This is the OPERATOR dashboard. Teams-by-RLS now include teams you merely
+    // follow as family, so split by role: show only teams you run here, and send a
+    // family-only account to its following home instead.
+    const OPERATOR = new Set(['owner', 'admin', 'scorer', 'broadcaster'])
+    const roleBy = new Map((m.data ?? []).map((r) => [r.team_id as string, r.role as string]))
+    const allTeams = t.data as Team[]
+    const operated = allTeams.filter((tm) => OPERATOR.has(roleBy.get(tm.id) ?? 'owner'))
+    setHasFollows(allTeams.some((tm) => roleBy.get(tm.id) === 'family'))
+    if (operated.length === 0 && allTeams.some((tm) => roleBy.get(tm.id) === 'family')) {
+      navigate('/following', { replace: true })
+      return
+    }
+    const operatedIds = new Set(operated.map((tm) => tm.id))
+    const gs = (g.data as Game[]).filter(
+      (game) => operatedIds.has(game.home_team_id) || operatedIds.has(game.away_team_id),
+    )
+    setTeams(operated)
     setGames(gs)
     const { data: st } = await supabase
       .from('game_state')
@@ -46,7 +65,7 @@ export default function Setup() {
         ]),
       ),
     )
-  }, [])
+  }, [user, navigate])
 
   useEffect(() => {
     load()
@@ -93,9 +112,16 @@ export default function Setup() {
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-cream text-ink">
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] text-cream">
         <HeaderWordmark />
-        <button onClick={signOut} className="font-athletic text-sm uppercase tracking-wide text-gold hover:underline">
-          Sign out
-        </button>
+        <div className="flex items-center gap-4">
+          {hasFollows && (
+            <Link to="/following" className="font-athletic text-sm uppercase tracking-wide text-gold hover:underline">
+              Following
+            </Link>
+          )}
+          <button onClick={signOut} className="font-athletic text-sm uppercase tracking-wide text-gold hover:underline">
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

@@ -3,6 +3,7 @@ import { RequireAuth } from './auth/RequireAuth'
 import Home from './routes/Home'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
+import Following from './routes/Following'
 import TeamHub from './routes/TeamHub'
 import Lineup from './routes/Lineup'
 import Score from './routes/Score'
@@ -22,6 +23,14 @@ export default function App() {
         element={
           <RequireAuth>
             <Setup />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/following"
+        element={
+          <RequireAuth>
+            <Following />
           </RequireAuth>
         }
       />
