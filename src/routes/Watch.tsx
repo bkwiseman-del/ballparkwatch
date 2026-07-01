@@ -796,7 +796,7 @@ function FinalView({
     replay ? 'replay' : 'recap',
   )
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink lg:max-w-5xl">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
       <Bunting />
 
@@ -1064,7 +1064,8 @@ function RecapFinal({
 }) {
   const box = computeBoxScore(events)
   return (
-    <div className="mx-auto max-w-xl">
+    // Desktop: recap write-up and line score sit side by side instead of stacked.
+    <div className="mx-auto max-w-xl lg:max-w-none lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
       {recap ? (
         <div className="border-2 border-gold bg-black/20 p-4 min-[760px]:p-5">
           <p className="font-display text-2xl leading-tight text-gold">{recap.headline}</p>
@@ -1096,7 +1097,7 @@ function LineScore({ box, awayCode, homeCode }: { box: BoxScore; awayCode: strin
     { code: homeCode, b: box.home, accent: true },
   ]
   return (
-    <div className="mt-5 overflow-x-auto">
+    <div className="mt-5 overflow-x-auto lg:mt-0">
       <table className="w-full border-2 border-gold text-center font-data text-sm tabular">
         <thead>
           <tr className="bg-[var(--surface)] text-[11px] uppercase tracking-wide text-muted-green">
@@ -1349,9 +1350,10 @@ function PlaysTab({ events }: { events: ViewerEvent[] }) {
   const plays = buildPlayByPlay(events, (id) => (id ? map.get(id) ?? null : null))
   if (plays.length === 0) return <Empty>No plays yet.</Empty>
   return (
-    <ul className="flex flex-col divide-y divide-cream/10">
+    // Two balanced columns on desktop so a long game doesn't become one tall strip.
+    <ul className="divide-y divide-cream/10 lg:columns-2 lg:gap-8 lg:divide-y-0">
       {plays.map((p) => (
-        <li key={p.seq} className="flex gap-3 py-2.5">
+        <li key={p.seq} className="flex gap-3 py-2.5 lg:break-inside-avoid lg:border-b lg:border-cream/10">
           <span className={`w-12 shrink-0 font-athletic text-xs font-semibold uppercase ${KIND_COLOR[p.kind]}`}>
             {p.half === 'top' ? '▲' : '▼'}
             {p.inning}
@@ -1413,9 +1415,12 @@ function BoxTab({
         </tbody>
       </table>
 
-      {/* Each team in its own block: team name, then Batting and Pitching sections. */}
-      <TeamBox name={board.away.name ?? board.away.code} bats={bats.away} pitch={pitch.away} />
-      <TeamBox name={board.home.name ?? board.home.code} bats={bats.home} pitch={pitch.home} accent />
+      {/* Each team in its own block: team name, then Batting and Pitching sections.
+          Side-by-side on desktop instead of one tall stack. */}
+      <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
+        <TeamBox name={board.away.name ?? board.away.code} bats={bats.away} pitch={pitch.away} />
+        <TeamBox name={board.home.name ?? board.home.code} bats={bats.home} pitch={pitch.home} accent />
+      </div>
     </div>
   )
 }
@@ -1616,7 +1621,7 @@ function StatsTab({
     .slice(0, 5)
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="grid gap-5 lg:grid-cols-2 lg:gap-6">
       <div>
         <h3 className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-green">
           Team totals
