@@ -16,7 +16,11 @@ export type Half = 'top' | 'bottom'
 export type Handedness = 'L' | 'R' | 'S' // S = switch (bats only)
 
 export type TeamSport = 'baseball' | 'softball'
+// Discovery = the public stats/schedule PAGE. ('public' is legacy — the UI now uses
+// only private/discoverable; the video axis below owns "public".)
 export type TeamDiscovery = 'private' | 'discoverable' | 'public'
+// Broadcast audience = who can WATCH the video (separate axis, plan §8).
+export type BroadcastAudience = 'members' | 'link' | 'public'
 
 export type Team = {
   id: string
@@ -37,6 +41,7 @@ export type Team = {
   season_id: string | null
   slug: string | null
   discovery: TeamDiscovery
+  broadcast_audience: BroadcastAudience
   claim_status: string
 }
 

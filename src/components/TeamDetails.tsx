@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import { Select, fieldClass } from '@/components/Select'
-import type { Season, Team, TeamDiscovery, TeamSport } from '@/lib/types'
+import type { BroadcastAudience, Season, Team, TeamSport } from '@/lib/types'
 
 const AGE_GROUPS = ['6U', '7U', '8U', '9U', '10U', '11U', '12U', '13U', '14U', 'HS-JV', 'HS-V', 'Adult']
 const LEVELS: { value: string; label: string }[] = [
@@ -14,27 +14,45 @@ const LEVELS: { value: string; label: string }[] = [
   { value: 'school', label: 'School' },
   { value: 'league', label: 'League' },
 ]
-// Each option spells out EXACTLY what it exposes — this is minors' data, so it must be
-// a deliberate choice, not a vague toggle (plan §4).
-const DISCOVERY: { value: TeamDiscovery; label: string; hint: string }[] = [
-  { value: 'private', label: 'Private', hint: 'Only you and team members. Nothing is public.' },
+// Two independent axes (plan §8), each spelling out EXACTLY what it exposes — minors'
+// data, so every level is a deliberate choice.
+// ① Who can WATCH the video.
+const AUDIENCE: { value: BroadcastAudience; label: string; hint: string }[] = [
   {
-    value: 'discoverable',
-    label: 'Discoverable',
-    hint: 'A public, searchable page: schedule, scores, season stats, and roster (shown as first name + last initial). No video.',
+    value: 'members',
+    label: 'Members only',
+    hint: 'Only signed-in team members (the family you invite) can watch. The share link won’t stream to anyone else.',
+  },
+  {
+    value: 'link',
+    label: 'Anyone with the link',
+    hint: 'The default. Anyone you send the watch link to can view the live game + replays — no account needed. Not listed on any public page.',
   },
   {
     value: 'public',
     label: 'Public',
-    hint: 'Everything in Discoverable, plus published game video replays.',
+    hint: 'Everyone with the link, plus replays embedded on your public team page (needs the page set to Discoverable below).',
+  },
+]
+// ② The public stats/schedule PAGE.
+const DISCOVERY: { value: 'private' | 'discoverable'; label: string; hint: string }[] = [
+  { value: 'private', label: 'Private', hint: 'No public page — your team isn’t searchable.' },
+  {
+    value: 'discoverable',
+    label: 'Discoverable',
+    hint: 'A public, searchable page: schedule, scores, season stats, and roster (first name + last initial).',
   },
 ]
 
-// The exact thing the admin is attesting to, by level.
-function attestation(d: TeamDiscovery): string {
+// The exact thing the admin is attesting to when exposing anything publicly.
+function attestation(discoverable: boolean, publicVideo: boolean): string {
   const base =
     "I confirm I have permission from the players' families to make this team's schedule, scores, season stats, and roster (first name + last initial) publicly visible and searchable"
-  return d === 'public' ? `${base}, and to publish game video replays.` : `${base}.`
+  return discoverable && publicVideo
+    ? `${base}, and to publish game video replays.`
+    : publicVideo
+      ? "I confirm I have permission from the players' families to publish this team's game video replays publicly."
+      : `${base}.`
 }
 
 // Edit a team's durable identity + discovery metadata (plan §2/§8). The structured
@@ -45,9 +63,11 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   const navigate = useNavigate()
   const [seasons, setSeasons] = useState<Season[]>([])
   const [saved, setSaved] = useState(false)
-  // Pre-checked only if the team is already public (consent previously given); a move
-  // OUT of private starts unchecked so it's a deliberate act.
-  const [confirmed, setConfirmed] = useState(team.discovery !== 'private')
+  // Pre-checked only if the team already exposes something publicly (consent previously
+  // given); a move into any public exposure starts unchecked so it's a deliberate act.
+  const [confirmed, setConfirmed] = useState(
+    team.discovery !== 'private' || team.broadcast_audience === 'public',
+  )
   const [sport, setSport] = useState<TeamSport>(team.sport ?? 'baseball')
   const [city, setCity] = useState(team.city ?? '')
   const [state, setState] = useState(team.state ?? '')
@@ -55,7 +75,12 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   const [level, setLevel] = useState(team.level ?? '')
   const [birthYear, setBirthYear] = useState(team.birth_year ? String(team.birth_year) : '')
   const [seasonId, setSeasonId] = useState(team.season_id ?? '')
-  const [discovery, setDiscovery] = useState<TeamDiscovery>(team.discovery ?? 'private')
+  // Two axes: the public page (discovery) and who can watch video (audience). Legacy
+  // 'public' discovery is shown as 'discoverable' (video moved to the audience axis).
+  const [discovery, setDiscovery] = useState<'private' | 'discoverable'>(
+    team.discovery === 'private' ? 'private' : 'discoverable',
+  )
+  const [audience, setAudience] = useState<BroadcastAudience>(team.broadcast_audience ?? 'link')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Add-your-own season (Fall Ball, cross-year travel, a league's calendar).
@@ -101,10 +126,12 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
       .then(({ data }) => setSeasons((data ?? []) as Season[]))
   }, [])
 
+  // Any public exposure (a searchable page, or replays on the public page) needs consent.
+  const needsConsent = discovery === 'discoverable' || audience === 'public'
+
   async function save() {
-    // Going public is gated on a deliberate consent attestation (plan §4).
-    if (discovery !== 'private' && !confirmed) {
-      return setErr('Please confirm you have family permission before making this team visible.')
+    if (needsConsent && !confirmed) {
+      return setErr('Please confirm you have family permission before exposing this team publicly.')
     }
     setBusy(true)
     setErr(null)
@@ -118,9 +145,10 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
       birth_year: by && by > 1900 && by < 2100 ? by : null,
       season_id: seasonId || null,
       discovery,
+      broadcast_audience: audience,
     }
-    // Stamp the attestation (who/when) as the audit trail when public/discoverable.
-    if (discovery !== 'private') {
+    // Stamp the attestation (who/when) as the audit trail on any public exposure.
+    if (needsConsent) {
       patch.consent_ack_at = new Date().toISOString()
       patch.consent_ack_by = user?.id ?? null
     }
@@ -288,9 +316,30 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
             </div>
           )}
 
-          {/* Discovery + consent gate */}
+          {/* ① Video audience */}
           <div>
-            <span className={labelCls}>Visibility</span>
+            <span className={labelCls}>Who can watch the video</span>
+            <div className="flex flex-col gap-1.5">
+              {AUDIENCE.map((a) => (
+                <button
+                  key={a.value}
+                  onClick={() => setAudience(a.value)}
+                  className={`flex flex-col items-start gap-0.5 border-2 px-3 py-2 text-left ${
+                    audience === a.value ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
+                  }`}
+                >
+                  <span className="font-display">{a.label}</span>
+                  <span className={`font-data text-xs ${audience === a.value ? 'text-muted-green' : 'text-muted-tan'}`}>
+                    {a.hint}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ② Public page discovery */}
+          <div>
+            <span className={labelCls}>Public stats page</span>
             <div className="flex flex-col gap-1.5">
               {DISCOVERY.map((d) => (
                 <button
@@ -308,24 +357,28 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
               ))}
             </div>
 
-            {discovery !== 'private' && (
-              <label className="mt-3 flex items-start gap-2.5 border-2 border-barn-red bg-barn-red/5 p-3">
-                <input
-                  type="checkbox"
-                  checked={confirmed}
-                  onChange={(e) => setConfirmed(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-barn-red"
-                />
-                <span className="font-data text-xs leading-snug text-ink">{attestation(discovery)}</span>
-              </label>
-            )}
-
             <p className="mt-2 font-data text-[11px] text-muted-tan">
-              {discovery === 'private'
-                ? 'Nothing about this team is published.'
-                : `This team will be published at ${window.location.host}/t/${team.slug ?? ''}.`}
+              Team members always see full names; the public page shows first name + last initial.{' '}
+              {discovery === 'discoverable'
+                ? `Published at ${window.location.host}/t/${team.slug ?? ''}.`
+                : 'The public page is off.'}
             </p>
           </div>
+
+          {/* Consent gate — any public exposure */}
+          {needsConsent && (
+            <label className="flex items-start gap-2.5 border-2 border-barn-red bg-barn-red/5 p-3">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-barn-red"
+              />
+              <span className="font-data text-xs leading-snug text-ink">
+                {attestation(discovery === 'discoverable', audience === 'public')}
+              </span>
+            </label>
+          )}
         </div>
 
         <div className="mt-4 flex items-center gap-3 border-t-2 border-ink bg-cream-off p-4">
