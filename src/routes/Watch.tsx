@@ -980,41 +980,46 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     newestLoc && posMs - tsOf(newestLoc) <= SPRAY_FLASH_MS ? buildViz(newestLoc.payload, newestLoc.seq) : null
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      {/* Match the live layout: video, then the scorebug bar BELOW it (never over the
-          player controls). */}
-      <div className="bg-black">
-        <video
-          ref={videoRef}
-          src={url}
-          controls
-          autoPlay
-          playsInline
-          onPlay={() => void audio.enable()}
-          onTimeUpdate={onTime}
-          onLoadedMetadata={() => {
-            const v = videoRef.current
-            if (!v || didSeek.current) return
-            didSeek.current = true
-            if (startOffsetSec > 1 && startOffsetSec < (v.duration || Infinity) - 1) v.currentTime = startOffsetSec
-          }}
-          // Recording is the upright 16:9 canvas (matches live). object-cover also
-          // center-crops the raw-camera fallback clip to 16:9 on the rare device that
-          // needed it.
-          className="aspect-video w-full bg-black object-cover"
-        />
-      </div>
-      <ScorebugBar state={board} />
-
-      {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video. */}
-      {hasLineups && (
-        <>
-          <BatterPitcherStrip lineups={rLineups} live={live} events={visible} />
-          <div className="mt-3">
-            <FieldTab lineups={rLineups} live={live} events={visible} spray={spray} />
+    <div className="mx-auto w-full max-w-2xl lg:max-w-none">
+      {/* Desktop mirrors the live view: video + scorebug on the left (~58%), the synced
+          batter/pitcher + field on the right. Phone stays a single stack. */}
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <div className="lg:w-[58%] lg:flex-none">
+          {/* video, then the scorebug bar BELOW it (never over the player controls) */}
+          <div className="bg-black">
+            <video
+              ref={videoRef}
+              src={url}
+              controls
+              autoPlay
+              playsInline
+              onPlay={() => void audio.enable()}
+              onTimeUpdate={onTime}
+              onLoadedMetadata={() => {
+                const v = videoRef.current
+                if (!v || didSeek.current) return
+                didSeek.current = true
+                if (startOffsetSec > 1 && startOffsetSec < (v.duration || Infinity) - 1) v.currentTime = startOffsetSec
+              }}
+              // Recording is the upright 16:9 canvas (matches live). object-cover also
+              // center-crops the raw-camera fallback clip to 16:9 on the rare device that
+              // needed it.
+              className="aspect-video w-full bg-black object-cover"
+            />
           </div>
-        </>
-      )}
+          <ScorebugBar state={board} />
+        </div>
+
+        {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video. */}
+        {hasLineups && (
+          <div className="mt-3 lg:mt-0 lg:flex-1">
+            <BatterPitcherStrip lineups={rLineups} live={live} events={visible} />
+            <div className="mt-3">
+              <FieldTab lineups={rLineups} live={live} events={visible} spray={spray} />
+            </div>
+          </div>
+        )}
+      </div>
 
       <p className="mt-3 text-center font-data text-xs text-muted-green">
         Game replay — mirrors the live view, synced to the video. Tap play to enable sound.
