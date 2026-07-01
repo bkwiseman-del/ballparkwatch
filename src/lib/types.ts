@@ -42,6 +42,19 @@ export type Team = {
 
 export type Season = { id: string; year: number; term: string; label: string }
 
+// Non-game schedule items (games live in Game). Powers the team schedule + the
+// family "following" feed (via team_upcoming).
+export type TeamEvent = {
+  id: string
+  team_id: string
+  kind: 'practice' | 'event'
+  title: string | null
+  starts_at: string
+  ends_at: string | null
+  location: string | null
+  notes: string | null
+}
+
 export type Player = {
   id: string
   team_id: string

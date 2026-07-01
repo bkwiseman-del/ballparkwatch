@@ -6,6 +6,7 @@ import { Roster, GamesView } from '@/routes/Setup'
 import { SeasonStats } from '@/components/SeasonStats'
 import { TeamMembers } from '@/components/TeamMembers'
 import { TeamDetails } from '@/components/TeamDetails'
+import { TeamEvents } from '@/components/TeamEvents'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Game, Team } from '@/lib/types'
 
@@ -29,6 +30,7 @@ export default function TeamHub() {
   const [tab, setTab] = useState<Tab>('schedule')
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState(false)
+  const [canManage, setCanManage] = useState(false)
 
   const load = useCallback(() => {
     if (!id) return
@@ -55,7 +57,16 @@ export default function TeamHub() {
       .select('*')
       .order('created_at', { ascending: false })
       .then(({ data }) => setGames((data ?? []) as Game[]))
-  }, [id])
+    // My role on this team → gate management (add practice, edit members, etc).
+    if (user)
+      supabase
+        .from('team_members')
+        .select('role')
+        .eq('team_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => setCanManage(data?.role === 'owner' || data?.role === 'admin'))
+  }, [id, user])
   useEffect(load, [load])
 
   // Cream body so the iOS safe-area strips aren't dark behind this cream screen.
@@ -132,15 +143,18 @@ export default function TeamHub() {
               <div className="mt-5">
                 {tab === 'schedule' &&
                   (user ? (
-                    <GamesView
-                      teams={teams}
-                      games={games}
-                      userId={user.id}
-                      teamId={team.id}
-                      heading={null}
-                      onChange={load}
-                      onError={setError}
-                    />
+                    <>
+                      <GamesView
+                        teams={teams}
+                        games={games}
+                        userId={user.id}
+                        teamId={team.id}
+                        heading={null}
+                        onChange={load}
+                        onError={setError}
+                      />
+                      <TeamEvents team={team} canManage={canManage} />
+                    </>
                   ) : null)}
                 {tab === 'roster' && <Roster team={team} onError={setError} />}
                 {tab === 'stats' && <SeasonStats team={team} />}
