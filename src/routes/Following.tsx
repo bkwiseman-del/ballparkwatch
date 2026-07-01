@@ -101,18 +101,23 @@ function rank(t: FollowedTeam): number {
   return Number.MAX_SAFE_INTEGER
 }
 
-function nextUpcoming(feed: FeedItem[]): FeedItem | null {
+// Future (and just-started) games + practices, soonest first.
+function upcomingItems(feed: FeedItem[]): FeedItem[] {
   const cutoff = Date.now() - 3 * 3600 * 1000
-  const up = feed
+  return feed
     .filter((i) => i.starts_at && new Date(i.starts_at).getTime() >= cutoff && i.status !== 'final')
     .sort((a, b) => new Date(a.starts_at!).getTime() - new Date(b.starts_at!).getTime())
-  return up[0] ?? null
+}
+function nextUpcoming(feed: FeedItem[]): FeedItem | null {
+  return upcomingItems(feed)[0] ?? null
 }
 
 function TeamCard({ data }: { data: FollowedTeam }) {
   const { team, feed } = data
   const live = feed.find((i) => i.type === 'game' && i.status === 'live')
-  const next = nextUpcoming(feed)
+  const upcoming = upcomingItems(feed)
+  const next = upcoming[0] ?? null
+  const rest = upcoming.slice(1, 5)
   const replays = feed
     .filter((i) => i.type === 'game' && i.recording_started_at)
     .sort((a, b) => new Date(b.starts_at ?? 0).getTime() - new Date(a.starts_at ?? 0).getTime())
@@ -148,14 +153,42 @@ function TeamCard({ data }: { data: FollowedTeam }) {
         <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">Next up</p>
         {next ? (
           <div className="mt-1">
-            <p className="font-display text-base">{itemTitle(next)}</p>
+            <p className="font-display text-base">
+              {next.type !== 'game' && <KindTag kind={next.type} />}
+              {itemTitle(next)}
+            </p>
             <p className="font-data text-xs text-muted-tan">
               {next.starts_at ? fmtWhen(next.starts_at) : 'Time TBD'}
               {next.location ? ` · ${next.location}` : ''}
             </p>
+            {next.notes && <p className="mt-1 font-data text-sm text-ink/80">{next.notes}</p>}
           </div>
         ) : (
           <p className="mt-1 font-data text-sm text-muted-tan">Nothing scheduled yet.</p>
+        )}
+
+        {/* Everything else coming up — practices carry their location + notes too. */}
+        {rest.length > 0 && (
+          <ul className="mt-3 flex flex-col gap-2 border-t border-ink/12 pt-3">
+            {rest.map((i) => (
+              <li key={i.id} className="flex gap-3">
+                <span className="w-12 shrink-0 font-data text-xs text-muted-tan">
+                  {i.starts_at ? fmtDate(i.starts_at) : 'TBD'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-data text-sm text-ink">
+                    {i.type !== 'game' && <KindTag kind={i.type} />}
+                    {itemTitle(i)}
+                  </p>
+                  <p className="font-data text-xs text-muted-tan">
+                    {i.starts_at ? fmtTime(i.starts_at) : ''}
+                    {i.location ? ` · ${i.location}` : ''}
+                  </p>
+                  {i.notes && <p className="mt-0.5 font-data text-xs text-ink/70">{i.notes}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
@@ -186,10 +219,20 @@ function TeamCard({ data }: { data: FollowedTeam }) {
   )
 }
 
+function KindTag({ kind }: { kind: 'practice' | 'event' }) {
+  return (
+    <span className="mr-1.5 bg-ink/10 px-1.5 py-0.5 font-athletic text-[9px] font-bold uppercase tracking-wide text-ink/60">
+      {kind}
+    </span>
+  )
+}
 function itemTitle(i: FeedItem): string {
   if (i.type === 'game') return `${i.away} @ ${i.home}`
   if (i.type === 'practice') return i.title || 'Practice'
   return i.title || 'Team event'
+}
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 function fmtWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
