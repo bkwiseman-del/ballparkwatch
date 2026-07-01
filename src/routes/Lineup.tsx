@@ -99,6 +99,24 @@ export default function Lineup() {
     })()
   }, [gameId])
 
+  // Add a player to a team's roster WITHOUT leaving the lineup screen, then drop them
+  // straight into the batting order. This is the fix for "I had to go to another screen
+  // just to add a kid who showed up."
+  async function addPlayer(teamId: string, name: string, jersey: string): Promise<void> {
+    setError(null)
+    const jn = jersey.replace(/[^0-9]/g, '')
+    const { data, error: e } = await supabase
+      .from('players')
+      .insert({ team_id: teamId, name: name.trim(), jersey_number: jn ? Number(jn) : null })
+      .select('*')
+      .single()
+    if (e) return setError(e.message)
+    const pl = data as Player
+    setRosters((prev) => ({ ...prev, [teamId]: [...(prev[teamId] ?? []), pl] }))
+    setOrder((prev) => ({ ...prev, [teamId]: [...(prev[teamId] ?? []), pl.id] }))
+    setDirty(true)
+  }
+
   async function save() {
     if (!gameId || !game) return
     setError(null)
@@ -179,6 +197,7 @@ export default function Lineup() {
                 [game.away_team_id]: { ...(prev[game.away_team_id] ?? {}), [pid]: pos },
               }))
             }}
+            onAddPlayer={(name, jersey) => addPlayer(game.away_team_id, name, jersey)}
           />
           <TeamLineup
             team={home}
@@ -196,6 +215,7 @@ export default function Lineup() {
                 [game.home_team_id]: { ...(prev[game.home_team_id] ?? {}), [pid]: pos },
               }))
             }}
+            onAddPlayer={(name, jersey) => addPlayer(game.home_team_id, name, jersey)}
             accent
           />
         </div>
@@ -239,6 +259,7 @@ function TeamLineup({
   setOrder,
   positions,
   setPosition,
+  onAddPlayer,
   accent = false,
 }: {
   team: Team
@@ -247,9 +268,23 @@ function TeamLineup({
   setOrder: (o: string[]) => void
   positions: Record<string, string>
   setPosition: (playerId: string, pos: string) => void
+  onAddPlayer: (name: string, jersey: string) => Promise<void>
   accent?: boolean
 }) {
   const byId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster])
+  const [adding, setAdding] = useState(false)
+  const [nm, setNm] = useState('')
+  const [jn, setJn] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function submitAdd() {
+    if (!nm.trim() || busy) return
+    setBusy(true)
+    await onAddPlayer(nm, jn)
+    setBusy(false)
+    setNm('')
+    setJn('')
+    // keep the form open so several new arrivals can be added back-to-back
+  }
   // Archived players drop out of the "add to lineup" pool, but anyone already in
   // this game's order still shows (history stays intact).
   const available = roster.filter((p) => !order.includes(p.id) && !p.archived_at)
@@ -399,11 +434,54 @@ function TeamLineup({
           </div>
         </div>
       )}
-      {roster.length === 0 && (
-        <p className="px-4 py-3 font-data text-sm text-muted-tan">
-          No roster — add players to this team first.
-        </p>
-      )}
+      {/* Add a player right here — no trip to another screen. Great for a kid who
+          shows up late, a sub, or building a brand-new team's roster on the spot. */}
+      <div className="border-t-2 border-ink p-3">
+        {adding ? (
+          <div className="flex items-center gap-2">
+            <input
+              value={jn}
+              onChange={(e) => setJn(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+              placeholder="#"
+              inputMode="numeric"
+              className="w-12 appearance-none rounded-none border-2 border-ink bg-white px-1 py-2 text-center font-athletic text-sm outline-none focus:border-board-green"
+            />
+            <input
+              value={nm}
+              onChange={(e) => setNm(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitAdd()}
+              placeholder="Player name"
+              autoFocus
+              className="min-w-0 flex-1 appearance-none rounded-none border-2 border-ink bg-white px-2 py-2 font-data text-sm outline-none focus:border-board-green"
+            />
+            <button
+              onClick={submitAdd}
+              disabled={busy || !nm.trim()}
+              className="shrink-0 bg-board-green px-3 py-2 font-display text-sm text-cream disabled:opacity-50"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => {
+                setAdding(false)
+                setNm('')
+                setJn('')
+              }}
+              className="shrink-0 border-2 border-ink px-2.5 py-2 font-display text-sm text-ink"
+              title="Done adding"
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="font-athletic text-xs font-semibold uppercase tracking-[.1em] text-board-green"
+          >
+            {roster.length === 0 ? `+ Add the first player to ${team.name}` : '+ Add a player'}
+          </button>
+        )}
+      </div>
     </section>
   )
 }
