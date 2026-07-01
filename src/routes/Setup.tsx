@@ -311,7 +311,6 @@ export function GameDetailsForm({
   onSaved,
   onError,
   onDeleted,
-  onVideo,
 }: {
   game: Game
   teams: Team[]
@@ -319,7 +318,6 @@ export function GameDetailsForm({
   onSaved?: () => void
   onError: (m: string) => void
   onDeleted?: () => void
-  onVideo?: () => void
 }) {
   const [extraTeams, setExtraTeams] = useState<Team[]>([])
   const allTeams = [...teams, ...extraTeams]
@@ -419,12 +417,6 @@ export function GameDetailsForm({
         </button>
         {saved && <span className="font-data text-sm text-board-green">Saved ✓</span>}
       </div>
-
-      {onVideo && (
-        <button onClick={onVideo} className="mt-2 w-full border-2 border-ink py-2.5 font-display text-sm text-ink">
-          Video &amp; camera ▸
-        </button>
-      )}
 
       <button onClick={del} className="mt-4 font-athletic text-xs font-bold uppercase tracking-wide text-barn-red">
         Delete game
@@ -576,6 +568,13 @@ export function GamesView({
   const [creating, setCreating] = useState(false)
   const [pastShown, setPastShown] = useState(5) // paginate finished games
 
+  async function deleteGame(game: Game) {
+    if (!window.confirm('Delete this game and all its plays, stats, and recap? This can’t be undone.')) return
+    const { error } = await supabase.from('games').delete().eq('id', game.id)
+    if (error) onError(error.message)
+    else onChange()
+  }
+
   // Upcoming/live at the top (soonest first); finished games at the bottom, most
   // recent first, paginated.
   const mine = teamId ? games.filter((g) => g.home_team_id === teamId || g.away_team_id === teamId) : games
@@ -600,18 +599,31 @@ export function GamesView({
               {game.scheduled_at ? ` · ${formatWhen(game.scheduled_at)}` : ''}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {/* Just two: score/summarize the game, or open its setup hub (lineup,
-                video, share, details) — no toolbar of buttons per row. */}
-            <Link
-              to={isFinal ? `/watch/${game.id}` : `/score/${game.id}`}
-              className="bg-board-green px-4 py-2 font-display text-sm text-cream"
-            >
-              {isFinal ? 'Game summary ▸' : game.status === 'live' ? 'Resume ▸' : 'Score ▸'}
-            </Link>
-            <Link to={`/game/${game.id}`} className="border-2 border-ink px-4 py-2 font-display text-sm text-ink">
-              Setup
-            </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {isFinal ? (
+              /* A finished game just needs its summary (+ a quiet delete). No setup. */
+              <>
+                <Link to={`/watch/${game.id}`} className="bg-board-green px-4 py-2 font-display text-sm text-cream">
+                  Game summary ▸
+                </Link>
+                <button
+                  onClick={() => deleteGame(game)}
+                  className="px-2 py-2 font-athletic text-xs font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
+                >
+                  Delete
+                </button>
+              </>
+            ) : (
+              /* Upcoming/live: score it, or open its setup hub (lineup, video, share, details). */
+              <>
+                <Link to={`/score/${game.id}`} className="bg-board-green px-4 py-2 font-display text-sm text-cream">
+                  {game.status === 'live' ? 'Resume ▸' : 'Score ▸'}
+                </Link>
+                <Link to={`/game/${game.id}`} className="border-2 border-ink px-4 py-2 font-display text-sm text-ink">
+                  Setup
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </li>

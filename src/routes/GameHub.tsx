@@ -8,16 +8,11 @@ import { ShareSheet } from '@/components/ShareSheet'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Game, Team } from '@/lib/types'
 
-type Tab = 'details' | 'lineup' | 'video' | 'share'
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'details', label: 'Details' },
-  { id: 'lineup', label: 'Lineup' },
-  { id: 'video', label: 'Video' },
-  { id: 'share', label: 'Share' },
-]
+type Tab = 'details' | 'video' | 'share'
 
 // One page per game, tabbed — everything you set up for a game lives here, so a game
-// row only needs two buttons (Score + Setup). Mirrors the team hub.
+// row only needs two buttons (Score + Setup). Lineup is a full-screen editor, so that
+// tab navigates straight to it; the other tabs render their tool inline.
 export default function GameHub() {
   const { user } = useAuth()
   const { gameId } = useParams()
@@ -27,8 +22,6 @@ export default function GameHub() {
   const [tab, setTab] = useState<Tab>('details')
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState(false)
-  const [showVideo, setShowVideo] = useState(false)
-  const [showShare, setShowShare] = useState(false)
 
   const load = useCallback(() => {
     if (!gameId) return
@@ -62,6 +55,10 @@ export default function GameHub() {
   const nameOf = (id: string) => teams.find((t) => t.id === id)?.name ?? 'TBD'
   const isFinal = game?.status === 'final'
   const watchUrl = game ? `${window.location.origin}/watch/${game.id}` : ''
+  const tabCls = (on: boolean) =>
+    `whitespace-nowrap px-4 py-2 font-athletic text-sm font-semibold uppercase tracking-[.1em] ${
+      on ? 'bg-ink text-cream' : 'text-ink/60 hover:text-ink'
+    }`
 
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-cream text-ink">
@@ -92,19 +89,20 @@ export default function GameHub() {
                 </Link>
               </div>
 
-              {/* Tabs */}
+              {/* Tabs. Lineup is its own full-screen editor, so it navigates. */}
               <div className="mt-4 flex gap-1 overflow-x-auto border-b-2 border-ink">
-                {TABS.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setTab(t.id)}
-                    className={`whitespace-nowrap px-4 py-2 font-athletic text-sm font-semibold uppercase tracking-[.1em] ${
-                      tab === t.id ? 'bg-ink text-cream' : 'text-ink/60 hover:text-ink'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+                <button onClick={() => setTab('details')} className={tabCls(tab === 'details')}>
+                  Details
+                </button>
+                <Link to={`/lineup/${game.id}`} className={tabCls(false)}>
+                  Lineup
+                </Link>
+                <button onClick={() => setTab('video')} className={tabCls(tab === 'video')}>
+                  Video
+                </button>
+                <button onClick={() => setTab('share')} className={tabCls(tab === 'share')}>
+                  Share
+                </button>
               </div>
 
               {error && (
@@ -122,72 +120,15 @@ export default function GameHub() {
                     onError={setError}
                     onSaved={load}
                     onDeleted={() => navigate('/setup')}
-                    onVideo={() => setTab('video')}
                   />
                 )}
-
-                {tab === 'lineup' && (
-                  <div className="text-center">
-                    <p className="mb-3 font-data text-sm text-muted-tan">
-                      Set the batting order and defensive positions for both teams.
-                    </p>
-                    <Link
-                      to={`/lineup/${game.id}`}
-                      className="inline-block bg-gold px-6 py-3 font-display text-ink"
-                    >
-                      Open lineup editor ▸
-                    </Link>
-                  </div>
-                )}
-
-                {tab === 'video' && (
-                  <div className="text-center">
-                    <p className="mb-3 font-data text-sm text-muted-tan">
-                      Choose how this game is filmed — another phone, an external camera, or stats-only.
-                    </p>
-                    <button
-                      onClick={() => setShowVideo(true)}
-                      className="bg-gold px-6 py-3 font-display text-ink"
-                    >
-                      Video &amp; camera ▸
-                    </button>
-                  </div>
-                )}
-
-                {tab === 'share' && (
-                  <div>
-                    <p className="mb-1 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-                      Watch link
-                    </p>
-                    <p className="mb-3 break-all border-2 border-ink bg-white px-3 py-2 font-data text-sm">{watchUrl}</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowShare(true)}
-                        className="flex-1 bg-gold py-3 font-display text-ink"
-                      >
-                        Share / QR ▸
-                      </button>
-                      <Link
-                        to={`/watch/${game.id}`}
-                        className="border-2 border-ink px-5 py-3 font-display text-ink"
-                      >
-                        Watch
-                      </Link>
-                    </div>
-                  </div>
-                )}
+                {tab === 'video' && <VideoSetup game={game} embed onSaved={load} />}
+                {tab === 'share' && <ShareSheet embed url={watchUrl} title={`${nameOf(game.away_team_id)} at ${nameOf(game.home_team_id)}`} />}
               </div>
             </>
           )}
         </div>
       </div>
-
-      {game && showVideo && (
-        <VideoSetup game={game} onClose={() => setShowVideo(false)} onSaved={load} />
-      )}
-      {game && showShare && (
-        <ShareSheet url={watchUrl} title={`${nameOf(game.away_team_id)} at ${nameOf(game.home_team_id)}`} onClose={() => setShowShare(false)} />
-      )}
     </div>
   )
 }

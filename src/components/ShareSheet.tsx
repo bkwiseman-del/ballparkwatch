@@ -8,10 +8,12 @@ export function ShareSheet({
   url,
   title,
   onClose,
+  embed = false,
 }: {
   url: string
   title: string
-  onClose: () => void
+  onClose?: () => void
+  embed?: boolean // render inline (in a tab) instead of as a modal sheet
 }) {
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -41,59 +43,52 @@ export function ShareSheet({
     }
   }
 
+  const body = (
+    <div className="flex flex-col items-center gap-4">
+      {qr && <img src={qr} alt="QR code" className="h-44 w-44 border-2 border-ink" draggable={false} />}
+      <p className="text-center font-athletic text-[11px] uppercase tracking-[.12em] text-muted-tan">
+        Parents scan at the field · no account needed
+      </p>
+
+      <div className="w-full break-all border-2 border-ink bg-white px-3 py-2 text-center font-data text-sm">{url}</div>
+
+      <div className="flex w-full gap-2">
+        {canShare && (
+          <button onClick={nativeShare} className="flex-1 bg-gold py-3 font-display text-ink">
+            Share ▸
+          </button>
+        )}
+        <button
+          onClick={copy}
+          className={`flex-1 border-2 border-ink py-3 font-display ${copied ? 'bg-board-green text-cream' : 'text-ink'}`}
+        >
+          {copied ? 'Copied ✓' : 'Copy link'}
+        </button>
+      </div>
+
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 font-athletic text-xs uppercase tracking-wide text-board-green underline"
+      >
+        Open viewer <ArrowUpRightIcon className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  )
+
+  if (embed) return body
+
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
-      <div
-        className="w-full max-w-sm border-t-2 border-gold bg-cream text-ink sm:border-2"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="w-full max-w-sm border-t-2 border-gold bg-cream text-ink sm:border-2" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between bg-ink px-4 py-2.5">
           <span className="font-display text-lg text-cream">Share this game</span>
-          <button onClick={onClose} className="font-athletic text-cream">
+          <button onClick={() => onClose?.()} className="font-athletic text-cream">
             ✕
           </button>
         </div>
-
-        <div className="flex flex-col items-center gap-4 p-5">
-          {qr && (
-            <img
-              src={qr}
-              alt="QR code"
-              className="h-44 w-44 border-2 border-ink"
-              draggable={false}
-            />
-          )}
-          <p className="text-center font-athletic text-[11px] uppercase tracking-[.12em] text-muted-tan">
-            Parents scan at the field · no account needed
-          </p>
-
-          <div className="w-full break-all border-2 border-ink bg-white px-3 py-2 text-center font-data text-sm">
-            {url}
-          </div>
-
-          <div className="flex w-full gap-2">
-            {canShare && (
-              <button onClick={nativeShare} className="flex-1 bg-gold py-3 font-display text-ink">
-                Share ▸
-              </button>
-            )}
-            <button
-              onClick={copy}
-              className={`flex-1 border-2 border-ink py-3 font-display ${copied ? 'bg-board-green text-cream' : 'text-ink'}`}
-            >
-              {copied ? 'Copied ✓' : 'Copy link'}
-            </button>
-          </div>
-
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 font-athletic text-xs uppercase tracking-wide text-board-green underline"
-          >
-            Open viewer <ArrowUpRightIcon className="h-3.5 w-3.5" />
-          </a>
-        </div>
+        <div className="p-5">{body}</div>
       </div>
     </div>
   )
