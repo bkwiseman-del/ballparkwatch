@@ -87,7 +87,7 @@ export default function Score() {
   return (
     <div className="mx-auto flex h-[100dvh] max-w-[430px] flex-col overflow-hidden bg-night-green text-cream">
       {rosterNote && (
-        <div className="flex items-center gap-2 border-b-2 border-gold bg-board-green px-3 py-2 text-cream">
+        <div className="flex shrink-0 items-center gap-2 border-b-2 border-gold bg-board-green px-3 py-2 text-cream">
           <p className="min-w-0 flex-1 font-data text-xs">
             Filled {rosterNote.join(' & ')}’s lineup from the roster.{' '}
             <Link to={`/lineup/${gameId}`} className="font-bold underline">
@@ -158,9 +158,11 @@ export default function Score() {
         </button>
       )}
 
-      <ScorePanel state={board} />
+      <div className="shrink-0">
+        <ScorePanel state={board} />
+      </div>
 
-      {error && <p className="bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>}
+      {error && <p className="shrink-0 bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>}
 
       {/* batter / pitcher strip (full mode only) */}
       {playing && !scoreboard && <BatterPitcherStrip scorer={s} gameId={gameId} onEdit={setEditPlayer} />}
@@ -298,7 +300,7 @@ export default function Score() {
 
       {/* undo strip (during play + between innings) */}
       {!notStarted && !isFinal && (
-        <div className="flex items-center justify-between border-t-2 border-ink bg-gold px-3 py-2">
+        <div className="flex shrink-0 items-center justify-between border-t-2 border-ink bg-gold px-3 py-2">
           <button onClick={undo} disabled={!events.length} className="font-athletic text-[13px] font-semibold text-ink disabled:opacity-40">
             ↶ UNDO{lastLabel ? ` — ${lastLabel}` : ''}
           </button>
@@ -403,7 +405,7 @@ export default function Score() {
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5 bg-ink p-3.5">
+          <div className="flex shrink-0 flex-col gap-2.5 bg-ink p-3.5">
             <div className="grid grid-cols-2 gap-2.5">
               <ActionBtn className="h-[68px] bg-board-green" onClick={onBall}>BALL</ActionBtn>
               <ActionBtn className="h-[68px] bg-barn-red" onClick={() => setStrikePopup(true)}>STRIKE</ActionBtn>
@@ -503,7 +505,7 @@ function BatterPitcherStrip({
   const { currentBatter, onDeck, currentPitcher, currentPitcherPitches, events, playersById } = scorer
   if (!currentBatter) {
     return (
-      <div className="flex items-center justify-between bg-cream px-3 py-2 text-ink">
+      <div className="flex shrink-0 items-center justify-between bg-cream px-3 py-2 text-ink">
         <span className="font-athletic text-xs uppercase tracking-[.14em] text-muted-tan">No lineup set</span>
         <Link to={`/lineup/${gameId}`} className="font-athletic text-xs font-semibold uppercase text-board-green underline">
           Set lineup ▸
@@ -516,7 +518,7 @@ function BatterPitcherStrip({
   const lineText = line && line.ab > 0 ? `${line.h}-for-${line.ab}` : 'first AB'
   const pitches = currentPitcherPitches
   return (
-    <div className="flex border-b-2 border-ink bg-cream text-ink">
+    <div className="flex shrink-0 border-b-2 border-ink bg-cream text-ink">
       <button onClick={() => onEdit(currentBatter)} className="flex-1 border-r border-ink/20 px-3 py-2 text-left">
         <p className="flex items-center gap-1 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">
           At Bat <span className="text-muted-tan">· tap to edit</span>
