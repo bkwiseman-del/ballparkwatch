@@ -122,10 +122,13 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
 
   useEffect(() => {
     if (!v.local || typeof MediaRecorder === 'undefined') return // v.local set = we're broadcasting
-    // Record the RAW CAMERA stream, NOT the 16:9 canvas — iOS Safari's MediaRecorder
-    // can't record a canvas.captureStream() (it produces no data). We crop the camera
-    // recording to 16:9 on playback to match the live framing.
-    const stream = v.getCameraStream() ?? v.local
+    // Record the SAME upright 16:9 canvas the viewers see (v.local = canvas + audio),
+    // NOT the raw camera. The canvas is drawn every frame in phoneVideo, so it's always
+    // upright and widescreen no matter how the phone is held — this is what kills the
+    // rotation/portrait bug (the raw camera bakes iOS's orientation into the file).
+    // Fallback below covers the rare device that can't record a canvas stream.
+    const canvasStream = v.local
+    const rawStream = v.getCameraStream()
     const mime =
       ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(
         (m) => {
@@ -136,41 +139,80 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
           }
         },
       ) ?? ''
-    // Cap the bitrate — iOS records at a very high default, which blows past upload
-    // size limits even for short clips. ~1.2 Mbps is plenty for a 720p replay on a
-    // phone screen. (iOS Safari sometimes ignores this cap; the durable fix is moving
-    // recordings to R2 with 24h retention — see the build plan.)
+    // Cap the bitrate — a raw recording defaults very high, which blows past upload
+    // size limits even for short clips. ~1.2 Mbps is plenty for a 720p phone replay.
     const recOpts: MediaRecorderOptions = { videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 96_000 }
-    let rec: MediaRecorder
-    try {
-      rec = mime ? new MediaRecorder(stream, { mimeType: mime, ...recOpts }) : new MediaRecorder(stream, recOpts)
-    } catch {
+
+    const makeRecorder = (stream: MediaStream): MediaRecorder | null => {
       try {
-        rec = new MediaRecorder(stream)
+        return mime ? new MediaRecorder(stream, { mimeType: mime, ...recOpts }) : new MediaRecorder(stream, recOpts)
       } catch {
-        return
+        try {
+          return new MediaRecorder(stream)
+        } catch {
+          return null
+        }
       }
     }
+
+    let fellBack = false
+    let watchdog = 0
+
+    // Wire a recorder's chunk + stop handlers and start it. `isPrimary` recorders that
+    // get stopped only to trigger the fallback must NOT upload (the fallback will).
+    const wire = (rec: MediaRecorder, isPrimary: boolean) => {
+      recMime.current = rec.mimeType || mime || 'video/webm'
+      recRef.current = rec
+      rec.ondataavailable = (e) => {
+        if (e.data?.size) {
+          recChunks.current.push(e.data)
+          setRecBytes((b) => b + e.data.size)
+        }
+      }
+      // Upload whenever the recorder stops — explicit stop OR auto-stop on teardown.
+      rec.onstop = () => {
+        if (isPrimary && fellBack) return
+        void uploadRecording()
+      }
+      rec.start(4000)
+    }
+
     recChunks.current = []
-    recMime.current = rec.mimeType || mime || 'video/webm'
     recStartedAt.current = Date.now()
-    recRef.current = rec
-    rec.ondataavailable = (e) => {
-      if (e.data?.size) {
-        recChunks.current.push(e.data)
-        setRecBytes((b) => b + e.data.size)
-      }
+
+    const primary = makeRecorder(canvasStream)
+    if (primary) {
+      wire(primary, true)
+      // Watchdog: some older iOS Safari builds emit ZERO bytes when recording a
+      // canvas.captureStream(). If nothing has arrived a few seconds in, fall back to
+      // the raw camera so the family still gets a replay (accepting the orientation
+      // quirk) rather than an empty file. Modern iOS records the canvas fine, so this
+      // almost never fires.
+      watchdog = window.setTimeout(() => {
+        if (recChunks.current.length > 0 || !rawStream) return
+        fellBack = true
+        try {
+          if (primary.state !== 'inactive') primary.stop()
+        } catch {
+          /* ignore */
+        }
+        recChunks.current = []
+        setRecBytes(0)
+        recStartedAt.current = Date.now()
+        const fb = makeRecorder(rawStream)
+        if (fb) wire(fb, false)
+      }, 6000)
+    } else if (rawStream) {
+      // Couldn't even construct a canvas recorder — go straight to the raw camera.
+      const fb = makeRecorder(rawStream)
+      if (fb) wire(fb, false)
     }
-    // Upload whenever the recorder stops — explicit stop, OR auto-stop when the stream's
-    // tracks end on teardown. (The old code only uploaded from the cleanup, which the
-    // auto-stop pre-empted, so nothing ever uploaded.)
-    rec.onstop = () => {
-      void uploadRecording()
-    }
-    rec.start(4000)
+
     return () => {
+      window.clearTimeout(watchdog)
+      const rec = recRef.current
       try {
-        if (rec.state !== 'inactive') rec.stop()
+        if (rec && rec.state !== 'inactive') rec.stop()
       } catch {
         /* ignore */
       }

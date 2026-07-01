@@ -985,8 +985,9 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
             didSeek.current = true
             if (startOffsetSec > 1 && startOffsetSec < (v.duration || Infinity) - 1) v.currentTime = startOffsetSec
           }}
-          // The recording is the raw camera (often 4:3 on iOS); center-crop it to
-          // 16:9 to match the live broadcast's framing.
+          // Recording is the upright 16:9 canvas (matches live). object-cover also
+          // center-crops the raw-camera fallback clip to 16:9 on the rare device that
+          // needed it.
           className="aspect-video w-full bg-black object-cover"
         />
       </div>
