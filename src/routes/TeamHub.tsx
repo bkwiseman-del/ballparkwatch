@@ -8,16 +8,18 @@ import { TeamMembers } from '@/components/TeamMembers'
 import { TeamDetails } from '@/components/TeamDetails'
 import { TeamEvents } from '@/components/TeamEvents'
 import { TeamPosts } from '@/components/TeamPosts'
+import { TeamSponsors } from '@/components/TeamSponsors'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Game, Team } from '@/lib/types'
 
-type Tab = 'roster' | 'schedule' | 'news' | 'stats' | 'members' | 'settings'
+type Tab = 'roster' | 'schedule' | 'news' | 'stats' | 'members' | 'sponsors' | 'settings'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'schedule', label: 'Schedule' },
   { id: 'news', label: 'News' },
   { id: 'roster', label: 'Roster' },
   { id: 'stats', label: 'Stats' },
   { id: 'members', label: 'Members' },
+  { id: 'sponsors', label: 'Sponsors' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -164,6 +166,7 @@ export default function TeamHub() {
                 {tab === 'roster' && <Roster team={team} onError={setError} />}
                 {tab === 'stats' && <SeasonStats team={team} />}
                 {tab === 'members' && <TeamMembers team={team} />}
+                {tab === 'sponsors' && <TeamSponsors team={team} canManage={canManage} />}
                 {tab === 'settings' && <TeamDetails team={team} onSaved={load} />}
               </div>
             </>

@@ -52,6 +52,7 @@ type PublicGame = {
   recording_mime?: string | null
   recording_duration_ms?: number | null
   recording_segments?: string[] | null
+  sponsors?: { name: string | null; image: string; url: string | null }[]
 }
 
 type LineupSlot = { id?: string; name: string; jersey: string | null; pos: string | null }
@@ -564,6 +565,8 @@ export default function Watch() {
         </div>
       </header>
 
+      <SponsorStrip sponsors={info.sponsors ?? []} />
+
       {live.status === 'scheduled' ? (
         <StartingSoon
           board={board}
@@ -947,6 +950,40 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
       <p className="mt-3 text-center font-data text-xs text-muted-green">
         Game replay — the scorebug and AI commentary play back in sync. Tap play to enable sound.
       </p>
+    </div>
+  )
+}
+
+// A slim strip of clickable sponsor logos under the header — a flat, on-brand booster
+// panel. Outbound links are locked down (noopener/nofollow/sponsored). Only sponsors the
+// server already approved reach here (get_public_game filters to approved+active).
+function SponsorStrip({ sponsors }: { sponsors: { name: string | null; image: string; url: string | null }[] }) {
+  if (!sponsors.length) return null
+  const src = (path: string) => supabase.storage.from('bpw-sponsors').getPublicUrl(path).data.publicUrl
+  return (
+    <div className="flex items-center gap-4 overflow-x-auto border-b-2 border-gold/30 bg-ink/70 px-3 py-1.5">
+      <span className="shrink-0 font-athletic text-[9px] font-bold uppercase tracking-[.14em] text-cream/40">
+        Sponsored by
+      </span>
+      {sponsors.map((s, i) => {
+        const img = (
+          <img
+            src={src(s.image)}
+            alt={s.name ?? 'Sponsor'}
+            loading="lazy"
+            className="h-7 w-auto max-w-[120px] object-contain"
+          />
+        )
+        return s.url ? (
+          <a key={i} href={s.url} target="_blank" rel="noopener noreferrer nofollow sponsored" className="shrink-0">
+            {img}
+          </a>
+        ) : (
+          <span key={i} className="shrink-0">
+            {img}
+          </span>
+        )
+      })}
     </div>
   )
 }
