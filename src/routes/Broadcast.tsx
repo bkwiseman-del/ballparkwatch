@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { usePhoneVideo } from '@/lib/phoneVideo'
+import { startCanvasRecording, webCodecsSupported, type CanvasRecorder } from '@/lib/canvasRecorder'
 import { gameChannelName } from '@/lib/realtime'
 import { HeaderWordmark } from '@/components/Logo'
 
@@ -61,6 +62,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const recStartedAt = useRef(0)
   const recMime = useRef('')
   const recRef = useRef<MediaRecorder | null>(null)
+  const webRecRef = useRef<CanvasRecorder | null>(null)
   const uploadedRef = useRef(false)
 
   // Upload one part to a signed URL, with a few retries (mobile networks blip).
@@ -121,12 +123,51 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   }
 
   useEffect(() => {
-    if (!v.local || typeof MediaRecorder === 'undefined') return // v.local set = we're broadcasting
-    // Record the SAME upright 16:9 canvas the viewers see (v.local = canvas + audio),
-    // NOT the raw camera. The canvas is drawn every frame in phoneVideo, so it's always
-    // upright and widescreen no matter how the phone is held — this is what kills the
-    // rotation/portrait bug (the raw camera bakes iOS's orientation into the file).
-    // Fallback below covers the rare device that can't record a canvas stream.
+    if (!v.local) return // v.local set = we're broadcasting
+    recChunks.current = []
+    recStartedAt.current = Date.now()
+    uploadedRef.current = false
+    setRecBytes(0)
+
+    // PRIMARY: WebCodecs. Encode the upright canvas ourselves (VideoEncoder + our own
+    // mux), so the recording is upright by construction (we own the pixels — no iOS
+    // orientation metadata to get wrong), matches the live framing exactly, and is
+    // size-bounded by a real bitrate cap. This is the durable fix for the rotation +
+    // file-size bugs. MediaRecorder below is only a fallback for browsers without it.
+    const canvas = v.getCanvas()
+    if (canvas && webCodecsSupported()) {
+      let cancelled = false
+      const audioTrack = v.local.getAudioTracks()[0] ?? v.getCameraStream()?.getAudioTracks()[0] ?? null
+      recMime.current = 'video/mp4'
+      startCanvasRecording({ canvas, audioTrack, onBytes: (n) => setRecBytes(n) })
+        .then((r) => {
+          if (!r) {
+            startMediaRecorder() // encoder unsupported for this frame — fall back
+            return
+          }
+          if (cancelled) {
+            void r.stop()
+            return
+          }
+          webRecRef.current = r
+        })
+        .catch(() => startMediaRecorder())
+      return () => {
+        cancelled = true
+        // Best-effort on unmount; the primary end path awaits this via endBroadcast.
+        void finishRecording()
+      }
+    }
+
+    // FALLBACK: MediaRecorder (canvas stream, with a watchdog to the raw camera).
+    return startMediaRecorder()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v.local])
+
+  // MediaRecorder fallback path, factored out so the WebCodecs branch can defer to it.
+  // Returns a cleanup fn (matches the useEffect contract).
+  function startMediaRecorder(): () => void {
+    if (!v.local || typeof MediaRecorder === 'undefined') return () => {}
     const canvasStream = v.local
     const rawStream = v.getCameraStream()
     const mime =
@@ -217,19 +258,39 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         /* ignore */
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.local])
+  }
 
-  // End everything cleanly: flush + stop the recorder (while the stream is still
-  // alive) BEFORE tearing the stream down, so the recording is captured and uploaded.
-  const endBroadcast = useCallback(() => {
+  // Stop whichever recorder is running and upload. Idempotent (safe to call from both
+  // endBroadcast and effect cleanup). For WebCodecs we must await the encoder flush
+  // BEFORE the canvas/audio tracks are torn down, then hand the finished MP4 to the
+  // existing chunked-upload pipeline.
+  const finishRecording = useCallback(async () => {
+    const web = webRecRef.current
+    if (web) {
+      webRecRef.current = null
+      const blob = await web.stop()
+      if (blob) {
+        recChunks.current = [blob]
+        recMime.current = 'video/mp4'
+      }
+      await uploadRecording()
+      return
+    }
+    const rec = recRef.current
     try {
-      if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop()
+      if (rec && rec.state !== 'inactive') rec.stop() // MediaRecorder uploads via onstop
     } catch {
       /* ignore */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // End everything cleanly: flush + stop the recorder (while the stream is still
+  // alive) BEFORE tearing the stream down, so the recording is captured and uploaded.
+  const endBroadcast = useCallback(async () => {
+    await finishRecording()
     vstop()
-  }, [vstop])
+  }, [vstop, finishRecording])
 
   // End the broadcast when the scorer ends the game. Catch it instantly off the
   // scorer's state broadcast, and poll as a fallback in case that event is missed.

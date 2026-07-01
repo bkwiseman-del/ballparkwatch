@@ -49,7 +49,8 @@ export type PhoneVideo = {
   isBroadcasting: boolean // we are the broadcaster
   incoming: MediaStream | null // the feed we're watching
   local: MediaStream | null // the broadcast feed (16:9 canvas) — what viewers see
-  getCameraStream: () => MediaStream | null // raw camera+mic — recordable on iOS (canvas isn't)
+  getCameraStream: () => MediaStream | null // raw camera+mic — MediaRecorder fallback source
+  getCanvas: () => HTMLCanvasElement | null // the upright 16:9 canvas — WebCodecs records this
   viewers: number // connected viewers (broadcaster side)
   error: string | null
   cameras: CameraInfo[] // available cameras (e.g. iPhone wide / ultrawide / front)
@@ -441,6 +442,7 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
     incoming,
     local,
     getCameraStream: () => camStreamRef.current,
+    getCanvas: () => canvasRef.current,
     viewers,
     error,
     cameras,
