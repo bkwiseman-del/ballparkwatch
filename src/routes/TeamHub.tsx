@@ -69,7 +69,7 @@ export default function TeamHub() {
         .eq('user_id', user.id)
         .maybeSingle()
         .then(({ data }) => {
-          setCanManage(data?.role === 'owner' || data?.role === 'admin' || data?.role === 'coach')
+          setCanManage(data?.role === 'owner' || data?.role === 'admin')
           setIsStaff(!!data && data.role !== 'family')
         })
   }, [id, user])

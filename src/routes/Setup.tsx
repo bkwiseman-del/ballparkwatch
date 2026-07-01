@@ -39,7 +39,7 @@ export default function Setup() {
     // This is the OPERATOR dashboard. Teams-by-RLS now include teams you merely
     // follow as family, so split by role: show only teams you run here, and send a
     // family-only account to its following home instead.
-    const OPERATOR = new Set(['owner', 'admin', 'coach', 'scorer', 'broadcaster'])
+    const OPERATOR = new Set(['owner', 'admin', 'scorer', 'broadcaster'])
     const roleBy = new Map((m.data ?? []).map((r) => [r.team_id as string, r.role as string]))
     const allTeams = t.data as Team[]
     const operated = allTeams.filter((tm) => OPERATOR.has(roleBy.get(tm.id) ?? 'owner'))
