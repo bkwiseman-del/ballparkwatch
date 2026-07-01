@@ -1,18 +1,22 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
-// A printable one-page pitch a coach/booster hands a local business. Editable team name,
-// ask, and contact; "Print / Save as PDF" uses the browser's print-to-PDF. Print CSS
-// hides the toolbar so the sheet prints clean.
+// A fixed (non-editable) one-page sponsor pitch sheet a coach prints/PDFs and hands to a
+// local business. Explains the deal + shows an example on a real Bandbox broadcast frame.
+// Prints to a single Letter page (print CSS below forces backgrounds + one-page fit).
 export default function SalesSheet() {
-  const [team, setTeam] = useState('')
-  const [ask, setAsk] = useState('')
-  const [contact, setContact] = useState('')
-
   return (
-    <div className="min-h-full bg-cream/60 py-6 print:bg-white print:py-0">
+    <div className="min-h-full bg-ink/10 py-6 print:bg-white print:py-0">
+      <style>{`
+        @page { size: letter; margin: 0.45in; }
+        @media print {
+          .no-print { display: none !important; }
+          html, body { background: #fff !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
+
       {/* Toolbar (screen only) */}
-      <div className="no-print mx-auto mb-5 flex max-w-[8.5in] items-center justify-between px-4">
+      <div className="no-print mx-auto mb-5 flex max-w-[8in] items-center justify-between px-4">
         <Link to="/sponsors" className="font-athletic text-sm font-semibold uppercase tracking-wide text-ink/60 hover:text-ink">
           ‹ Sponsors
         </Link>
@@ -22,69 +26,85 @@ export default function SalesSheet() {
       </div>
 
       {/* The sheet */}
-      <div className="mx-auto max-w-[8.5in] border-2 border-ink bg-cream p-[0.6in] text-ink shadow-hard print:border-0 print:shadow-none">
+      <div className="mx-auto flex max-w-[8in] flex-col border-2 border-ink bg-cream text-ink shadow-hard print:border-0 print:shadow-none">
         {/* Masthead */}
-        <div className="flex items-end justify-between border-b-2 border-ink pb-3">
-          <div>
-            <p className="font-athletic text-xs font-bold uppercase tracking-[.3em] text-gold">Team Sponsorship</p>
-            <h1 className="font-display text-4xl leading-none">Put your name in the game.</h1>
-          </div>
-          <span className="font-display text-lg text-ink/40">Bandbox</span>
+        <div className="flex items-center justify-between bg-ink px-7 py-3.5 text-cream">
+          <img src="/marketing/assets/bandbox-logo-dark.png" alt="Bandbox" className="h-7 w-auto" />
+          <span className="font-athletic text-xs font-semibold uppercase tracking-[.2em] text-gold">Team Sponsorship</span>
         </div>
 
-        {/* Lede */}
-        <p className="mt-4 font-data text-[15px] leading-relaxed">
-          <Fill value={team} onChange={setTeam} placeholder="Our team" /> streams every game live on Bandbox —
-          free for families to watch from anywhere. Your business rides on that broadcast all season: a clickable
-          logo on every live game and replay, seen by the parents, grandparents, and out-of-town family tuning
-          in from home.
-        </p>
-
-        {/* Two columns */}
-        <div className="mt-5 grid grid-cols-2 gap-5">
-          <Box title="What you get">
-            <ul className="ml-4 list-disc space-y-1.5 font-data text-sm">
-              <li>Your logo on the broadcast — every live game + replay, all season.</li>
-              <li>A clickable link to your website from the watch page.</li>
-              <li>Placement on the team's public page.</li>
-              <li>A tasteful, on-brand panel — no flashing banner ads.</li>
-            </ul>
-          </Box>
-          <Box title="Why it reaches people">
-            <ul className="ml-4 list-disc space-y-1.5 font-data text-sm">
-              <li>Free to watch = a far bigger audience than a paid app.</li>
-              <li>Families share the link — grandparents, cousins, friends tune in.</li>
-              <li>Youth sports is the most local, loyal audience there is.</li>
-              <li>Your support is right there on screen, game after game.</li>
-            </ul>
-          </Box>
-        </div>
-
-        {/* The ask */}
-        <div className="mt-5 border-2 border-ink bg-white p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="font-display text-xl">Season sponsorship</p>
-            <p className="font-display text-2xl text-barn-red">
-              <Fill value={ask} onChange={setAsk} placeholder="$___ / season" />
-            </p>
-          </div>
-          <p className="mt-1 font-data text-sm text-muted-tan">
-            One flat rate covers the whole season — and helps keep it free for every family on the team.
+        <div className="px-7 py-6">
+          {/* Headline */}
+          <p className="font-athletic text-[11px] font-bold uppercase tracking-[.28em] text-barn-red">A booster fundraiser</p>
+          <h1 className="mt-1 font-display text-[40px] leading-[0.92] text-ink">PUT YOUR NAME IN THE GAME.</h1>
+          <p className="mt-3 max-w-2xl font-data text-[15px] leading-relaxed text-ink/75">
+            This team streams every game live on Bandbox — free for families to watch from anywhere. Your business
+            rides on that broadcast all season: a clickable logo on every live game and replay, seen by the
+            parents, grandparents, and out-of-town family tuning in from home.
           </p>
-        </div>
 
-        {/* Contact */}
-        <div className="mt-5 flex items-end justify-between border-t-2 border-ink pt-3">
-          <div>
-            <p className="font-athletic text-[11px] font-bold uppercase tracking-[.2em] text-muted-tan">Contact</p>
-            <p className="font-data text-sm">
-              <Fill value={contact} onChange={setContact} placeholder="Name · phone · email" wide />
+          {/* Example broadcast */}
+          <div className="mt-5">
+            <p className="mb-2 font-athletic text-[10px] font-bold uppercase tracking-[.2em] text-muted-tan">
+              Your logo, live on every broadcast
+            </p>
+            <div className="border-2 border-ink">
+              {/* status bar */}
+              <div className="flex items-center justify-between bg-night-green px-3 py-1.5">
+                <span className="font-display text-xs text-cream">BANDBOX</span>
+                <span className="flex items-center gap-1.5 font-athletic text-[9px] font-bold uppercase tracking-wide text-barn-red">
+                  <span className="h-1.5 w-1.5 rounded-full bg-barn-red" /> Live
+                </span>
+              </div>
+              {/* sponsor strip */}
+              <div className="flex items-center gap-2.5 border-y-2 border-gold/40 bg-[#0e1a14] px-3 py-1.5">
+                <span className="font-athletic text-[8px] font-bold uppercase tracking-[.16em] text-cream/40">Sponsored by</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2.5 w-2.5 rotate-45 bg-gold" />
+                  <span className="font-display text-[11px] text-cream">
+                    GREENFIELD <span className="text-gold">HARDWARE</span>
+                  </span>
+                </span>
+              </div>
+              {/* video area + scorebug */}
+              <div className="relative flex h-28 items-center justify-center bg-board-green">
+                <span className="font-athletic text-[10px] uppercase tracking-[.2em] text-cream/30">Greenfield vs Oakdale · live</span>
+                <div className="absolute bottom-2 left-2 flex items-stretch border-2 border-gold bg-night-green font-display text-cream">
+                  <span className="flex items-center gap-1 px-2 py-0.5 text-xs">GFS <b className="text-sm">3</b></span>
+                  <span className="flex items-center bg-barn-red px-1.5 font-athletic text-[10px]">▼6</span>
+                  <span className="flex items-center gap-1 px-2 py-0.5 text-xs text-gold">OAK <b className="text-sm">2</b></span>
+                </div>
+              </div>
+            </div>
+            <p className="mt-1.5 font-data text-[11px] text-muted-tan">
+              A clean, flat panel — tasteful and on-brand, never a flashing ad. Every logo is checked before it can appear.
             </p>
           </div>
-          <p className="text-right font-athletic text-[11px] uppercase tracking-wide text-ink/40">
-            Powered by Bandbox
+
+          {/* Two columns */}
+          <div className="mt-6 grid grid-cols-2 gap-5">
+            <Box title="What you get">
+              <Bullet>Your logo on the broadcast — every live game + replay, all season.</Bullet>
+              <Bullet>A clickable link to your website from the watch page.</Bullet>
+              <Bullet>Placement on the team's public page.</Bullet>
+            </Box>
+            <Box title="Why it reaches people">
+              <Bullet>Free to watch = a far bigger audience than a paid app.</Bullet>
+              <Bullet>Families share the link — grandparents, cousins, friends tune in.</Bullet>
+              <Bullet>Youth sports is the most local, loyal audience there is.</Bullet>
+            </Box>
+          </div>
+        </div>
+
+        {/* Close bar */}
+        <div className="mt-auto flex items-center justify-between gap-3 border-t-2 border-ink bg-gold px-7 py-3.5 text-ink">
+          <p className="font-display text-lg leading-tight">
+            Free for families. <span className="text-barn-red">Funded by you.</span>
+          </p>
+          <p className="text-right font-athletic text-[11px] font-semibold uppercase tracking-wide text-ink/70">
+            Talk to the coach who gave you this
             <br />
-            bandbox.tv
+            <span className="text-ink">bandbox.tv</span>
           </p>
         </div>
       </div>
@@ -92,35 +112,19 @@ export default function SalesSheet() {
   )
 }
 
-// An inline fill-in blank that prints its typed value cleanly.
-function Fill({
-  value,
-  onChange,
-  placeholder,
-  wide,
-}: {
-  value: string
-  onChange: (v: string) => void
-  placeholder: string
-  wide?: boolean
-}) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={`border-b-2 border-dashed border-ink/40 bg-transparent px-1 outline-none placeholder:text-ink/30 focus:border-board-green print:border-none print:placeholder:text-transparent ${
-        wide ? 'w-72 max-w-full' : 'w-40'
-      }`}
-    />
-  )
-}
-
 function Box({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="border-2 border-ink bg-white p-4">
-      <p className="mb-2 font-display text-lg">{title}</p>
-      {children}
+      <p className="mb-2 font-display text-base text-ink">{title}</p>
+      <ul className="space-y-1.5">{children}</ul>
     </div>
+  )
+}
+function Bullet({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex gap-2 font-data text-[13px] leading-snug text-ink/80">
+      <span className="mt-1 inline-block h-2 w-2 shrink-0 rotate-45 bg-barn-red" />
+      <span>{children}</span>
+    </li>
   )
 }
