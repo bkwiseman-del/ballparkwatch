@@ -770,24 +770,21 @@ function CreateGameCard({
   const [video, setVideo] = useState<VideoSource>('none')
   const [ytUrl, setYtUrl] = useState('')
   const [busy, setBusy] = useState(false)
-  const [addingTeam, setAddingTeam] = useState(false)
-  const [newTeamName, setNewTeamName] = useState('')
 
-  async function addNewTeam() {
-    const name = newTeamName.trim()
-    if (!name) return
+  // Create a team/opponent inline from a picker; returns its id to auto-select.
+  async function createTeam(name: string): Promise<string | null> {
     const { data, error } = await supabase
       .from('teams')
-      .insert({ name, owner_id: userId, is_favorite: false })
+      .insert({ name: name.trim(), owner_id: userId, is_favorite: false })
       .select('*')
       .single()
-    if (error) return onError(error.message)
+    if (error) {
+      onError(error.message)
+      return null
+    }
     const created = data as Team
     setExtraTeams((prev) => [...prev, created])
-    if (!away) setAway(created.id)
-    else if (!home) setHome(created.id)
-    setNewTeamName('')
-    setAddingTeam(false)
+    return created.id
   }
 
   async function create() {
@@ -817,45 +814,12 @@ function CreateGameCard({
     <div className="border-2 border-ink bg-cream-off p-5">
       <h3 className="mb-4 font-display text-xl">New Game</h3>
 
-      {/* Matchup */}
-      <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <TeamSelect label="Away" value={away} onChange={setAway} teams={allTeams} favorites={favorites} />
-        <span className="pt-5 font-athletic text-sm uppercase text-muted-tan">at</span>
-        <TeamSelect label="Home" value={home} onChange={setHome} teams={allTeams} favorites={favorites} accent />
+      {/* Matchup — search your teams / past opponents, or add a new one inline */}
+      <div className="mb-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3">
+        <TeamPicker label="Away" value={away} onChange={setAway} teams={allTeams} onCreate={createTeam} />
+        <span className="pt-7 font-athletic text-sm uppercase text-muted-tan">at</span>
+        <TeamPicker label="Home" value={home} onChange={setHome} teams={allTeams} onCreate={createTeam} accent />
       </div>
-
-      {/* Add an opponent that isn't in your list yet */}
-      {addingTeam ? (
-        <div className="mb-5 flex gap-2">
-          <input
-            value={newTeamName}
-            onChange={(e) => setNewTeamName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addNewTeam()}
-            placeholder="New team / opponent name"
-            autoFocus
-            className="min-w-0 flex-1 border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
-          />
-          <button onClick={addNewTeam} className="bg-board-green px-4 py-2 font-display text-sm text-cream">
-            Add
-          </button>
-          <button
-            onClick={() => {
-              setAddingTeam(false)
-              setNewTeamName('')
-            }}
-            className="border-2 border-ink px-3 py-2 font-display text-sm text-ink"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setAddingTeam(true)}
-          className="mb-5 font-athletic text-xs font-bold uppercase tracking-wide text-board-green"
-        >
-          + Add a new team
-        </button>
-      )}
 
       {/* Video source */}
       <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
@@ -950,6 +914,116 @@ function CreateGameCard({
         </button>
       </div>
     </div>
+  )
+}
+
+// Searchable team/opponent picker — a custom control (no native <select>), so it looks
+// identical and clean on iOS + Android, and scales to long lists. Type to filter your
+// teams / past opponents, or add a brand-new one inline.
+function TeamPicker({
+  label,
+  value,
+  onChange,
+  teams,
+  onCreate,
+  accent = false,
+}: {
+  label: string
+  value: string
+  onChange: (id: string) => void
+  teams: Team[]
+  onCreate: (name: string) => Promise<string | null>
+  accent?: boolean
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const selected = teams.find((t) => t.id === value)
+  const q = query.trim().toLowerCase()
+  const list = q ? teams.filter((t) => t.name.toLowerCase().includes(q)) : teams
+  const favs = list.filter((t) => t.is_favorite)
+  const others = list.filter((t) => !t.is_favorite)
+  const exact = teams.some((t) => t.name.trim().toLowerCase() === q)
+
+  function choose(id: string) {
+    onChange(id)
+    setQuery('')
+    setOpen(false)
+  }
+  async function add() {
+    const name = query.trim()
+    if (!name || busy) return
+    setBusy(true)
+    const id = await onCreate(name)
+    setBusy(false)
+    if (id) choose(id)
+  }
+
+  return (
+    <div className="relative">
+      <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+        {label}
+      </span>
+      <input
+        value={open ? query : selected?.name ?? ''}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => {
+          setQuery('')
+          setOpen(true)
+        }}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        placeholder="Search or add…"
+        className={`w-full min-w-0 border-2 px-3 py-2 font-display outline-none focus:border-board-green ${
+          accent && selected && !open ? 'border-ink bg-ink text-gold' : 'border-ink bg-white text-ink'
+        }`}
+      />
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto border-2 border-ink bg-white shadow-hard">
+          {favs.length > 0 && <PickerGroup label="My teams" />}
+          {favs.map((t) => (
+            <PickerOpt key={t.id} name={`★ ${t.name}`} onPick={() => choose(t.id)} />
+          ))}
+          {others.length > 0 && <PickerGroup label={favs.length ? 'Other teams' : 'Teams'} />}
+          {others.map((t) => (
+            <PickerOpt key={t.id} name={t.name} onPick={() => choose(t.id)} />
+          ))}
+          {q && !exact && (
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={add}
+              disabled={busy}
+              className="block w-full border-t-2 border-ink/15 bg-board-green px-3 py-2 text-left font-display text-sm text-cream disabled:opacity-60"
+            >
+              {busy ? 'Adding…' : `+ Add “${query.trim()}”`}
+            </button>
+          )}
+          {list.length === 0 && !q && (
+            <div className="px-3 py-2 font-data text-sm text-muted-tan">Type to search or add a team.</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+function PickerGroup({ label }: { label: string }) {
+  return (
+    <div className="bg-cream-off px-3 py-1 font-athletic text-[10px] font-semibold uppercase tracking-wide text-muted-tan">
+      {label}
+    </div>
+  )
+}
+function PickerOpt({ name, onPick }: { name: string; onPick: () => void }) {
+  return (
+    <button
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onPick}
+      className="block w-full border-t border-ink/10 px-3 py-2 text-left font-display text-sm text-ink hover:bg-gold/20"
+    >
+      {name}
+    </button>
   )
 }
 
@@ -1422,7 +1496,7 @@ function LineupReviewModal({
                   placeholder="—"
                 />
                 <select
-                  className="w-full border-2 border-ink bg-white px-0.5 py-1.5 text-center font-data text-sm outline-none focus:border-board-green"
+                  className="w-full appearance-none rounded-none border-2 border-ink bg-white px-0.5 py-1.5 text-center font-data text-sm outline-none focus:border-board-green"
                   value={r.bats}
                   onChange={(e) => patch(i, 'bats', e.target.value as Handedness | '')}
                 >

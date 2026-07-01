@@ -971,7 +971,7 @@ function SubstitutionFlow({
                   <select
                     value={pos[p.id] ?? ''}
                     onChange={(e) => setPos((m) => ({ ...m, [p.id]: e.target.value }))}
-                    className="border border-cream/30 bg-night-green px-1 py-1 font-athletic text-xs text-cream"
+                    className="appearance-none rounded-none border border-cream/30 bg-night-green px-1 py-1 font-athletic text-xs text-cream"
                   >
                     <option value="">—</option>
                     {SUB_POSITIONS.map((x) => {

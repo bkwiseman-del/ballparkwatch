@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
+import { Select, fieldClass } from '@/components/Select'
 import type { Season, Team, TeamDiscovery, TeamSport } from '@/lib/types'
 
 const AGE_GROUPS = ['6U', '7U', '8U', '9U', '10U', '11U', '12U', '13U', '14U', 'HS-JV', 'HS-V', 'Adult']
@@ -139,7 +140,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
     navigate('/setup')
   }
 
-  const input = 'w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green'
+  const input = fieldClass
   const labelCls = 'mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan'
 
   return (
@@ -185,41 +186,41 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
 
           {/* Age group / Level */}
           <div className="grid grid-cols-2 gap-2">
-            <label>
+            <div>
               <span className={labelCls}>Age group</span>
-              <select className={input} value={ageGroup} onChange={(e) => setAgeGroup(e.target.value)}>
+              <Select value={ageGroup} onChange={setAgeGroup}>
                 <option value="">—</option>
                 {AGE_GROUPS.map((a) => (
                   <option key={a} value={a}>
                     {a}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label>
+              </Select>
+            </div>
+            <div>
               <span className={labelCls}>Level</span>
-              <select className={input} value={level} onChange={(e) => setLevel(e.target.value)}>
+              <Select value={level} onChange={setLevel}>
                 {LEVELS.map((l) => (
                   <option key={l} value={l}>
                     {l ? l[0].toUpperCase() + l.slice(1) : '—'}
                   </option>
                 ))}
-              </select>
-            </label>
+              </Select>
+            </div>
           </div>
 
           {/* Season / Birth year */}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className={labelCls}>Season</span>
-              <select className={input} value={seasonId} onChange={(e) => setSeasonId(e.target.value)}>
+              <Select value={seasonId} onChange={setSeasonId}>
                 <option value="">—</option>
                 {seasons.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <button
                 type="button"
                 onClick={() => setAddingSeason((v) => !v)}
@@ -261,13 +262,13 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
                 />
               </div>
               <div className="mt-2 grid grid-cols-3 gap-2">
-                <select className={input} value={nsTerm} onChange={(e) => setNsTerm(e.target.value)}>
+                <Select value={nsTerm} onChange={setNsTerm}>
                   <option value="spring">Spring</option>
                   <option value="summer">Summer</option>
                   <option value="fall">Fall</option>
                   <option value="winter">Winter</option>
                   <option value="year_round">Year-round</option>
-                </select>
+                </Select>
                 <input className={input} type="date" value={nsStart} onChange={(e) => setNsStart(e.target.value)} title="Starts (optional)" />
                 <input className={input} type="date" value={nsEnd} onChange={(e) => setNsEnd(e.target.value)} title="Ends (optional)" />
               </div>

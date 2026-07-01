@@ -114,7 +114,7 @@ export function TeamMembers({ team }: { team: Team }) {
                     <select
                       value={m.role}
                       onChange={(e) => changeRole(m, e.target.value as Role)}
-                      className="rounded-none border-2 border-ink bg-white px-2 py-1 font-athletic text-xs font-bold uppercase tracking-wide outline-none focus:border-board-green"
+                      className="appearance-none rounded-none border-2 border-ink bg-white px-2 py-1 font-athletic text-xs font-bold uppercase tracking-wide outline-none focus:border-board-green"
                     >
                       {ASSIGNABLE.map((r) => (
                         <option key={r.value} value={r.value}>

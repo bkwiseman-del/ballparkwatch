@@ -323,7 +323,7 @@ function TeamLineup({
               <select
                 value={positions[pid] ?? p?.default_position ?? ''}
                 onChange={(e) => setPosition(pid, e.target.value)}
-                className="ml-auto border border-ink/30 bg-white px-1 py-1 font-athletic text-xs"
+                className="ml-auto appearance-none rounded-none border border-ink/30 bg-white px-1 py-1 font-athletic text-xs"
                 title="Defensive position"
               >
                 <option value="">POS</option>

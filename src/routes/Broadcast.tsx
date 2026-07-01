@@ -289,7 +289,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
                 <select
                   value={v.cameraId ?? ''}
                   onChange={(e) => v.selectCamera(e.target.value)}
-                  className="flex-1 border-2 border-cream/40 bg-black/40 px-2 py-1.5 font-data text-sm text-cream"
+                  className="flex-1 appearance-none rounded-none border-2 border-cream/40 bg-black/40 px-2 py-1.5 font-data text-sm text-cream"
                 >
                   {v.cameras.map((c) => (
                     <option key={c.deviceId} value={c.deviceId} className="text-ink">
