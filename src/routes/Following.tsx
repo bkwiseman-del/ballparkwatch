@@ -18,7 +18,10 @@ type FeedItem = {
   title?: string | null
   notes?: string | null
   recording_started_at?: string | null
+  my_rsvp?: RsvpStatus | null
+  going_count?: number
 }
+type RsvpStatus = 'going' | 'maybe' | 'not'
 type FollowedTeam = { team: Team; role: string; feed: FeedItem[] }
 
 // The family / follower home: the teams you follow, what's live or next, and replays.
@@ -54,6 +57,12 @@ export default function Following() {
     load()
   }, [load])
 
+  // Re-pull one team's feed after an RSVP so my status + the going count update.
+  const refreshTeam = useCallback(async (teamId: string) => {
+    const { data } = await supabase.rpc('team_upcoming', { p_team_id: teamId })
+    setTeams((prev) => prev.map((t) => (t.team.id === teamId ? { ...t, feed: (data ?? []) as FeedItem[] } : t)))
+  }, [])
+
   useEffect(() => {
     const prev = document.body.style.backgroundColor
     document.body.style.backgroundColor = '#F4ECD8'
@@ -83,7 +92,7 @@ export default function Following() {
           ) : (
             <div className="space-y-5">
               {teams.map((t) => (
-                <TeamCard key={t.team.id} data={t} />
+                <TeamCard key={t.team.id} data={t} userId={user?.id ?? ''} onRsvp={refreshTeam} />
               ))}
             </div>
           )}
@@ -112,12 +121,43 @@ function nextUpcoming(feed: FeedItem[]): FeedItem | null {
   return upcomingItems(feed)[0] ?? null
 }
 
-function TeamCard({ data }: { data: FollowedTeam }) {
+function TeamCard({
+  data,
+  userId,
+  onRsvp,
+}: {
+  data: FollowedTeam
+  userId: string
+  onRsvp: (teamId: string) => void | Promise<void>
+}) {
   const { team, feed } = data
   const live = feed.find((i) => i.type === 'game' && i.status === 'live')
   const upcoming = upcomingItems(feed)
   const next = upcoming[0] ?? null
   const rest = upcoming.slice(1, 5)
+
+  async function rsvp(item: FeedItem, status: RsvpStatus) {
+    if (!userId) return
+    // Tap the active choice again to clear it.
+    if (item.my_rsvp === status) {
+      await supabase
+        .from('rsvps')
+        .delete()
+        .eq('user_id', userId)
+        .eq('target_type', item.type === 'game' ? 'game' : 'event')
+        .eq('target_id', item.id)
+    } else {
+      await supabase.from('rsvps').upsert({
+        user_id: userId,
+        team_id: team.id,
+        target_type: item.type === 'game' ? 'game' : 'event',
+        target_id: item.id,
+        status,
+      })
+    }
+    await onRsvp(team.id)
+  }
+
   const replays = feed
     .filter((i) => i.type === 'game' && i.recording_started_at)
     .sort((a, b) => new Date(b.starts_at ?? 0).getTime() - new Date(a.starts_at ?? 0).getTime())
@@ -162,6 +202,7 @@ function TeamCard({ data }: { data: FollowedTeam }) {
               {next.location ? ` · ${next.location}` : ''}
             </p>
             {next.notes && <p className="mt-1 font-data text-sm text-ink/80">{next.notes}</p>}
+            <RsvpBar item={next} onPick={(s) => rsvp(next, s)} />
           </div>
         ) : (
           <p className="mt-1 font-data text-sm text-muted-tan">Nothing scheduled yet.</p>
@@ -185,6 +226,7 @@ function TeamCard({ data }: { data: FollowedTeam }) {
                     {i.location ? ` · ${i.location}` : ''}
                   </p>
                   {i.notes && <p className="mt-0.5 font-data text-xs text-ink/70">{i.notes}</p>}
+                  <RsvpBar item={i} onPick={(s) => rsvp(i, s)} compact />
                 </div>
               </li>
             ))}
@@ -219,6 +261,52 @@ function TeamCard({ data }: { data: FollowedTeam }) {
   )
 }
 
+const RSVP_OPTS: { value: RsvpStatus; label: string }[] = [
+  { value: 'going', label: 'Going' },
+  { value: 'maybe', label: 'Maybe' },
+  { value: 'not', label: 'Can’t' },
+]
+// Going / Maybe / Can't for a game or practice, with a live "N going" count. Tapping
+// the active choice again clears it. `compact` for the smaller rows in the list.
+function RsvpBar({
+  item,
+  onPick,
+  compact = false,
+}: {
+  item: FeedItem
+  onPick: (s: RsvpStatus) => void
+  compact?: boolean
+}) {
+  const count = item.going_count ?? 0
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 ${compact ? 'mt-1.5' : 'mt-2'}`}>
+      {RSVP_OPTS.map((o) => {
+        const on = item.my_rsvp === o.value
+        const tone = on
+          ? o.value === 'not'
+            ? 'border-barn-red bg-barn-red text-cream'
+            : 'border-board-green bg-board-green text-cream'
+          : 'border-ink/30 bg-white text-ink'
+        return (
+          <button
+            key={o.value}
+            onClick={() => onPick(o.value)}
+            className={`border-2 px-2.5 font-athletic text-xs font-bold uppercase tracking-wide ${
+              compact ? 'py-0.5' : 'py-1'
+            } ${tone}`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+      {count > 0 && (
+        <span className="ml-0.5 font-data text-xs text-muted-tan">
+          {count} going
+        </span>
+      )}
+    </div>
+  )
+}
 function KindTag({ kind }: { kind: 'practice' | 'event' }) {
   return (
     <span className="mr-1.5 bg-ink/10 px-1.5 py-0.5 font-athletic text-[9px] font-bold uppercase tracking-wide text-ink/60">

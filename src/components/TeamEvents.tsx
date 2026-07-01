@@ -8,6 +8,7 @@ import type { Team, TeamEvent } from '@/lib/types'
 // by GamesView — this is everything else on the calendar.
 export function TeamEvents({ team, canManage }: { team: Team; canManage: boolean }) {
   const [events, setEvents] = useState<TeamEvent[]>([])
+  const [going, setGoing] = useState<Record<string, number>>({})
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [kind, setKind] = useState<'practice' | 'event'>('practice')
@@ -30,6 +31,18 @@ export function TeamEvents({ team, canManage }: { team: Team; canManage: boolean
       .then(({ data, error }) => {
         if (error) setError(error.message)
         else setEvents((data ?? []) as TeamEvent[])
+      })
+    // Live "going" counts per practice/event so coaches see who's coming.
+    supabase
+      .from('rsvps')
+      .select('target_id')
+      .eq('team_id', team.id)
+      .eq('target_type', 'event')
+      .eq('status', 'going')
+      .then(({ data }) => {
+        const c: Record<string, number> = {}
+        for (const r of (data ?? []) as { target_id: string }[]) c[r.target_id] = (c[r.target_id] ?? 0) + 1
+        setGoing(c)
       })
   }, [team.id])
   useEffect(load, [load])
@@ -150,6 +163,7 @@ export function TeamEvents({ team, canManage }: { team: Team; canManage: boolean
               <p className="font-data text-xs text-muted-tan">
                 {fmtTime(ev.starts_at)}
                 {ev.location ? ` · ${ev.location}` : ''}
+                {going[ev.id] ? ` · ${going[ev.id]} going` : ''}
               </p>
               {ev.notes && <p className="mt-0.5 font-data text-xs text-ink/70">{ev.notes}</p>}
             </div>
