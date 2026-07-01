@@ -5,6 +5,7 @@ import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Following from './routes/Following'
 import TeamHub from './routes/TeamHub'
+import GameHub from './routes/GameHub'
 import Lineup from './routes/Lineup'
 import Score from './routes/Score'
 import Watch from './routes/Watch'
@@ -39,6 +40,14 @@ export default function App() {
         element={
           <RequireAuth>
             <TeamHub />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/game/:gameId"
+        element={
+          <RequireAuth>
+            <GameHub />
           </RequireAuth>
         }
       />

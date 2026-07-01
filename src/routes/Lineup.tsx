@@ -161,7 +161,7 @@ export default function Lineup() {
           onClick={() => leaveGuard('/setup')}
           className="font-athletic text-sm uppercase tracking-wide text-gold"
         >
-          ← Setup
+          ← Dashboard
         </button>
       </header>
 

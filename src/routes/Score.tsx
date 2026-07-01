@@ -104,7 +104,7 @@ export default function Score() {
       )}
       <header className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))]">
         <Link to="/setup" className="font-athletic text-sm uppercase tracking-wide text-gold">
-          ← Setup
+          ← Dashboard
         </Link>
         <div className="flex flex-col items-center leading-none">
           <span className="font-athletic text-xs uppercase tracking-[.16em] text-muted-green">Scorer</span>

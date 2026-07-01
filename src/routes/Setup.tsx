@@ -6,8 +6,6 @@ import { HeaderWordmark } from '@/components/Logo'
 import { downloadCsv, parseRosterCsv, rosterTemplateCsv } from '@/lib/csv'
 import { scanLineupImage, type ScannedPlayer } from '@/lib/scanLineup'
 import { CameraIcon, UploadIcon } from '@/components/Icons'
-import { VideoSetup } from '@/components/VideoSetup'
-import { ShareSheet } from '@/components/ShareSheet'
 import { fieldClass } from '@/components/Select'
 import type { Game, Handedness, Player, Team, VideoSource } from '@/lib/types'
 
@@ -22,8 +20,6 @@ export default function Setup() {
   const [states, setStates] = useState<Map<string, GState>>(new Map())
   const [creating, setCreating] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
-  const [videoGame, setVideoGame] = useState<Game | null>(null)
-  const [editGame, setEditGame] = useState<Game | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hasFollows, setHasFollows] = useState(false)
 
@@ -142,8 +138,6 @@ export default function Setup() {
             nameOf={nameOf}
             canSchedule={teams.length >= 2}
             onSchedule={() => setCreating(true)}
-            onSetup={(g) => setVideoGame(g)}
-            onEdit={(g) => setEditGame(g)}
           />
 
           {creating && (
@@ -214,26 +208,6 @@ export default function Setup() {
           )}
         </div>
       </div>
-
-      {videoGame && (
-        <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => load()} />
-      )}
-
-      {editGame && (
-        <GameEditor
-          game={editGame}
-          teams={teams}
-          userId={user!.id}
-          onClose={() => setEditGame(null)}
-          onSaved={() => load()}
-          onError={setError}
-          onVideo={() => {
-            const g = editGame
-            setEditGame(null)
-            setVideoGame(g)
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -245,16 +219,12 @@ function HeroGame({
   nameOf,
   canSchedule,
   onSchedule,
-  onSetup,
-  onEdit,
 }: {
   game: Game | null
   state?: GState
   nameOf: (id: string) => string
   canSchedule: boolean
   onSchedule: () => void
-  onSetup: (g: Game) => void
-  onEdit: (g: Game) => void
 }) {
   if (!game) {
     return (
@@ -305,28 +275,16 @@ function HeroGame({
         </>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex gap-2">
         <Link to={`/score/${game.id}`} className="flex-1 bg-board-green py-3 text-center font-display text-cream">
           {live ? 'Resume scoring ▸' : 'Start scoring ▸'}
         </Link>
         <Link
-          to={live ? `/watch/${game.id}` : `/lineup/${game.id}`}
-          className="border-2 border-cream/40 px-5 py-3 text-center font-display text-cream"
+          to={`/game/${game.id}`}
+          className="border-2 border-cream/40 px-6 py-3 text-center font-display text-cream"
         >
-          {live ? 'Watch' : 'Lineup'}
+          Setup
         </Link>
-        <button
-          onClick={() => onEdit(game)}
-          className="border-2 border-cream/40 px-4 py-3 text-center font-display text-cream"
-        >
-          Edit ▸
-        </button>
-        <button
-          onClick={() => onSetup(game)}
-          className="border-2 border-cream/40 px-4 py-3 text-center font-display text-cream"
-        >
-          Video ▸
-        </button>
       </div>
     </section>
   )
@@ -344,21 +302,23 @@ function ScoreSide({ name, score, right }: { name: string; score: number; right?
 // Edit a game's details — home/away (searchable), date/time, location — from wherever
 // you see the game (dashboard hero, schedule). This is the "who's home, what time"
 // editor people were hunting for; video/camera lives behind its own button.
-function GameEditor({
+// The game details editor (home/away, date/time, location, delete). Rendered inline in
+// the Game hub's Details tab AND wrapped as a quick modal from the dashboard hero.
+export function GameDetailsForm({
   game,
   teams,
   userId,
-  onClose,
   onSaved,
   onError,
+  onDeleted,
   onVideo,
 }: {
   game: Game
   teams: Team[]
   userId: string
-  onClose: () => void
-  onSaved: () => void
+  onSaved?: () => void
   onError: (m: string) => void
+  onDeleted?: () => void
   onVideo?: () => void
 }) {
   const [extraTeams, setExtraTeams] = useState<Team[]>([])
@@ -368,6 +328,7 @@ function GameEditor({
   const [when, setWhen] = useState(toLocalInput(game.scheduled_at))
   const [loc, setLoc] = useState(game.location ?? '')
   const [busy, setBusy] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   async function createTeam(name: string): Promise<string | null> {
     const { data, error } = await supabase
@@ -406,88 +367,68 @@ function GameEditor({
     const after = [away, home].sort().join()
     if (before !== after) await supabase.from('lineup_entries').delete().eq('game_id', game.id)
     setBusy(false)
-    onSaved()
-    onClose()
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 1500)
+    onSaved?.()
   }
 
   async function del() {
     if (!window.confirm('Delete this game and its lineups? This can’t be undone.')) return
     const { error } = await supabase.from('games').delete().eq('id', game.id)
     if (error) return onError(error.message)
-    onSaved()
-    onClose()
+    onDeleted?.()
   }
 
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-ink/60 sm:items-center" onClick={onClose}>
-      <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto border-2 border-ink bg-cream p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-xl text-ink">Edit game</h2>
-          <button onClick={onClose} className="font-athletic text-sm uppercase tracking-wide text-muted-tan">
-            Close ✕
-          </button>
-        </div>
+    <div>
+      <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-start gap-2">
+        <TeamPicker label="Away" value={away} onChange={setAway} teams={allTeams} onCreate={createTeam} />
+        <button
+          type="button"
+          onClick={() => {
+            const a = away
+            setAway(home)
+            setHome(a)
+          }}
+          title="Swap home / away"
+          className="mt-6 border-2 border-ink px-2 py-2 font-display text-ink"
+        >
+          ⇄
+        </button>
+        <TeamPicker label="Home" value={home} onChange={setHome} teams={allTeams} onCreate={createTeam} accent />
+      </div>
 
-        <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-start gap-2">
-          <TeamPicker label="Away" value={away} onChange={setAway} teams={allTeams} onCreate={createTeam} />
-          <button
-            type="button"
-            onClick={() => {
-              const a = away
-              setAway(home)
-              setHome(a)
-            }}
-            title="Swap home / away"
-            className="mt-6 border-2 border-ink px-2 py-2 font-display text-ink"
-          >
-            ⇄
-          </button>
-          <TeamPicker label="Home" value={home} onChange={setHome} teams={allTeams} onCreate={createTeam} accent />
-        </div>
+      <label className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+        Date &amp; time
+      </label>
+      <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className={`${fieldClass} mb-3`} />
 
-        <label className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-          Date &amp; time
-        </label>
-        <input
-          type="datetime-local"
-          value={when}
-          onChange={(e) => setWhen(e.target.value)}
-          className={`${fieldClass} mb-3`}
-        />
+      <label className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
+        Location
+      </label>
+      <input
+        value={loc}
+        onChange={(e) => setLoc(e.target.value)}
+        placeholder="Field / park (optional)"
+        className={`${fieldClass} mb-4`}
+      />
 
-        <label className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-          Location
-        </label>
-        <input
-          value={loc}
-          onChange={(e) => setLoc(e.target.value)}
-          placeholder="Field / park (optional)"
-          className={`${fieldClass} mb-4`}
-        />
-
-        <button onClick={save} disabled={busy} className="w-full bg-gold py-3 font-display text-ink disabled:opacity-60">
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={busy} className="flex-1 bg-gold py-3 font-display text-ink disabled:opacity-60">
           {busy ? 'Saving…' : 'Save game'}
         </button>
-
-        {onVideo && (
-          <button
-            onClick={onVideo}
-            className="mt-2 w-full border-2 border-ink py-2.5 font-display text-sm text-ink"
-          >
-            Video &amp; camera ▸
-          </button>
-        )}
-
-        <button
-          onClick={del}
-          className="mt-4 font-athletic text-xs font-bold uppercase tracking-wide text-barn-red"
-        >
-          Delete game
-        </button>
+        {saved && <span className="font-data text-sm text-board-green">Saved ✓</span>}
       </div>
+
+      {onVideo && (
+        <button onClick={onVideo} className="mt-2 w-full border-2 border-ink py-2.5 font-display text-sm text-ink">
+          Video &amp; camera ▸
+        </button>
+      )}
+
+      <button onClick={del} className="mt-4 font-athletic text-xs font-bold uppercase tracking-wide text-barn-red">
+        Delete game
+      </button>
     </div>
   )
 }
@@ -633,19 +574,7 @@ export function GamesView({
   afterUpcoming?: React.ReactNode // rendered between Upcoming and Past (e.g. practices)
 }) {
   const [creating, setCreating] = useState(false)
-  const [videoGame, setVideoGame] = useState<Game | null>(null)
-  const [watchGame, setWatchGame] = useState<Game | null>(null)
-  const [shareGame, setShareGame] = useState<Game | null>(null)
-  const [editGame, setEditGame] = useState<Game | null>(null)
   const [pastShown, setPastShown] = useState(5) // paginate finished games
-
-  async function deleteGame(game: Game) {
-    if (!window.confirm('Delete this game and all its plays, stats, and recap? This can’t be undone.'))
-      return
-    const { error } = await supabase.from('games').delete().eq('id', game.id)
-    if (error) onError(error.message)
-    else onChange()
-  }
 
   // Upcoming/live at the top (soonest first); finished games at the bottom, most
   // recent first, paginated.
@@ -672,58 +601,17 @@ export function GamesView({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isFinal ? (
-              <button
-                onClick={() => setWatchGame(game)}
-                className="bg-board-green px-4 py-2 font-display text-sm text-cream"
-              >
-                Game summary ▸
-              </button>
-            ) : (
-              <>
-                <Link to={`/lineup/${game.id}`} className="border-2 border-ink px-4 py-2 font-display text-sm text-ink">
-                  Lineup
-                </Link>
-                {game.video_source !== 'none' && (
-                  <button
-                    onClick={() => setVideoGame(game)}
-                    className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                  >
-                    Video
-                  </button>
-                )}
-                <Link to={`/score/${game.id}`} className="bg-board-green px-4 py-2 font-display text-sm text-cream">
-                  Score ▸
-                </Link>
-                <button
-                  onClick={() => setShareGame(game)}
-                  className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                >
-                  Share
-                </button>
-                <button
-                  onClick={() => setWatchGame(game)}
-                  className="border-2 border-ink px-4 py-2 font-display text-sm text-ink"
-                >
-                  Watch
-                </button>
-              </>
-            )}
-            {game.status === 'scheduled' && (
-              <button
-                onClick={() => setEditGame(game)}
-                className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-ink"
-              >
-                Edit
-              </button>
-            )}
-            <button
-              onClick={() => deleteGame(game)}
-              title="Delete game"
-              className="px-3 py-2 font-athletic text-sm font-bold uppercase tracking-wide text-ink/40 hover:text-barn-red"
+            {/* Just two: score/summarize the game, or open its setup hub (lineup,
+                video, share, details) — no toolbar of buttons per row. */}
+            <Link
+              to={isFinal ? `/watch/${game.id}` : `/score/${game.id}`}
+              className="bg-board-green px-4 py-2 font-display text-sm text-cream"
             >
-              Delete
-            </button>
+              {isFinal ? 'Game summary ▸' : game.status === 'live' ? 'Resume ▸' : 'Score ▸'}
+            </Link>
+            <Link to={`/game/${game.id}`} className="border-2 border-ink px-4 py-2 font-display text-sm text-ink">
+              Setup
+            </Link>
           </div>
         </div>
       </li>
@@ -792,94 +680,11 @@ export function GamesView({
           )}
         </div>
       )}
-
-      {videoGame && (
-        <VideoSetup game={videoGame} onClose={() => setVideoGame(null)} onSaved={() => onChange()} />
-      )}
-
-      {watchGame && (
-        <LiveWatchModal
-          gameId={watchGame.id}
-          title={watchGame.status === 'final' ? 'Game Summary' : 'Live View'}
-          // Match the body (iOS safe-area strips) to the viewer screen: scheduled
-          // (navy Starting Soon) and final (navy summary) are navy; live is green.
-          bodyBg={watchGame.status === 'live' ? '#15281b' : '#1A2A4A'}
-          onClose={() => setWatchGame(null)}
-        />
-      )}
-
-      {shareGame && (
-        <ShareSheet
-          url={`${window.location.origin}/watch/${shareGame.id}`}
-          title={`${teams.find((t) => t.id === shareGame.away_team_id)?.name ?? 'Away'} at ${
-            teams.find((t) => t.id === shareGame.home_team_id)?.name ?? 'Home'
-          }`}
-          onClose={() => setShareGame(null)}
-        />
-      )}
-
-      {editGame && (
-        <GameEditor
-          game={editGame}
-          teams={teams}
-          userId={userId}
-          onClose={() => setEditGame(null)}
-          onSaved={() => onChange()}
-          onError={onError}
-          onVideo={() => {
-            const g = editGame
-            setEditGame(null)
-            setVideoGame(g)
-          }}
-        />
-      )}
     </section>
   )
 }
 
 // In-app viewer for the scorer — embeds the public /watch page in an iframe so it
-// stays inside the PWA (opening it directly gets trapped in the iOS shell). For a
-// finished game /watch renders the full final view (recap + box + stats + plays).
-function LiveWatchModal({
-  gameId,
-  title,
-  bodyBg,
-  onClose,
-}: {
-  gameId: string
-  title: string
-  bodyBg: string
-  onClose: () => void
-}) {
-  // The Setup screen sets the body cream; while this viewer modal is open, match
-  // the body to the viewer screen so the iOS safe-area strips don't show cream
-  // (or a clashing color behind the navy Starting Soon cover).
-  useEffect(() => {
-    const prev = document.body.style.backgroundColor
-    document.body.style.backgroundColor = bodyBg
-    return () => {
-      document.body.style.backgroundColor = prev
-    }
-  }, [bodyBg])
-
-  return (
-    <div className="fixed inset-0 z-40 flex flex-col" style={{ backgroundColor: bodyBg }}>
-      <div className="flex shrink-0 items-center justify-between border-b-2 border-gold bg-ink px-4 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))]">
-        <span className="font-display text-lg text-cream">{title}</span>
-        <button onClick={onClose} className="font-athletic text-cream">
-          Done
-        </button>
-      </div>
-      <iframe
-        src={`/watch/${gameId}`}
-        title={title}
-        allow="autoplay; encrypted-media; picture-in-picture; camera; microphone"
-        className="min-h-0 w-full flex-1 border-0 bg-night-green"
-      />
-    </div>
-  )
-}
-
 const VIDEO_SOURCES: { value: VideoSource; label: string; sub: string }[] = [
   { value: 'none', label: 'No video', sub: 'Stats only' },
   { value: 'phone_whip', label: 'Another phone', sub: 'Film from a 2nd device' },
