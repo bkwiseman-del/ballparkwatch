@@ -3,21 +3,23 @@ import { supabase } from '@/lib/supabase'
 import type { Team } from '@/lib/types'
 
 // Team roles. 'owner' is set at team creation and isn't assignable here.
-type Role = 'owner' | 'admin' | 'scorer' | 'broadcaster' | 'family'
+type Role = 'owner' | 'admin' | 'coach' | 'scorer' | 'broadcaster' | 'family'
 type Member = { user_id: string; email: string; role: Role; status: string; is_self: boolean }
 type Invite = { id: string; email: string; role: Role; token: string; created_at: string }
 
 // Staff run the team; family follow it. Split so inviting a parent can't be
 // confused with handing someone scoring/broadcast powers.
 const STAFF: { value: Exclude<Role, 'owner' | 'family'>; label: string; hint: string }[] = [
-  { value: 'admin', label: 'Admin', hint: 'Coach — roster, schedule, members' },
+  { value: 'admin', label: 'Admin', hint: 'Roster, schedule, members' },
+  { value: 'coach', label: 'Coach', hint: 'Score, lineups, roster & schedule' },
   { value: 'scorer', label: 'Scorer', hint: 'Score games' },
   { value: 'broadcaster', label: 'Broadcaster', hint: 'Film / stream only' },
 ]
-const ASSIGNABLE: Role[] = ['admin', 'scorer', 'broadcaster', 'family']
+const ASSIGNABLE: Role[] = ['admin', 'coach', 'scorer', 'broadcaster', 'family']
 const ROLE_LABEL: Record<Role, string> = {
   owner: 'Owner',
   admin: 'Admin',
+  coach: 'Coach',
   scorer: 'Scorer',
   broadcaster: 'Broadcaster',
   family: 'Family',
@@ -151,7 +153,7 @@ export function TeamMembers({ team }: { team: Team }) {
           </div>
 
           {kind === 'staff' ? (
-            <div className="mb-2 grid grid-cols-3 gap-1.5">
+            <div className="mb-2 grid grid-cols-2 gap-1.5">
               {STAFF.map((r) => {
                 const sel = staffRole === r.value
                 return (
