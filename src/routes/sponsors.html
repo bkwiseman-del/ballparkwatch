@@ -12,12 +12,12 @@
 </nav>
 
 <!-- ═══════════ HERO ═══════════ -->
-<section id="home" data-visible="true" style="position:relative;overflow:hidden;height:760px;padding:64px 5% 0">
+<section id="home" data-visible="true" style="position:relative;overflow:hidden;height:640px;padding:64px 5% 0">
   <div style="position:absolute;inset:0;background:url(/marketing/assets/sponsors-hero.jpg) center 28%/cover no-repeat;z-index:0"></div>
   <div style="position:absolute;inset:0;background:linear-gradient(108deg,rgba(14,28,18,.98) 0%,rgba(14,28,18,.96) 46%,rgba(14,28,18,.78) 64%,rgba(14,28,18,.5) 100%);z-index:1"></div>
 
-  <div class="hero-grid" style="position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;max-width:1320px;margin:0 auto;height:100%;align-items:center;gap:24px">
-    <div style="padding-right:32px">
+  <div class="hero-grid" style="position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;max-width:1320px;margin:0 auto;height:100%;align-items:stretch;gap:24px">
+    <div style="display:flex;flex-direction:column;justify-content:center;padding-right:32px">
       <div class="anim" style="font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:12px;letter-spacing:.28em;color:#a9c0ad;text-transform:uppercase;margin-bottom:20px">Sponsorship · A Booster Fundraiser</div>
       <h1 class="anim d1 hero-h1" style="font-family:'Alfa Slab One',serif;font-size:60px;line-height:.9;letter-spacing:.01em;color:#F4ECD8;margin:0">PUT YOUR<br>SPONSOR IN<br><span style="color:#C9A14A">THE GAME.</span></h1>
       <div class="anim d2" style="height:1px;width:72px;background:#C9A14A;margin:26px 0"></div>
@@ -28,13 +28,13 @@
       </div>
     </div>
 
-    <!-- Phone mockup — the real broadcast, with a sponsor on the board (bottom crops into the section) -->
-    <div class="hero-phone-col" style="display:flex;justify-content:center;align-items:flex-start;height:100%;padding-top:18px">
-      <div>
-        <div style="background:linear-gradient(155deg,#0c1520 0%,#06101b 100%);border-radius:62px;padding:15px;box-shadow:0 0 0 1px rgba(201,161,74,.22),0 48px 120px rgba(0,0,0,.9);position:relative">
-          <div style="position:absolute;right:-4px;top:150px;width:4px;height:64px;background:#050c14;border-radius:0 2px 2px 0"></div>
-          <div style="position:absolute;left:-4px;top:112px;width:4px;height:38px;background:#050c14;border-radius:2px 0 0 2px"></div>
-          <div style="width:360px;height:864px;background:#15281b;border-radius:50px;overflow:hidden;display:flex;flex-direction:column">
+    <!-- Phone mockup — absolutely placed so it can't stretch the row; only its top ~half shows -->
+    <div class="hero-phone-col" style="position:relative">
+      <div class="phone-abs" style="position:absolute;top:2px;left:50%;transform:translateX(-50%)">
+        <div style="background:linear-gradient(155deg,#0c1520 0%,#06101b 100%);border-radius:60px;padding:16px;box-shadow:0 0 0 1px rgba(201,161,74,.22),0 48px 120px rgba(0,0,0,.9);position:relative">
+          <div style="position:absolute;right:-4px;top:160px;width:4px;height:66px;background:#050c14;border-radius:0 2px 2px 0"></div>
+          <div style="position:absolute;left:-4px;top:120px;width:4px;height:40px;background:#050c14;border-radius:2px 0 0 2px"></div>
+          <div style="width:452px;height:1080px;background:#15281b;border-radius:52px;overflow:hidden;display:flex;flex-direction:column">
             <div style="height:28px;background:#0e1a14;display:flex;align-items:center;justify-content:space-between;padding:0 22px;flex:none">
               <span style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;color:#F4ECD8">2:41</span>
               <div style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#A6342E;animation:sl-pulse 1.4s infinite"></span><span style="font-family:'Saira Condensed',sans-serif;font-size:11px;font-weight:600;color:#F4ECD8">LIVE</span></div>
@@ -49,9 +49,9 @@
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#C9A14A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
                 <span style="font-family:'Alfa Slab One',serif;font-size:11px;color:#F4ECD8;letter-spacing:.01em">GREENFIELD <span style="color:#C9A14A">HARDWARE</span></span>
               </span>
-              <svg style="position:absolute;left:0;top:50%;transform:translateY(-50%);width:100%;height:74px;pointer-events:none;overflow:visible;z-index:6" viewBox="0 0 360 74" preserveAspectRatio="none">
-                <defs><filter id="scRough" x="-8%" y="-40%" width="116%" height="180%"><feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="6" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="4.5"/></filter></defs>
-                <ellipse cx="146" cy="37" rx="140" ry="26" fill="none" stroke="#E0483F" stroke-width="4" stroke-linecap="round" filter="url(#scRough)" transform="rotate(-3 146 37)" style="stroke-dasharray:660;stroke-dashoffset:660;animation:sponsor-draw 4.4s ease-in-out .9s infinite"></ellipse>
+              <svg style="position:absolute;left:2px;top:50%;transform:translateY(-50%);width:300px;height:74px;pointer-events:none;overflow:visible;z-index:6" viewBox="0 0 300 74">
+                <defs><filter id="scRough" x="-8%" y="-40%" width="116%" height="180%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="6" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="4.5"/></filter></defs>
+                <ellipse cx="140" cy="37" rx="135" ry="26" fill="none" stroke="#E0483F" stroke-width="4" stroke-linecap="round" filter="url(#scRough)" transform="rotate(-3 140 37)" style="stroke-dasharray:600;stroke-dashoffset:600;animation:sponsor-draw 4.4s ease-in-out .9s infinite"></ellipse>
               </svg>
             </div>
             <!-- SCOREBUG BAR -->

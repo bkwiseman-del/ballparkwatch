@@ -83,6 +83,11 @@ html { scroll-behavior: smooth; }
   .bb-mkt .nav-links { display:none !important; }
   .bb-mkt .cmp-grid { grid-template-columns:1fr !important; }
   .bb-mkt .fields-grid { grid-template-columns:1fr !important; }
+  /* Sponsors hero: the phone is absolutely placed + oversized on desktop (only its top
+     half shows). On mobile put it back in flow, full and uncropped, below the text. */
+  .bb-mkt #home .phone-abs { position:static !important; transform:none !important; margin:0 auto; }
+  .bb-mkt #home .hero-phone-col { height:auto !important; }
+  .bb-mkt #home .phone-abs { zoom:0.62; }
 }
 @media (max-width:640px) {
   /* Alfa Slab is heavy; at 58px "BROADCAST" overran the hero and got clipped.
