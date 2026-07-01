@@ -1,5 +1,6 @@
 import { applyEvent, INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from './engine'
 import { buildPlayByPlay } from './stats'
+import { displayName } from './names'
 
 // Builds an ordered list of audio "cues" per event, GameChanger-style: the
 // sound FX first (pitch, then catch / hit / etc.), then the spoken lines —
@@ -23,13 +24,16 @@ const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', 
 const ord = (n: number) => ORD[n] ?? `${n}th`
 const bw = (n: number) => (n === 0 ? 'oh' : (ONES[n] ?? String(n)))
 
-// Spoken intro for a batter — as much as we know: "number 24 Waylon Cook",
-// "number 24", "Waylon Cook", or null.
+// Spoken intro for a batter — as much as we know: "number 24 Cook", "number 24",
+// "Cook", or null. Names go through the displayName chokepoint (surname only) so the
+// announcer never reads full first+last names aloud on the public broadcast — matching
+// what every on-screen surface already shows.
 function announce(slot: Slot | undefined): string | null {
   if (!slot) return null
   const parts: string[] = []
   if (slot.jersey) parts.push(`number ${slot.jersey}`)
-  if (slot.name?.trim()) parts.push(slot.name.trim())
+  const name = displayName(slot.name)
+  if (name) parts.push(name)
   return parts.length ? parts.join(' ') : null
 }
 
