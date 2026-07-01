@@ -11,6 +11,18 @@ export function PublicNav() {
           <HeaderWordmark />
         </Link>
         <div className="flex items-center gap-4 sm:gap-6">
+          <Link
+            to="/sponsors"
+            className="hidden font-athletic text-sm font-semibold uppercase tracking-wide text-cream/70 hover:text-gold sm:inline"
+          >
+            Sponsors
+          </Link>
+          <Link
+            to="/fields"
+            className="hidden font-athletic text-sm font-semibold uppercase tracking-wide text-cream/70 hover:text-gold sm:inline"
+          >
+            Fields &amp; Leagues
+          </Link>
           <a
             href="/#pricing"
             className="hidden font-athletic text-sm font-semibold uppercase tracking-wide text-cream/70 hover:text-gold sm:inline"
@@ -41,6 +53,12 @@ export function PublicFooter() {
           <p className="font-data text-xs text-cream/40">Live baseball &amp; softball for youth leagues. Free to watch.</p>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
+          <Link to="/sponsors" className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/60 hover:text-gold">
+            Sponsors
+          </Link>
+          <Link to="/fields" className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/60 hover:text-gold">
+            Fields &amp; Leagues
+          </Link>
           <a href="/#pricing" className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/60 hover:text-gold">
             Pricing
           </a>

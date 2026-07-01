@@ -1,6 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAuth } from './auth/RequireAuth'
 import Home from './routes/Home'
+import Sponsors from './routes/Sponsors'
+import SalesSheet from './routes/SalesSheet'
+import Fields from './routes/Fields'
 import Login from './routes/Login'
 import Setup from './routes/Setup'
 import Following from './routes/Following'
@@ -18,6 +21,9 @@ export default function App() {
     <Routes>
       {/* Public marketing landing page. */}
       <Route path="/" element={<Home />} />
+      <Route path="/sponsors" element={<Sponsors />} />
+      <Route path="/sponsors/sheet" element={<SalesSheet />} />
+      <Route path="/fields" element={<Fields />} />
       <Route path="/login" element={<Login />} />
       <Route
         path="/setup"
