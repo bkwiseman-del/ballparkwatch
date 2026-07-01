@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { HeaderWordmark } from '@/components/Logo'
 import { Select } from '@/components/Select'
+import { NotifyToggle } from '@/components/NotifyToggle'
 import { fmtAgo } from '@/components/TeamPosts'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Team } from '@/lib/types'
@@ -126,11 +127,14 @@ export default function Following() {
               </p>
             </div>
           ) : (
-            <div className="space-y-5">
-              {teams.map((t) => (
-                <TeamCard key={t.team.id} data={t} userId={user?.id ?? ''} onRefresh={refreshTeam} />
-              ))}
-            </div>
+            <>
+              <NotifyToggle />
+              <div className="space-y-5">
+                {teams.map((t) => (
+                  <TeamCard key={t.team.id} data={t} userId={user?.id ?? ''} onRefresh={refreshTeam} />
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

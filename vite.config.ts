@@ -14,7 +14,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon-32.png', 'favicon-16.png', 'ball.png', 'apple-touch-icon.png'],
+      includeAssets: ['favicon-32.png', 'favicon-16.png', 'ball.png', 'apple-touch-icon.png', 'push-sw.js'],
+      // Inject our push + notificationclick handlers into the generated Workbox SW.
+      workbox: { importScripts: ['/push-sw.js'] },
       manifest: {
         name: 'Bandbox',
         short_name: 'Bandbox',

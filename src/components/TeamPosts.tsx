@@ -28,6 +28,10 @@ export function TeamPosts({ team, canPost }: { team: Team; canPost: boolean }) {
     const { error } = await supabase.from('team_posts').insert({ team_id: team.id, body: text })
     setBusy(false)
     if (error) return setError(error.message)
+    // Notify the team (fire-and-forget — a push failure shouldn't block posting).
+    supabase.functions.invoke('send-push', {
+      body: { team_id: team.id, title: `${team.name} — announcement`, body: text.slice(0, 140), url: '/following' },
+    })
     setBody('')
     load()
   }
