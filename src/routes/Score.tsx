@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useScorer } from '@/hooks/useScorer'
+import { useScorer, type LineupPlayer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ShareSheet } from '@/components/ShareSheet'
 import { VideoSetup } from '@/components/VideoSetup'
@@ -40,7 +40,7 @@ export default function Score() {
   const [showPlays, setShowPlays] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showVideo, setShowVideo] = useState(false)
-  const [editPlayer, setEditPlayer] = useState<Player | null>(null)
+  const [editTarget, setEditTarget] = useState<{ player: Player; role: 'batter' | 'pitcher' } | null>(null)
   const [runnerAction, setRunnerAction] = useState<{ base: BaseName; id: string } | null>(null)
   // Teams whose lineup we auto-filled from their roster at start (dismissible note).
   const [rosterNote, setRosterNote] = useState<string[] | null>(null)
@@ -165,7 +165,9 @@ export default function Score() {
       {error && <p className="shrink-0 bg-barn-red/15 px-3 py-1 font-data text-xs text-barn-red">{error}</p>}
 
       {/* batter / pitcher strip (full mode only) */}
-      {playing && !scoreboard && <BatterPitcherStrip scorer={s} gameId={gameId} onEdit={setEditPlayer} />}
+      {playing && !scoreboard && (
+        <BatterPitcherStrip scorer={s} gameId={gameId} onEdit={(player, role) => setEditTarget({ player, role })} />
+      )}
 
       {/* live field — grows to fill the available space (full mode only) */}
       {playing && !scoreboard && (
@@ -452,14 +454,12 @@ export default function Score() {
           onClose={() => setRunnerAction(null)}
         />
       )}
-      {editPlayer && (
-        <PlayerEditPopup
-          player={editPlayer}
-          onSave={async (patch) => {
-            await s.editPlayer(editPlayer.id, patch)
-            setEditPlayer(null)
-          }}
-          onClose={() => setEditPlayer(null)}
+      {editTarget && (
+        <QuickPlayerPopup
+          scorer={s}
+          player={editTarget.player}
+          role={editTarget.role}
+          onClose={() => setEditTarget(null)}
         />
       )}
       {showSub && <SubstitutionFlow scorer={s} onClose={() => setShowSub(false)} />}
@@ -500,7 +500,7 @@ function BatterPitcherStrip({
 }: {
   scorer: ReturnType<typeof useScorer>
   gameId: string | undefined
-  onEdit: (p: Player) => void
+  onEdit: (p: Player, role: 'batter' | 'pitcher') => void
 }) {
   const { currentBatter, onDeck, currentPitcher, currentPitcherPitches, events, playersById } = scorer
   if (!currentBatter) {
@@ -519,9 +519,9 @@ function BatterPitcherStrip({
   const pitches = currentPitcherPitches
   return (
     <div className="flex shrink-0 border-b-2 border-ink bg-cream text-ink">
-      <button onClick={() => onEdit(currentBatter)} className="flex-1 border-r border-ink/20 px-3 py-2 text-left">
+      <button onClick={() => onEdit(currentBatter, 'batter')} className="flex-1 border-r border-ink/20 px-3 py-2 text-left">
         <p className="flex items-center gap-1 font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-barn-red">
-          At Bat <span className="text-muted-tan">· tap to edit</span>
+          At Bat <span className="text-muted-tan">· tap to edit / sub</span>
         </p>
         <p className="font-display text-base leading-tight">
           <span className="text-barn-red">{currentBatter.jersey_number ?? '—'}</span> {currentBatter.name}
@@ -532,12 +532,12 @@ function BatterPitcherStrip({
         </p>
       </button>
       <button
-        onClick={() => currentPitcher && onEdit(currentPitcher)}
+        onClick={() => currentPitcher && onEdit(currentPitcher, 'pitcher')}
         disabled={!currentPitcher}
         className="flex-1 px-3 py-2 text-left"
       >
         <p className="font-athletic text-[10px] font-semibold uppercase tracking-[.14em] text-muted-tan">
-          Pitching{currentPitcher ? ' · tap to edit' : ''}
+          Pitching{currentPitcher ? ' · tap to edit / sub' : ''}
         </p>
         <p className="font-display text-base leading-tight">
           {currentPitcher ? (
@@ -556,6 +556,7 @@ function BatterPitcherStrip({
 
 /* -------------------------------------------------------- quick player edit */
 
+// Minimal name/number editor (used from the Substitution screen's roster list).
 function PlayerEditPopup({
   player,
   onSave,
@@ -600,12 +601,146 @@ function PlayerEditPopup({
               className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
             />
           </label>
-          <button
-            onClick={() => onSave({ name, jersey_number: num })}
-            className="bg-gold py-3 font-display text-ink"
-          >
+          <button onClick={() => onSave({ name, jersey_number: num })} className="bg-gold py-3 font-display text-ink">
             Save ▸
           </button>
+        </div>
+      </div>
+    </Overlay>
+  )
+}
+
+// Tapping the batter or pitcher opens this: edit their name/number, AND make a quick
+// substitution. Batter → pinch-hit a bench player into their slot. Pitcher → bring a
+// bench player in as P, or move a current fielder to the mound (they swap positions).
+function QuickPlayerPopup({
+  scorer,
+  player,
+  role,
+  onClose,
+}: {
+  scorer: ReturnType<typeof useScorer>
+  player: Player
+  role: 'batter' | 'pitcher'
+  onClose: () => void
+}) {
+  const { lineups, bench, live, act, editPlayer } = scorer
+  const [num, setNum] = useState(player.jersey_number ?? '')
+  const [name, setName] = useState(player.name ?? '')
+
+  const battingKey: 'away' | 'home' = live.half === 'top' ? 'away' : 'home'
+  const teamKey: 'away' | 'home' = role === 'batter' ? battingKey : battingKey === 'away' ? 'home' : 'away'
+  const lineup = lineups[teamKey]
+  const me = lineup.find((p) => p.id === player.id)
+  const myPos = me?.position ?? me?.default_position ?? ''
+  const benchList = bench[teamKey]
+  // Pitcher swap targets: other players already in the lineup (they move to the mound).
+  const swapOptions = role === 'pitcher' ? lineup.filter((p) => p.id !== player.id) : []
+  const posOf = (p: LineupPlayer) => p.position ?? p.default_position ?? ''
+  const surname = (n: string) => n.split(' ').slice(-1)[0] || n
+
+  const saveEdit = async () => {
+    await editPlayer(player.id, { name, jersey_number: num })
+    onClose()
+  }
+  // Bring a bench player in for this player (batter's slot, or as the new pitcher).
+  const subInBench = (benchId: string) => {
+    const position = role === 'pitcher' ? 'P' : myPos || undefined
+    act('substitution', { team: teamKey, moves: [{ out_id: player.id, in_id: benchId, position }] })
+    onClose()
+  }
+  // Move a fielder to the mound: they take P, the old pitcher takes their old spot.
+  const swapToPitcher = (fielder: LineupPlayer) => {
+    act('substitution', {
+      team: teamKey,
+      moves: [
+        { in_id: player.id, position: posOf(fielder) || undefined },
+        { in_id: fielder.id, position: 'P' },
+      ],
+    })
+    onClose()
+  }
+
+  const BenchBtn = ({ p, onClick }: { p: Player; onClick: () => void }) => (
+    <button onClick={onClick} className="border-2 border-board-green bg-white px-2 py-1.5 font-data text-sm">
+      <b className="text-barn-red">{p.jersey_number ?? '—'}</b> {p.name}
+    </button>
+  )
+
+  return (
+    <Overlay onClose={onClose}>
+      <div className="max-h-[85vh] w-[340px] overflow-y-auto border-[3px] border-ink bg-cream text-ink shadow-hard">
+        <div className="flex items-center justify-between bg-ink px-4 py-2.5">
+          <span className="font-display text-lg text-cream">{role === 'pitcher' ? 'Pitcher' : 'Batter'}</span>
+          <button onClick={onClose} className="font-athletic text-cream">
+            ✕
+          </button>
+        </div>
+        <div className="flex flex-col gap-3 p-4">
+          {/* Edit name / number */}
+          <div className="flex gap-2">
+            <label className="block w-16">
+              <span className="mb-1 block font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+                No.
+              </span>
+              <input
+                value={num}
+                onChange={(e) => setNum(e.target.value)}
+                inputMode="numeric"
+                placeholder="#"
+                className="w-full border-2 border-ink bg-white px-2 py-2 text-center font-display text-lg outline-none focus:border-board-green"
+              />
+            </label>
+            <label className="block flex-1">
+              <span className="mb-1 block font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+                Name
+              </span>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Leave blank for number only"
+                className="w-full border-2 border-ink bg-white px-2 py-2 font-data outline-none focus:border-board-green"
+              />
+            </label>
+          </div>
+          <button onClick={saveEdit} className="bg-gold py-2.5 font-display text-ink">
+            Save name / number ▸
+          </button>
+
+          {/* Quick substitution */}
+          <div className="border-t-2 border-ink/15 pt-3">
+            {role === 'pitcher' && swapOptions.length > 0 && (
+              <>
+                <p className="mb-1 font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+                  Move a fielder to the mound (they swap spots)
+                </p>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {swapOptions.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => swapToPitcher(f)}
+                      className="border-2 border-ink/40 bg-white px-2 py-1.5 font-data text-sm"
+                    >
+                      <b className="text-board-green">{posOf(f) || '—'}</b>{' '}
+                      <span className="text-barn-red">{f.jersey_number ?? ''}</span> {surname(f.name)}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <p className="mb-1 font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+              {role === 'pitcher' ? 'Bring in from the bench (as pitcher)' : 'Sub in a hitter from the bench'}
+            </p>
+            {benchList.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {benchList.map((b) => (
+                  <BenchBtn key={b.id} p={b} onClick={() => subInBench(b.id)} />
+                ))}
+              </div>
+            ) : (
+              <p className="font-data text-xs text-muted-tan">No bench players available.</p>
+            )}
+          </div>
         </div>
       </div>
     </Overlay>
