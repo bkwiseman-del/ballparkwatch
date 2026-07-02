@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ScorebugBar } from '@/components/Scorebug'
@@ -102,6 +102,13 @@ function useIsDesktop() {
 
 export default function Watch() {
   const { gameId } = useParams()
+  const navigate = useNavigate()
+  const location = useLocation()
+  // Only show an in-app Back button when we arrived here by navigating within the app
+  // (e.g. a family member tapping a replay in the PWA). A fresh load from a shared link
+  // has key 'default' — those viewers get no back button (there's nowhere to go). Fixes
+  // the PWA getting trapped on /watch with no way back to the dashboard.
+  const canGoBack = location.key !== 'default'
   const [info, setInfo] = useState<PublicGame | null>(null)
   const [live, setLive] = useState<LiveGame>(INITIAL_LIVE)
   const [events, setEvents] = useState<ViewerEvent[]>([])
@@ -500,7 +507,18 @@ export default function Watch() {
     >
       {/* branded header */}
       <header className="flex items-center justify-between border-b-2 border-gold bg-ink px-3 py-2.5 min-[760px]:px-5">
-        <HeaderWordmark />
+        <div className="flex items-center gap-3">
+          {canGoBack && (
+            <button
+              onClick={() => navigate(-1)}
+              aria-label="Back"
+              className="font-athletic text-sm font-semibold uppercase tracking-wide text-gold"
+            >
+              ‹ Back
+            </button>
+          )}
+          <HeaderWordmark />
+        </div>
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setShowShare(true)}
