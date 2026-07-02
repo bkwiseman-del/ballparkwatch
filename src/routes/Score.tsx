@@ -46,6 +46,11 @@ export default function Score() {
   const [rosterNote, setRosterNote] = useState<string[] | null>(null)
   // Live health of the phone broadcast (for the indicator in the header).
   const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
+  const [endedDismissed, setEndedDismissed] = useState(false)
+  // A newly (re)started broadcast clears the dismissed "ended" notice.
+  useEffect(() => {
+    if (bstatus.live) setEndedDismissed(false)
+  }, [bstatus.live])
   // Scoring mode is chosen at game start and locked for the game (Full default).
   const [scoreboard, setScoreboard] = useState(
     () => localStorage.getItem(`bpw_mode_${gameId}`) === 'board',
@@ -156,6 +161,33 @@ export default function Score() {
             Check phone ▸
           </span>
         </button>
+      )}
+
+      {/* Broadcast ended cleanly (broadcaster hit Stop) — distinct from a lost feed.
+          Dismissible; auto-clears if a new broadcast starts. */}
+      {bstatus.ended && !endedDismissed && (
+        <div className="flex w-full shrink-0 items-center justify-between gap-2 bg-gold px-3 py-2 text-ink">
+          <span className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-ink/60" />
+            <span className="font-athletic text-sm font-bold uppercase tracking-wide">
+              Broadcast ended — the video feed was stopped
+            </span>
+          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowVideo(true)}
+              className="font-athletic text-xs font-semibold uppercase tracking-wide underline"
+            >
+              Restart ▸
+            </button>
+            <button
+              onClick={() => setEndedDismissed(true)}
+              className="font-athletic text-xs font-semibold uppercase tracking-wide text-ink/70"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="shrink-0">

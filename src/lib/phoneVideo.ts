@@ -470,7 +470,13 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
 // stopped without a clean stop (broadcaster phone locked / lost signal / crashed)
 // — the actionable "your video died" state. secsSinceBeat: seconds since the last
 // heartbeat (null if we've never seen one), for a live "no signal for Ns" readout.
-export type BroadcastStatus = { live: boolean; viewers: number; down: boolean; secsSinceBeat: number | null }
+export type BroadcastStatus = {
+  live: boolean
+  viewers: number
+  down: boolean // feed was live and heartbeats stopped unexpectedly (a failure)
+  ended: boolean // broadcaster stopped cleanly (intentional) — distinct from `down`
+  secsSinceBeat: number | null
+}
 
 // Passive monitor (no media, no signaling) for the scorer: listens for the
 // broadcaster's heartbeats so we can show whether a phone livestream is
@@ -479,6 +485,7 @@ export function useBroadcastStatus(gameId: string | undefined, active: boolean):
   const [live, setLive] = useState(false)
   const [viewers, setViewers] = useState(0)
   const [down, setDown] = useState(false)
+  const [ended, setEnded] = useState(false)
   const [secsSinceBeat, setSecs] = useState<number | null>(null)
   const bc = useRef<string | null>(null)
   const timer = useRef<number | undefined>(undefined)
@@ -490,6 +497,7 @@ export function useBroadcastStatus(gameId: string | undefined, active: boolean):
       setLive(false)
       setViewers(0)
       setDown(false)
+      setEnded(false)
       setSecs(null)
       everLive.current = false
       lastBeat.current = null
@@ -504,6 +512,7 @@ export function useBroadcastStatus(gameId: string | undefined, active: boolean):
         lastBeat.current = Date.now()
         setLive(true)
         setDown(false)
+        setEnded(false) // a (re)started broadcast clears any prior "ended" notice
         setViewers(m.viewers ?? 0)
         window.clearTimeout(timer.current)
         // Heartbeats vanished → if a feed had been running, it DIED (not a clean stop).
@@ -513,7 +522,9 @@ export function useBroadcastStatus(gameId: string | undefined, active: boolean):
           if (everLive.current) setDown(true)
         }, LIVE_TIMEOUT_MS)
       } else if (m?.kind === 'bye' && m.from === bc.current) {
-        // Clean stop — not a failure.
+        // Clean stop — not a failure, but flag it so the scorer gets an explicit
+        // "broadcast ended" notice (only if a feed was actually running).
+        if (everLive.current) setEnded(true)
         setLive(false)
         setViewers(0)
         setDown(false)
@@ -533,5 +544,5 @@ export function useBroadcastStatus(gameId: string | undefined, active: boolean):
     }
   }, [gameId, active])
 
-  return { live, viewers, down, secsSinceBeat }
+  return { live, viewers, down, ended, secsSinceBeat }
 }

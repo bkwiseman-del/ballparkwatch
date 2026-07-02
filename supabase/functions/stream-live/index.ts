@@ -63,43 +63,58 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   if (!CF_ACCOUNT_ID || !CF_STREAM_TOKEN) return json({ error: 'Stream not configured.' }, 500)
 
-  let body: { token?: string; action?: string; name?: string; retentionDays?: number }
+  let body: { token?: string; gameId?: string; action?: string; name?: string; retentionDays?: number }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid request body.' }, 400)
   }
-  const { token, action = 'start' } = body
-  if (!token) return json({ error: 'Missing token.' }, 400)
+  const { token, gameId, action = 'start' } = body
 
-  // Validate the broadcast token → game + any existing live input.
-  const { data: found, error: lookErr } = await db.rpc('stream_lookup', { p_token: token })
-  const game = found as { game_id?: string; cf_live_input_uid?: string | null } | null
-  if (lookErr || !game?.game_id) return json({ error: 'Invalid broadcast token.' }, 403)
+  // Resolve the game + its live-input uid. Broadcaster actions authenticate with the
+  // private token; a viewer may finalize a public final game by gameId (the recording
+  // is already public via get_public_game, so no token needed to fetch its id).
+  let resolvedGameId: string | null = null
+  let inputUid: string | null = null
+  if (token) {
+    const { data: found, error } = await db.rpc('stream_lookup', { p_token: token })
+    const g = found as { game_id?: string; cf_live_input_uid?: string | null } | null
+    if (error || !g?.game_id) return json({ error: 'Invalid broadcast token.' }, 403)
+    resolvedGameId = g.game_id
+    inputUid = g.cf_live_input_uid ?? null
+  } else if (gameId && action === 'finalize') {
+    const { data: uid } = await db.rpc('stream_input_by_game', { p_game_id: gameId })
+    resolvedGameId = gameId
+    inputUid = (uid as string | null) ?? null
+  } else {
+    return json({ error: 'Missing token.' }, 400)
+  }
 
   try {
     if (action === 'finalize') {
       // Fetch the auto-recording VOD for this live input (ready ~60s after the stream
-      // ends). Store the newest ready video as the replay; report not-ready so the
-      // client can retry shortly.
-      if (!game.cf_live_input_uid) return json({ ready: false }, 200)
-      const videos = (await cf(`/live_inputs/${game.cf_live_input_uid}/videos`)) as
+      // ends). Store the newest ready video as the replay. Works with the broadcaster's
+      // token OR a viewer's gameId, so the replay never depends on the broadcaster
+      // staying on-screen to poll.
+      if (!inputUid) return json({ ready: false }, 200)
+      const videos = (await cf(`/live_inputs/${inputUid}/videos`)) as
         | { uid: string; readyToStream?: boolean; created?: string }[]
         | null
       const newest = (videos ?? [])
         .slice()
         .sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]
       if (!newest) return json({ ready: false }, 200)
-      await db.rpc('stream_set_recording', { p_token: token, p_recording_uid: newest.uid })
+      if (token) await db.rpc('stream_set_recording', { p_token: token, p_recording_uid: newest.uid })
+      else await db.rpc('stream_set_recording_by_game', { p_game_id: resolvedGameId, p_recording_uid: newest.uid })
       return json({ ready: !!newest.readyToStream, recordingUid: newest.uid }, 200)
     }
 
-    // action === 'start' — create or reuse the live input.
+    // action === 'start' — create or reuse the live input (token path only).
     let li: LiveInput | null = null
-    if (game.cf_live_input_uid) {
+    if (inputUid) {
       // Reuse — but if the input was deleted (stale id), fall through and create fresh.
       try {
-        li = (await cf(`/live_inputs/${game.cf_live_input_uid}`)) as LiveInput
+        li = (await cf(`/live_inputs/${inputUid}`)) as LiveInput
       } catch {
         li = null
       }
@@ -112,7 +127,7 @@ Deno.serve(async (req) => {
       li = (await cf('/live_inputs', {
         method: 'POST',
         body: JSON.stringify({
-          meta: { name: body.name ?? `Bandbox ${game.game_id}` },
+          meta: { name: body.name ?? `Bandbox ${resolvedGameId}` },
           recording: { mode: 'automatic' },
           deleteRecordingAfterDays: retentionDays,
         }),
@@ -126,6 +141,9 @@ Deno.serve(async (req) => {
         p_hls: hls,
       })
     }
+    // Anchor the recording clock server-side, reliably (doesn't depend on the client
+    // firing on connect). Only sets it once; the replay maps events against this.
+    await db.rpc('stream_mark_started', { p_token: token })
 
     const whipUrl = li.webRTC?.url ?? ''
     const { whep, hls } = playbackUrls(li)

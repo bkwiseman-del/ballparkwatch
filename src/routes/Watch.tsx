@@ -409,11 +409,39 @@ export default function Watch() {
     setReplayUrl(recPath ? supabase.storage.from('bpw-video').getPublicUrl(recPath).data.publicUrl : null)
   }, [recStarted, recPath, recMime, recSegKey])
 
-  // Prefer Cloudflare Stream's server-side auto-recording (upright, ABR, HLS) when we
-  // have one; the local upload is the backup. Same wall-clock anchor for event sync.
+  // If the game is final and was a Stream broadcast but the recording id isn't stored
+  // yet (broadcaster ended early / closed before the VOD was ready), resolve it OURSELVES
+  // from Cloudflare — the replay must show what was recorded, no matter how it ended.
+  const [resolvedRecUid, setResolvedRecUid] = useState<string | null>(null)
+  useEffect(() => {
+    if (info?.status !== 'final' || !info?.cf_customer_code || info?.cf_recording_uid || resolvedRecUid) return
+    let cancelled = false
+    let tries = 0
+    const attempt = async () => {
+      if (cancelled) return
+      tries++
+      try {
+        const { data } = await supabase.functions.invoke('stream-live', {
+          body: { gameId, action: 'finalize' },
+        })
+        if (!cancelled && data?.recordingUid) return setResolvedRecUid(data.recordingUid as string)
+      } catch {
+        /* retry */
+      }
+      if (!cancelled && tries < 12) setTimeout(attempt, 15000)
+    }
+    void attempt()
+    return () => {
+      cancelled = true
+    }
+  }, [info?.status, info?.cf_customer_code, info?.cf_recording_uid, resolvedRecUid, gameId])
+
+  // Prefer Cloudflare Stream's server-side auto-recording (upright, ABR, HLS); the local
+  // upload is the backup.
+  const recUid = info?.cf_recording_uid ?? resolvedRecUid
   const streamVod =
-    info?.cf_recording_uid && info?.cf_customer_code
-      ? `https://${info.cf_customer_code}.cloudflarestream.com/${info.cf_recording_uid}/manifest/video.m3u8`
+    recUid && info?.cf_customer_code
+      ? `https://${info.cf_customer_code}.cloudflarestream.com/${recUid}/manifest/video.m3u8`
       : null
 
   if (error) return <Center>{error}</Center>
@@ -430,13 +458,20 @@ export default function Watch() {
     runners: occupancy(live.bases),
   }
 
-  // Replay of the recorded broadcast (shown on the Final screen) if one was saved.
+  // Replay of the recorded broadcast (shown on the Final screen) whenever a recording
+  // exists — the Stream VOD (preferred) or the local upload. The time anchor comes from
+  // recording_started_at; if that's missing (older/early-ended broadcast) we fall back to
+  // the game_start timestamp so the replay still plays (sync just approximate).
+  const replayVideoUrl = streamVod ?? replayUrl ?? null
+  const gameStartMs = (() => {
+    const gs = events.find((e) => e.event_type === 'game_start')
+    return gs?.wall_clock_ts ? new Date(gs.wall_clock_ts).getTime() : 0
+  })()
   const replay: ReplayProps | null =
-    info.recording_started_at
+    replayVideoUrl
       ? {
-          // Prefer the Stream VOD (upright/ABR); the local upload is the fallback.
-          url: streamVod ?? replayUrl ?? '',
-          startedAtMs: new Date(info.recording_started_at).getTime(),
+          url: replayVideoUrl,
+          startedAtMs: info.recording_started_at ? new Date(info.recording_started_at).getTime() : gameStartMs,
           gameId: info.id,
           events,
           lineups: {
@@ -922,6 +957,11 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
   // Current playback position as a game wall-clock (ms) — lets the spray flash for a
   // fixed window after contact and then clear, mirroring the live view.
   const [posMs, setPosMs] = useState(0)
+  // The recording can be shorter than the game (broadcast ended early). When the video
+  // finishes, if the game continued past it, hand off to the big scoreboard like the live
+  // view does — showing the final score with a note that the broadcast was stopped early.
+  const [videoEnded, setVideoEnded] = useState(false)
+  const [durationMs, setDurationMs] = useState(0)
 
   const tsOf = (e: ViewerEvent) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0)
 
@@ -1026,6 +1066,21 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
   const spray =
     newestLoc && posMs - tsOf(newestLoc) <= SPRAY_FLASH_MS ? buildViz(newestLoc.payload, newestLoc.seq) : null
 
+  // Did the game continue past the recording? (broadcast stopped before the final out).
+  const finalLive = project(sorted)
+  const lastEventMs = sorted.length ? tsOf(sorted[sorted.length - 1]) : 0
+  const endedEarly = durationMs > 0 && lastEventMs > startedAtMs + durationMs + 8000
+  const finalBoard: ScoreboardState = {
+    away: { code: teams.away.code, name: teams.away.name, score: finalLive.awayScore },
+    home: { code: teams.home.code, name: teams.home.name, score: finalLive.homeScore },
+    inning: finalLive.inning,
+    half: finalLive.half,
+    balls: finalLive.balls,
+    strikes: finalLive.strikes,
+    outs: finalLive.outs,
+    runners: occupancy(finalLive.bases),
+  }
+
   return (
     <div className="mx-auto w-full max-w-2xl lg:max-w-none">
       {/* Desktop mirrors the live view: video + scorebug on the left (~58%), the synced
@@ -1039,8 +1094,16 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
               controls
               autoPlay
               playsInline
-              onPlay={() => void audio.enable()}
+              onPlay={() => {
+                void audio.enable()
+                setVideoEnded(false)
+              }}
               onTimeUpdate={onTime}
+              onEnded={() => setVideoEnded(true)}
+              onDurationChange={() => {
+                const v = videoRef.current
+                if (v && isFinite(v.duration)) setDurationMs(v.duration * 1000)
+              }}
               onLoadedMetadata={() => {
                 const v = videoRef.current
                 if (!v || didSeek.current) return
@@ -1054,6 +1117,19 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
             />
           </div>
           <ScorebugBar state={board} />
+
+          {/* Recording stopped before the game ended — hand off to the big scoreboard with
+              the FINAL score, like the live view's no-video state. */}
+          {videoEnded && endedEarly && (
+            <div className="mt-3">
+              <div className="border-2 border-gold bg-gold/10 px-3 py-2 text-center font-athletic text-xs font-semibold uppercase tracking-wide text-gold">
+                Broadcast ended early — the rest of the game was played off-camera. Final score below.
+              </div>
+              <div className="mt-2">
+                <ScorePanel state={finalBoard} />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video. */}
