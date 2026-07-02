@@ -976,6 +976,21 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     return gs ? Math.max(0, (tsOf(gs) - startedAtMs) / 1000 - PREROLL_SEC) : 0
   })()
 
+  // If the camera came on AFTER the game started (video covers only part of the game), the
+  // scorebug at the video's start already reflects all earlier plays — but we must NOT
+  // burst-narrate those off-camera plays at t=0. Baseline the fired-commentary marker past
+  // any event more than ~5s before the video begins (keeps game_start + the last few
+  // seconds live). The box/stats/plays tabs still cover the FULL game from the event log.
+  const baselinedRef = useRef(false)
+  useEffect(() => {
+    if (baselinedRef.current || !sorted.length) return
+    baselinedRef.current = true
+    const cutoff = startedAtMs - 5000
+    let s = 0
+    for (const e of sorted) if (tsOf(e) < cutoff) s = e.seq
+    firedSeq.current = s
+  }, [sorted, startedAtMs])
+
   function fire(sinceSeq: number, upTo: ViewerEvent[]) {
     const newest = upTo[upTo.length - 1]
     if (!newest) return

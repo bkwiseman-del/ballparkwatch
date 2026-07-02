@@ -41,11 +41,15 @@ async function record(gameId, token) {
     return
   }
   const b = await getBrowser()
-  const page = await b.newPage()
+  // Fresh incognito context per recording → no shared service-worker cache, so the
+  // recorder page always loads the LATEST app code (avoids running stale recorder logic).
+  const context = await b.createBrowserContext()
+  const page = await context.newPage()
   active.set(gameId, page)
   const url = `${APP_ORIGIN}/record/${encodeURIComponent(gameId)}?token=${encodeURIComponent(token)}&max=${MAX_MINUTES}`
   console.log('[rec] start', gameId)
   try {
+    page.on('console', (m) => console.log(`[page ${gameId}]`, m.text()))
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
     const deadline = Date.now() + (MAX_MINUTES + 5) * 60000
     // Poll the page's exposed status; exit when the recording finishes or errors.
@@ -62,7 +66,7 @@ async function record(gameId, token) {
     console.error('[rec] error', gameId, e?.message || e)
   } finally {
     try {
-      await page.close()
+      await context.close()
     } catch {
       /* ignore */
     }

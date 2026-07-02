@@ -6,16 +6,18 @@ import { createStreamUploader } from '@/lib/streamUpload'
 
 // Server-side (headless) recorder for the PAID full-quality replay. A headless Chrome
 // opens /record/:gameId?token=<broadcast grant>; this joins the live WHEP feed and records
-// the full-quality stream for the whole game. The phone is untouched (still WHIPs live).
+// the full-quality stream. The phone is untouched (still WHIPs live).
 //
-// RECONNECT-PROOF: the incoming feed is drawn onto a stable canvas and its audio is routed
-// through a stable Web-Audio sink, so ONE continuous MediaRecorder keeps running even when
-// the broadcaster's stream blips/reconnects (which drops the WHEP peer connection). We
-// reconnect WHEP under it, and only FINISH when the game goes final (or media is gone for a
-// long stretch, or a safety cap) — never on a transient drop.
+// TWO KEY BEHAVIORS:
+//  1. Recording does NOT start until the GAME goes live (status 'live' / game_start) — so
+//     the replay never contains pre-game camera footage.
+//  2. RECONNECT-PROOF: the feed is drawn onto a stable canvas and its audio routed through
+//     a stable Web-Audio sink, so ONE continuous MediaRecorder survives broadcaster blips;
+//     WHEP reconnects under it. It finishes only when the game goes final (or media is gone
+//     for a long stretch, or a safety cap).
 //
 // Status is mirrored to window.__recorder / document.title so the manager can poll it.
-type Status = 'starting' | 'waiting' | 'recording' | 'saving' | 'done' | 'error'
+type Status = 'starting' | 'connecting' | 'waiting-for-start' | 'recording' | 'saving' | 'done' | 'error'
 
 export default function Recorder() {
   const { gameId } = useParams()
@@ -46,6 +48,7 @@ export default function Recorder() {
     let audioCtx: AudioContext | null = null
     let audioDest: MediaStreamAudioDestinationNode | null = null
     let audioSrc: MediaStreamAudioSourceNode | null = null
+    let currentStream: MediaStream | null = null
     let raf = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let silentTimer: ReturnType<typeof setTimeout> | undefined
@@ -73,6 +76,20 @@ export default function Recorder() {
     }
     draw()
 
+    const routeAudio = () => {
+      if (!audioCtx || !audioDest || !currentStream) return
+      try {
+        audioSrc?.disconnect()
+      } catch {
+        /* ignore */
+      }
+      const at = currentStream.getAudioTracks()
+      if (at.length) {
+        audioSrc = audioCtx.createMediaStreamSource(new MediaStream([at[0]]))
+        audioSrc.connect(audioDest)
+      }
+    }
+
     const finish = async () => {
       if (done) return
       done = true
@@ -82,6 +99,11 @@ export default function Recorder() {
       clearInterval(statusPoll)
       clearInterval(gapPoll)
       cancelAnimationFrame(raf)
+      if (!started) {
+        setStatus('error')
+        setDetail('game never went live')
+        return
+      }
       setStatus('saving')
       try {
         if (recorder && recorder.state !== 'inactive') recorder.stop()
@@ -104,12 +126,14 @@ export default function Recorder() {
       if (!ok) setDetail('save failed')
     }
 
-    // Build the ONE continuous recorder off the stable canvas + audio sink.
+    // Start the ONE continuous recorder — called only once the game is live AND media is
+    // flowing, so pre-game footage is never captured.
     const startRecorder = () => {
-      if (started || cancelled) return
+      if (started || cancelled || done) return
       started = true
       audioCtx = new AudioContext()
       audioDest = audioCtx.createMediaStreamDestination()
+      routeAudio()
       const videoTrack = (canvas as HTMLCanvasElement & { captureStream(fps?: number): MediaStream })
         .captureStream(30)
         .getVideoTracks()[0]
@@ -134,38 +158,19 @@ export default function Recorder() {
       }
       recorder.start(4000)
       setStatus('recording')
-
-      // Safety cap.
       maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
-      // Finish when the scorer ends the game (the true end signal — captures the whole game).
-      statusPoll = setInterval(async () => {
-        const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
-        if ((data as { status?: string } | null)?.status === 'final') void finish()
-      }, 10_000)
-      // Or if the feed has been gone a long time (broadcast ended without a final), wrap up.
+      // Wrap up if the feed's been gone a long time (broadcast ended without a final).
       gapPoll = setInterval(() => {
         if (Date.now() - lastMediaAt > 120_000) void finish()
       }, 15_000)
     }
 
-    // Point the stable surfaces at a freshly (re)connected WHEP stream.
     const wireStream = (stream: MediaStream) => {
+      currentStream = stream
       video.srcObject = stream
       video.play().catch(() => {})
       lastMediaAt = Date.now()
-      startRecorder()
-      if (audioCtx && audioDest) {
-        try {
-          audioSrc?.disconnect()
-        } catch {
-          /* ignore */
-        }
-        const at = stream.getAudioTracks()
-        if (at.length) {
-          audioSrc = audioCtx.createMediaStreamSource(new MediaStream([at[0]]))
-          audioSrc.connect(audioDest)
-        }
-      }
+      routeAudio() // no-op until the recorder (and its audio graph) has started
     }
 
     ;(async () => {
@@ -177,8 +182,24 @@ export default function Recorder() {
         setDetail('no live stream for this game')
         return
       }
-      setStatus('waiting')
+      setStatus('connecting')
       const startupDeadline = Date.now() + 120_000
+
+      // Poll the game status: START recording when it goes live (never before → no pregame),
+      // FINISH when it goes final.
+      statusPoll = setInterval(async () => {
+        if (done) return
+        const { data: g } = await supabase.rpc('get_public_game', { p_game_id: gameId })
+        const s = (g as { status?: string } | null)?.status
+        if (s === 'final') return void finish()
+        if (s === 'live' && !started && video.videoWidth) {
+          startRecorder()
+        } else if (s === 'live' && !started) {
+          setStatus('connecting') // live but no media yet
+        } else if (!started) {
+          setStatus('waiting-for-start')
+        }
+      }, 2000)
 
       const connect = async () => {
         if (cancelled || done) return
@@ -190,15 +211,10 @@ export default function Recorder() {
             /* ignore */
           }
           if (done || cancelled) return
-          if (!started && Date.now() > startupDeadline) {
-            setStatus('error')
-            setDetail('never received media')
-            return
-          }
+          if (!started && Date.now() > startupDeadline) return // give the status poll the last word
           clearTimeout(reconnectTimer)
           reconnectTimer = setTimeout(connect, 2000) // survive blips: reconnect under the recorder
         }
-        // No media on this attempt within a few seconds → retry.
         clearTimeout(silentTimer)
         silentTimer = setTimeout(() => {
           if (!video.videoWidth) drop()
