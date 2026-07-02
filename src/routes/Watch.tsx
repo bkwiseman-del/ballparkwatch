@@ -972,15 +972,21 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
   const lastTime = useRef(0)
   const didSeek = useRef(false)
 
+  // Keep onVodError in a ref so the attach effect depends ONLY on [url]. onVodError is a
+  // fresh function on every parent render (and the parent re-renders ~1×/sec), so depending
+  // on it would tear down + recreate hls.js every second → black flashing / constant reload.
+  const onVodErrorRef = useRef(onVodError)
+  onVodErrorRef.current = onVodError
+
   // Attach the source: HLS (Stream VOD) via hls.js/native, or a plain file/blob URL.
   useEffect(() => {
     const el = videoRef.current
     if (!el || !url) return
     didSeek.current = false
-    if (isHlsUrl(url)) return attachHls(el, url, { onError: onVodError })
+    if (isHlsUrl(url)) return attachHls(el, url, { onError: () => onVodErrorRef.current?.() })
     el.src = url
     return () => el.removeAttribute('src')
-  }, [url, onVodError])
+  }, [url])
 
   // The replay stays MOUNTED across tab switches (so playback position is preserved).
   // Pause it when its tab isn't showing; resume from where it left off when it returns.
