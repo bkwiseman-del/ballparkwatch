@@ -30,8 +30,8 @@ export default function Recorder() {
 
   useEffect(() => {
     document.title = `rec:${status}`
-    ;(window as unknown as { __recorder?: Record<string, unknown> }).__recorder = { status, bytes, gameId }
-  }, [status, bytes, gameId])
+    ;(window as unknown as { __recorder?: Record<string, unknown> }).__recorder = { status, bytes, detail, gameId }
+  }, [status, bytes, detail, gameId])
 
   useEffect(() => {
     if (!gameId || !token) {

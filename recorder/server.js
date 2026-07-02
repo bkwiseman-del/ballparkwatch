@@ -34,6 +34,11 @@ async function getBrowser() {
 }
 
 const active = new Map() // gameId -> page
+const recent = [] // last outcomes, newest first (diagnostics via /health)
+const remember = (gameId, state) => {
+  recent.unshift({ gameId, at: new Date().toISOString(), ...state })
+  if (recent.length > 12) recent.pop()
+}
 
 async function record(gameId, token) {
   if (active.has(gameId)) {
@@ -48,22 +53,33 @@ async function record(gameId, token) {
   active.set(gameId, page)
   const url = `${APP_ORIGIN}/record/${encodeURIComponent(gameId)}?token=${encodeURIComponent(token)}&max=${MAX_MINUTES}`
   console.log('[rec] start', gameId)
+  remember(gameId, { status: 'launched' })
+  let last = null
   try {
     page.on('console', (m) => console.log(`[page ${gameId}]`, m.text()))
+    page.on('pageerror', (e) => {
+      console.error(`[pageerror ${gameId}]`, e?.message || e)
+      remember(gameId, { status: 'pageerror', detail: String(e?.message || e) })
+    })
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
     const deadline = Date.now() + (MAX_MINUTES + 5) * 60000
-    // Poll the page's exposed status; exit when the recording finishes or errors.
+    // Poll the page's exposed state; record it (for /health) and exit when it finishes.
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 5000))
       if (page.isClosed()) break
-      const status = await page.evaluate(() => window.__recorder?.status).catch(() => null)
-      if (status === 'done' || status === 'error') {
-        console.log('[rec] page reported', status, gameId)
-        break
+      const s = await page.evaluate(() => window.__recorder).catch(() => null)
+      if (s) {
+        last = s
+        remember(gameId, s)
+        if (s.status === 'done' || s.status === 'error') {
+          console.log('[rec] page reported', s.status, s.detail || '', gameId)
+          break
+        }
       }
     }
   } catch (e) {
     console.error('[rec] error', gameId, e?.message || e)
+    remember(gameId, { status: 'manager-error', detail: String(e?.message || e), last })
   } finally {
     try {
       await context.close()
@@ -78,7 +94,7 @@ async function record(gameId, token) {
 const app = express()
 app.use(express.json())
 
-app.get('/health', (_req, res) => res.json({ ok: true, active: [...active.keys()] }))
+app.get('/health', (_req, res) => res.json({ ok: true, active: [...active.keys()], recent }))
 
 app.post('/record', (req, res) => {
   if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) {
