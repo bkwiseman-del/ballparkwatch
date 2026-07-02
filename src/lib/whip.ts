@@ -72,6 +72,16 @@ export async function whipPublish(
   pc.getTransceivers().forEach((t) => (t.direction = 'sendonly'))
   if (onState) pc.onconnectionstatechange = () => onState(pc.connectionState)
 
+  // Cap the outbound video bitrate/framerate so the phone's encoder doesn't run flat-out
+  // (heat) and so weak-signal fields don't choke. Cloudflare builds the ABR ladder
+  // server-side, so we only need to send one clean 720p30 encoding.
+  const vsender = pc.getSenders().find((s) => s.track?.kind === 'video')
+  if (vsender) {
+    const params = vsender.getParameters()
+    params.encodings = [{ maxBitrate: 1_800_000, maxFramerate: 30 }]
+    await vsender.setParameters(params).catch(() => {})
+  }
+
   await pc.setLocalDescription(await pc.createOffer())
   await waitIceComplete(pc)
   const { answer, resource } = await sdpExchange(url, pc.localDescription!.sdp)

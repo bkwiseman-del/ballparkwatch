@@ -456,9 +456,13 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
                     : 'connecting…'}
               </span>{' '}
               ·{' '}
-              <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
-                REC {(recBytes / 1e6).toFixed(1)}MB
-              </span>
+              {streamState === 'live' ? (
+                <span className="text-board-green">REC ☁</span>
+              ) : (
+                <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
+                  REC {(recBytes / 1e6).toFixed(1)}MB
+                </span>
+              )}
             </span>
             <button onClick={endBroadcast} className="bg-barn-red px-4 py-1.5 font-display text-cream">
               Stop

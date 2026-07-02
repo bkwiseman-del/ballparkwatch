@@ -73,12 +73,12 @@ function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null
   const pts = (Array.isArray(payload.fielders) ? payload.fielders : [])
     .map((n) => FIELDER_POS[POS_BY_NUM[n]])
     .filter((p): p is { x: number; y: number } => !!p)
-  const contact = sprayFor(payload)
-  // Ball goes to where it was hit, then the throws (skip the first fielder since that's
-  // ~where it was fielded).
-  if (contact && pts.length) return { contact, throws: pts.slice(1), nonce: seq }
-  if (contact) return { contact, nonce: seq }
+  // Fielded play: draw the ball to the EXACT fielder who made the play (home → fielder →
+  // any throws), so the line connects to the player the scorer tapped — not a coarse zone.
   if (pts.length) return { contact: pts[0], throws: pts.slice(1), nonce: seq }
+  // Clean hit (no fielder): use the categorical hit location.
+  const contact = sprayFor(payload)
+  if (contact) return { contact, nonce: seq }
   return null
 }
 
@@ -298,8 +298,9 @@ export default function Watch() {
       prevMaxSeq.current = maxSeq
       const freshAll = events.filter((e) => e.seq > baseline).sort((a, b) => a.seq - b.seq)
 
-      // spray animation (located plays only)
-      const located = freshAll.filter((e) => e.payload?.spray || e.payload?.fielders)
+      // spray animation (located plays only). `hit` is the categorical zone used by the
+      // redesigned in-play flow (clean hits); spray/fielders cover legacy + fielded plays.
+      const located = freshAll.filter((e) => e.payload?.hit || e.payload?.spray || e.payload?.fielders)
       const last = located[located.length - 1]
       if (last) {
         const viz = buildViz(last.payload, last.seq)
