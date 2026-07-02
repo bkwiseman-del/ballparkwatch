@@ -205,7 +205,9 @@ function PhoneBroadcastSection({
   const [confirmKill, setConfirmKill] = useState(false)
   const previewRef = useRef<HTMLVideoElement>(null)
   const [whepUrl, setWhepUrl] = useState<string | null>(null)
+  const [hlsUrl, setHlsUrl] = useState<string | null>(null)
   const [feedUp, setFeedUp] = useState(false)
+  const [feedStatus, setFeedStatus] = useState('')
   // The broadcaster's DB heartbeat is a secondary hint. The AUTHORITATIVE signal is the
   // WHEP feed itself: if Cloudflare hands us frames (feedUp), a broadcast is live — full
   // stop, regardless of any heartbeat blip. So "Live" = real frames OR a fresh heartbeat.
@@ -243,9 +245,11 @@ function PhoneBroadcastSection({
     const fetchUrl = async () => {
       const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
       if (cancelled) return
-      const url = (data as { cf_whep_url?: string | null } | null)?.cf_whep_url
-      if (url) setWhepUrl(url)
-      else timer = setTimeout(fetchUrl, 3000)
+      const g = data as { cf_whep_url?: string | null; cf_hls_url?: string | null } | null
+      if (g?.cf_whep_url) {
+        setHlsUrl(g.cf_hls_url ?? null)
+        setWhepUrl(g.cf_whep_url)
+      } else timer = setTimeout(fetchUrl, 3000)
     }
     void fetchUrl()
     return () => {
@@ -262,7 +266,7 @@ function PhoneBroadcastSection({
       setFeedUp(false)
       return
     }
-    return attachWhep(el, whepUrl, { onPlaying: setFeedUp })
+    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setFeedUp, onStatus: setFeedStatus })
   }, [whepUrl])
 
   async function copy() {
@@ -299,8 +303,9 @@ function PhoneBroadcastSection({
           <div className="relative border-2 border-ink bg-black">
             <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />
             {!feedUp && (
-              <div className="absolute inset-0 flex items-center justify-center font-data text-sm text-cream/70">
-                Connecting to the feed…
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 font-data text-sm text-cream/70">
+                <span>Connecting to the feed…</span>
+                {feedStatus && <span className="text-[11px] text-cream/40">{feedStatus}</span>}
               </div>
             )}
           </div>

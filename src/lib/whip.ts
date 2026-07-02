@@ -141,7 +141,7 @@ export async function whepPlay(
 export function attachWhep(
   video: HTMLVideoElement,
   whepUrl: string,
-  opts?: { hlsUrl?: string | null; onPlaying?: (playing: boolean) => void },
+  opts?: { hlsUrl?: string | null; onPlaying?: (playing: boolean) => void; onStatus?: (s: string) => void },
 ): () => void {
   let session: RtcSession | null = null
   let detachHls: (() => void) | null = null
@@ -149,6 +149,7 @@ export function attachWhep(
   let mediaWatch: ReturnType<typeof setTimeout> | undefined
   let attempts = 0
   let cancelled = false
+  const status = (s: string) => opts?.onStatus?.(s)
 
   const scheduleRetry = (ms: number) => {
     if (cancelled) return
@@ -164,6 +165,7 @@ export function attachWhep(
     if (cancelled) return
     attempts++
     let gotMedia = false
+    status(`WHEP connecting (try ${attempts})`)
 
     // Watchdog for the "connected but silent" case: if the broadcaster is still spinning
     // up, Cloudflare accepts our WHEP connection but no track ever arrives (ICE is
@@ -178,7 +180,20 @@ export function attachWhep(
         /* ignore */
       }
       session = null
-      scheduleRetry(500)
+      // "Connected but silent": WHEP's ICE established but no track ever arrived — common
+      // on networks where WebRTC media is blocked/filtered even though the handshake works.
+      // After a couple of silent tries, fall back to HLS (reliable CDN delivery) instead of
+      // retrying WHEP forever — otherwise the viewer sits on a black "connecting" box.
+      if (attempts >= 2 && opts?.hlsUrl) {
+        status('WHEP silent → HLS fallback')
+        video.srcObject = null
+        detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true })
+        video.play().catch(() => {})
+        opts?.onPlaying?.(true)
+      } else {
+        status('WHEP connected but silent, retrying')
+        scheduleRetry(500)
+      }
     }, 5000)
 
     whepPlay(
@@ -191,12 +206,14 @@ export function attachWhep(
         detachHls = null
         video.srcObject = stream
         video.play().catch(() => {})
+        status('WHEP playing')
         opts?.onPlaying?.(true)
       },
       (state) => {
         if (cancelled) return
         if (state === 'connected') attempts = 0
         if (state === 'failed' || state === 'disconnected') {
+          status(`WHEP ${state}, reconnecting`)
           opts?.onPlaying?.(false)
           clearMediaWatch()
           try {
@@ -220,11 +237,13 @@ export function attachWhep(
         // If the handshake itself won't establish, fall back to HLS after a couple tries
         // (covers browsers without WHEP); otherwise keep retrying WHEP.
         if (attempts >= 2 && opts?.hlsUrl) {
+          status('WHEP handshake failed → HLS fallback')
           video.srcObject = null
           detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true })
           video.play().catch(() => {})
           opts?.onPlaying?.(true)
         } else {
+          status('WHEP handshake failed, retrying')
           scheduleRetry(2500)
         }
       })

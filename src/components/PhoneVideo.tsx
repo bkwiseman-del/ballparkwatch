@@ -30,6 +30,7 @@ export function PhoneVideo({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
+  const [status, setStatus] = useState('')
 
   const tryConnect = !!whepUrl && (live || !!attempt)
   useEffect(() => {
@@ -39,7 +40,7 @@ export function PhoneVideo({
       return
     }
     // Reconnecting WHEP: survives the stream dropping and resuming on the same url.
-    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setPlaying })
+    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setPlaying, onStatus: setStatus })
   }, [tryConnect, whepUrl, hlsUrl])
 
   // Show the player once we actually have a picture, or the heartbeat confirms live.
@@ -53,8 +54,9 @@ export function PhoneVideo({
         <div className={`relative bg-black ${showPlayer ? '' : 'hidden'}`}>
           <video ref={videoRef} autoPlay playsInline controls className="aspect-video w-full bg-black object-contain" />
           {!playing && (
-            <p className="absolute inset-0 flex items-center justify-center font-data text-xs text-cream/70">
-              Connecting to the live feed…
+            <p className="absolute inset-0 flex flex-col items-center justify-center gap-1 font-data text-xs text-cream/70">
+              <span>Connecting to the live feed…</span>
+              {status && <span className="text-[10px] text-cream/40">{status}</span>}
             </p>
           )}
         </div>
