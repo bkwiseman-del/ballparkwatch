@@ -49,6 +49,7 @@ export default function Recorder() {
     let audioDest: MediaStreamAudioDestinationNode | null = null
     let audioSrc: MediaStreamAudioSourceNode | null = null
     let currentStream: MediaStream | null = null
+    let mediaReceived = false
     let raf = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let silentTimer: ReturnType<typeof setTimeout> | undefined
@@ -167,6 +168,7 @@ export default function Recorder() {
 
     const wireStream = (stream: MediaStream) => {
       currentStream = stream
+      mediaReceived = true
       video.srcObject = stream
       video.play().catch(() => {})
       lastMediaAt = Date.now()
@@ -192,7 +194,7 @@ export default function Recorder() {
         const { data: g } = await supabase.rpc('get_public_game', { p_game_id: gameId })
         const s = (g as { status?: string } | null)?.status
         if (s === 'final') return void finish()
-        if (s === 'live' && !started && video.videoWidth) {
+        if (s === 'live' && !started && mediaReceived) {
           startRecorder()
         } else if (s === 'live' && !started) {
           setStatus('connecting') // live but no media yet
@@ -217,7 +219,7 @@ export default function Recorder() {
         }
         clearTimeout(silentTimer)
         silentTimer = setTimeout(() => {
-          if (!video.videoWidth) drop()
+          if (!mediaReceived) drop()
         }, 8000)
         try {
           attempt = await whepPlay(
