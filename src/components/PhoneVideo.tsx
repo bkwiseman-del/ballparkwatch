@@ -44,17 +44,26 @@ export function PhoneVideo({
       setPlaying(true)
     }
 
-    whepPlay(whepUrl, (stream) => {
-      if (cancelled) return
-      el.srcObject = stream
-      el.play().catch(() => {})
-      setPlaying(true)
-    })
+    console.info('[stream] viewer playing WHEP', whepUrl)
+    whepPlay(
+      whepUrl,
+      (stream) => {
+        if (cancelled) return
+        console.info('[stream] WHEP track received')
+        el.srcObject = stream
+        el.play().catch(() => {})
+        setPlaying(true)
+      },
+      (s) => console.info('[stream] WHEP connection state:', s),
+    )
       .then((s) => {
         if (cancelled) s.close()
         else session = s
       })
-      .catch(fallbackToHls)
+      .catch((e) => {
+        console.error('[stream] WHEP failed, trying HLS:', e)
+        fallbackToHls()
+      })
 
     return () => {
       cancelled = true

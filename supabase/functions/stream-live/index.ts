@@ -95,10 +95,16 @@ Deno.serve(async (req) => {
     }
 
     // action === 'start' — create or reuse the live input.
-    let li: LiveInput
+    let li: LiveInput | null = null
     if (game.cf_live_input_uid) {
-      li = (await cf(`/live_inputs/${game.cf_live_input_uid}`)) as LiveInput
-    } else {
+      // Reuse — but if the input was deleted (stale id), fall through and create fresh.
+      try {
+        li = (await cf(`/live_inputs/${game.cf_live_input_uid}`)) as LiveInput
+      } catch {
+        li = null
+      }
+    }
+    if (!li) {
       // retentionDays bounds storage cost. Cloudflare enforces a 30-day MINIMUM here,
       // so true 24h free-tier deletion needs a separate cleanup job (delete the VOD via
       // the API) — tracked separately. Default to the 30-day floor for now.

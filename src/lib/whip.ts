@@ -50,7 +50,11 @@ async function sdpExchange(endpoint: string, offerSdp: string): Promise<{ answer
     headers: { 'Content-Type': 'application/sdp' },
     body: offerSdp,
   })
-  if (!res.ok) throw new Error(`WebRTC exchange failed (${res.status})`)
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    console.error('[whep/whip] SDP exchange failed', res.status, detail.slice(0, 300), endpoint)
+    throw new Error(`WebRTC exchange failed (${res.status})`)
+  }
   const answer = await res.text()
   return { answer, resource: resourceUrl(endpoint, res.headers.get('Location')) }
 }

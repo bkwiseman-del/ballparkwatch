@@ -302,18 +302,22 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         })
         if (cancelled) return
         if (error || !data?.whipUrl) {
+          console.error('[stream] live-input error:', error, data)
           setStreamState('error')
           return
         }
-        const session = await whipPublish(data.whipUrl, v.local!, (s) =>
-          setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting'),
-        )
+        console.info('[stream] publishing via WHIP', data.whipUrl)
+        const session = await whipPublish(data.whipUrl, v.local!, (s) => {
+          console.info('[stream] WHIP connection state:', s)
+          setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting')
+        })
         if (cancelled) {
           session.close()
           return
         }
         whipRef.current = session
-      } catch {
+      } catch (e) {
+        console.error('[stream] WHIP publish failed:', e)
         if (!cancelled) setStreamState('error')
       }
     })()
