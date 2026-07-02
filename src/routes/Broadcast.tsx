@@ -57,9 +57,6 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   // Record the broadcast — the same 16:9 canvas + audio the viewers see — and upload
   // it when the broadcast stops, so the game can be replayed with the synced scorebug
   // and AI commentary. started_at anchors the video to the event log's wall_clock_ts.
-  // (v1: chunks accumulate in memory and upload once on stop; long games will need
-  // incremental/chunked upload — see docs/bandbox-plan.md.)
-  const recChunks = useRef<Blob[]>([])
   const recStartedAt = useRef(0)
   const recMime = useRef('')
   const recRef = useRef<MediaRecorder | null>(null)
@@ -68,6 +65,33 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const whipRef = useRef<RtcSession | null>(null)
   const [streamState, setStreamState] = useState<'off' | 'connecting' | 'live' | 'error'>('off')
   const [streamErr, setStreamErr] = useState<string>('') // shown on-screen (phones have no console)
+
+  // --- streaming part uploader ---
+  // The recorder emits append-only chunks DURING the game (fragmented mp4 / MediaRecorder
+  // timeslices). We buffer to ~PART-sized parts, upload each as it fills, then free it —
+  // so the whole game is never held in memory (safe on long games). A dropped part still
+  // retries; the viewer concatenates the parts back into one file.
+  const PART_SIZE = 4 * 1024 * 1024
+  const upBuf = useRef<BlobPart[]>([])
+  const upLen = useRef(0)
+  const upIndex = useRef(0)
+  const upPaths = useRef<string[]>([])
+  const upChain = useRef<Promise<void>>(Promise.resolve())
+  const upFailed = useRef(false)
+
+  function resetUploader() {
+    upBuf.current = []
+    upLen.current = 0
+    upIndex.current = 0
+    upPaths.current = []
+    upChain.current = Promise.resolve()
+    upFailed.current = false
+    uploadedRef.current = false
+  }
+  function partMime() {
+    const base = (recMime.current || 'video/mp4').split(';')[0]
+    return { base, ext: base.includes('mp4') ? 'mp4' : 'webm' }
+  }
 
   // Upload one part to a signed URL, with a few retries (mobile networks blip).
   async function uploadPart(path: string, body: Blob, contentType: string): Promise<boolean> {
@@ -85,42 +109,53 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     return false
   }
 
-  async function uploadRecording() {
-    if (uploadedRef.current) return // fire once, however the recorder stopped
-    const chunks = recChunks.current
-    recChunks.current = []
-    if (!chunks.length) return
+  // Queue a serialized upload of the current buffer as the next part, then free it.
+  function flushPart() {
+    if (upLen.current === 0) return
+    const { base, ext } = partMime()
+    const blob = new Blob(upBuf.current, { type: base })
+    const idx = upIndex.current++
+    upBuf.current = []
+    upLen.current = 0
+    const path = `recordings/${gameId}/${recStartedAt.current}/p-${String(idx).padStart(4, '0')}.${ext}`
+    upPaths.current.push(path)
+    upChain.current = upChain.current.then(async () => {
+      if (upFailed.current) return
+      setProgress(`part ${idx + 1}`)
+      if (!(await uploadPart(path, blob, base))) upFailed.current = true
+    })
+  }
+
+  // Feed one recorder chunk in during the game; flush a part when the buffer fills.
+  function pushRecData(data: Blob | Uint8Array) {
+    const size = data instanceof Blob ? data.size : data.byteLength
+    if (!size) return
+    upBuf.current.push(data as BlobPart)
+    upLen.current += size
+    setRecBytes((b) => b + size)
+    if (upLen.current >= PART_SIZE) flushPart()
+  }
+
+  // On stop: flush the remainder, wait for all uploads, save the metadata.
+  async function finalizeUpload() {
+    if (uploadedRef.current) return // fire once
     uploadedRef.current = true
+    if (upIndex.current === 0 && upLen.current === 0) return // nothing captured
     setSaveState('saving')
-    const full = recMime.current || 'video/webm'
-    const base = full.split(';')[0] || 'video/webm'
-    const startedAt = recStartedAt.current
-    const ext = base.includes('mp4') ? 'mp4' : 'webm'
-    // Record is ONE file; upload it in small byte-slices so a dropped part retries
-    // instead of losing the whole game. The viewer concatenates the parts back into
-    // the original file (they're contiguous slices), so the replay is still one video.
-    const blob = new Blob(chunks, { type: full })
-    const PART = 5 * 1024 * 1024
-    const nParts = Math.max(1, Math.ceil(blob.size / PART))
-    const dir = `recordings/${gameId}/${startedAt}`
-    const paths: string[] = []
-    for (let i = 0; i < nParts; i++) {
-      setProgress(`part ${i + 1} of ${nParts}`)
-      const slice = blob.slice(i * PART, Math.min((i + 1) * PART, blob.size), base)
-      const path = `${dir}/p-${String(i).padStart(4, '0')}.${ext}`
-      if (!(await uploadPart(path, slice, base))) {
-        setSaveErr(`upload failed at part ${i + 1}/${nParts}`)
-        return setSaveState('failed')
-      }
-      paths.push(path)
+    flushPart()
+    await upChain.current
+    if (upFailed.current) {
+      setSaveErr('upload failed')
+      return setSaveState('failed')
     }
+    const { base } = partMime()
     const { error: recErr } = await supabase.rpc('save_recording', {
       p_token: token,
-      p_path: paths[0] ?? null,
-      p_started_at: new Date(startedAt).toISOString(),
-      p_duration_ms: Date.now() - startedAt,
+      p_path: upPaths.current[0] ?? null,
+      p_started_at: new Date(recStartedAt.current).toISOString(),
+      p_duration_ms: Date.now() - recStartedAt.current,
       p_mime: base,
-      p_segments: paths,
+      p_segments: upPaths.current,
     })
     if (recErr) setSaveErr(`save: ${recErr.message}`)
     setSaveState(recErr ? 'failed' : 'saved')
@@ -132,9 +167,8 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     // encode, so we keep it light: hardware-accelerated H.264, downscaled to ~480p/24fps
     // (see canvasRecorder). If WHIP recording ever ships, delete this and it's free.
     if (!v.local) return
-    recChunks.current = []
+    resetUploader()
     recStartedAt.current = Date.now()
-    uploadedRef.current = false
     setRecBytes(0)
 
     // PRIMARY: WebCodecs. Encode the upright canvas ourselves (VideoEncoder + our own
@@ -147,8 +181,9 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
       let cancelled = false
       const audioTrack = v.local.getAudioTracks()[0] ?? v.getCameraStream()?.getAudioTracks()[0] ?? null
       recMime.current = 'video/mp4'
-      // 480p/24fps hardware encode — a light second pass next to the WHIP live encode.
-      startCanvasRecording({ canvas, audioTrack, targetHeight: 480, fps: 24, onBytes: (n) => setRecBytes(n) })
+      // 480p/24fps encode, streamed out fragment-by-fragment to the incremental uploader
+      // (nothing large kept in memory) — a light second pass next to the WHIP live encode.
+      startCanvasRecording({ canvas, audioTrack, targetHeight: 480, fps: 24, onChunk: (d) => pushRecData(d) })
         .then((r) => {
           if (!r) {
             startMediaRecorder() // encoder unsupported for this frame — fall back
@@ -207,27 +242,28 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
 
     let fellBack = false
     let watchdog = 0
+    let gotData = false
 
-    // Wire a recorder's chunk + stop handlers and start it. `isPrimary` recorders that
-    // get stopped only to trigger the fallback must NOT upload (the fallback will).
+    // Wire a recorder's chunk + stop handlers and start it. Timeslice chunks stream
+    // straight into the incremental uploader. `isPrimary` recorders stopped only to
+    // trigger the fallback must NOT finalize (the fallback will).
     const wire = (rec: MediaRecorder, isPrimary: boolean) => {
       recMime.current = rec.mimeType || mime || 'video/webm'
       recRef.current = rec
       rec.ondataavailable = (e) => {
         if (e.data?.size) {
-          recChunks.current.push(e.data)
-          setRecBytes((b) => b + e.data.size)
+          gotData = true
+          pushRecData(e.data)
         }
       }
-      // Upload whenever the recorder stops — explicit stop OR auto-stop on teardown.
       rec.onstop = () => {
         if (isPrimary && fellBack) return
-        void uploadRecording()
+        void finalizeUpload()
       }
       rec.start(4000)
     }
 
-    recChunks.current = []
+    resetUploader()
     recStartedAt.current = Date.now()
 
     const primary = makeRecorder(canvasStream)
@@ -239,16 +275,17 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
       // quirk) rather than an empty file. Modern iOS records the canvas fine, so this
       // almost never fires.
       watchdog = window.setTimeout(() => {
-        if (recChunks.current.length > 0 || !rawStream) return
+        if (gotData || !rawStream) return
         fellBack = true
         try {
           if (primary.state !== 'inactive') primary.stop()
         } catch {
           /* ignore */
         }
-        recChunks.current = []
+        resetUploader()
         setRecBytes(0)
         recStartedAt.current = Date.now()
+        gotData = false
         const fb = makeRecorder(rawStream)
         if (fb) wire(fb, false)
       }, 6000)
@@ -269,25 +306,20 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     }
   }
 
-  // Stop whichever recorder is running and upload. Idempotent (safe to call from both
-  // endBroadcast and effect cleanup). For WebCodecs we must await the encoder flush
-  // BEFORE the canvas/audio tracks are torn down, then hand the finished MP4 to the
-  // existing chunked-upload pipeline.
+  // Stop whichever recorder is running and finalize the upload. Idempotent (safe from
+  // both endBroadcast and effect cleanup). For WebCodecs we must await the encoder flush
+  // (which streams the final fragment into the uploader) BEFORE the tracks are torn down.
   const finishRecording = useCallback(async () => {
     const web = webRecRef.current
     if (web) {
       webRecRef.current = null
-      const blob = await web.stop()
-      if (blob) {
-        recChunks.current = [blob]
-        recMime.current = 'video/mp4'
-      }
-      await uploadRecording()
+      await web.stop() // flushes remaining fragments via onChunk → pushRecData
+      await finalizeUpload()
       return
     }
     const rec = recRef.current
     try {
-      if (rec && rec.state !== 'inactive') rec.stop() // MediaRecorder uploads via onstop
+      if (rec && rec.state !== 'inactive') rec.stop() // MediaRecorder finalizes via onstop
     } catch {
       /* ignore */
     }

@@ -8,7 +8,7 @@
 // construction, matches the live framing exactly, and its size is bounded by a real bitrate
 // cap. Falls back to MediaRecorder (in Broadcast.tsx) on browsers without WebCodecs.
 
-import { Muxer, ArrayBufferTarget } from 'mp4-muxer'
+import { Muxer, ArrayBufferTarget, StreamTarget } from 'mp4-muxer'
 
 // WebCodecs isn't in every TS lib target; keep the surface we touch loosely typed.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -54,6 +54,10 @@ export async function startCanvasRecording(opts: {
   // downscaled into this size per frame; the live stream is unaffected.
   targetHeight?: number
   onBytes?: (total: number) => void
+  // When provided, the recording is written as a FRAGMENTED mp4 and streamed out chunk by
+  // chunk (append-only), so the whole game is never held in memory — the caller uploads
+  // each chunk and frees it. Without it, the file is buffered in memory and returned by stop().
+  onChunk?: (data: Uint8Array) => void
 }): Promise<CanvasRecorder | null> {
   const { canvas, audioTrack } = opts
   const fps = opts.fps ?? 24
@@ -123,13 +127,18 @@ export async function startCanvasRecording(opts: {
     }
   }
 
+  const streaming = !!opts.onChunk
   const muxer = new Muxer({
-    target: new ArrayBufferTarget(),
+    target: streaming
+      ? // Fragmented fMP4 streamed out ~4MB at a time — nothing large stays in memory.
+        new StreamTarget({ onData: (data) => opts.onChunk!(data), chunked: true, chunkSize: 4 * 1024 * 1024 })
+      : new ArrayBufferTarget(),
     video: { codec: 'avc', width, height },
     ...(wantAudio ? { audio: { codec: 'aac', numberOfChannels: channels, sampleRate } } : {}),
-    // Rewrite the moov atom to the front so the stored file is seekable on progressive
-    // download — the replay seeks straight to the first pitch.
-    fastStart: 'in-memory',
+    // Streaming → fragmented (append-only, low memory). Otherwise buffer in memory and put
+    // the moov atom at the front so the returned file is seekable.
+    fastStart: streaming ? 'fragmented' : 'in-memory',
+    ...(streaming ? { minFragmentDuration: 2 } : {}),
     firstTimestampBehavior: 'offset',
   })
 
@@ -279,7 +288,8 @@ export async function startCanvasRecording(opts: {
       /* ignore */
     }
     if (frameCount === 0) return null
-    muxer.finalize()
+    muxer.finalize() // streaming → flushes the final fragment via onChunk (already uploaded)
+    if (streaming) return null
     const { buffer } = muxer.target as ArrayBufferTarget
     return new Blob([buffer], { type: 'video/mp4' })
   }
