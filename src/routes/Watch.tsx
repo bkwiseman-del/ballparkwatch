@@ -1573,7 +1573,12 @@ function PlaysTab({
     <ul className="divide-y divide-cream/10 lg:columns-2 lg:gap-8 lg:divide-y-0">
       {plays.map((p) => {
         const ts = tsBySeq.get(p.seq)
-        const sec = canSeek && ts ? Math.max(0, (ts - (startedAtMs as number)) / 1000) : null
+        // Land a few seconds BEFORE the logged play: the event timestamp is when the
+        // scorer tapped it in (a beat after the pitch/contact), and the replay suppresses
+        // commentary for a seek's destination — so playing INTO the moment shows the play
+        // develop and lets its call fire naturally.
+        const PLAY_LEAD_SEC = 5
+        const sec = canSeek && ts ? Math.max(0, (ts - (startedAtMs as number)) / 1000 - PLAY_LEAD_SEC) : null
         const inning = (
           <span className={`w-12 shrink-0 font-athletic text-xs font-semibold uppercase ${KIND_COLOR[p.kind]}`}>
             {p.half === 'top' ? '▲' : '▼'}
