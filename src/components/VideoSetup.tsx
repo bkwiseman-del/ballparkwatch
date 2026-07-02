@@ -228,17 +228,26 @@ function PhoneBroadcastSection({
   }, [link])
 
   // The scorer watches the same Cloudflare Stream feed as viewers (WHEP). Fetch the
-  // playback URL for this game (the scorer is a member, so get_public_game returns it).
+  // playback URL — but RETRY until it exists: when a broadcast just started, the
+  // broadcaster may not have stored cf_whep_url yet (race), so a single fetch gets null
+  // and the preview would stick on "connecting" until a manual reload.
   useEffect(() => {
-    if (!phone.isLive) return
+    if (!phone.isLive || whepUrl) return
     let cancelled = false
-    supabase.rpc('get_public_game', { p_game_id: gameId }).then(({ data }) => {
-      if (!cancelled) setWhepUrl((data as { cf_whep_url?: string | null })?.cf_whep_url ?? null)
-    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const fetchUrl = async () => {
+      const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
+      if (cancelled) return
+      const url = (data as { cf_whep_url?: string | null } | null)?.cf_whep_url
+      if (url) setWhepUrl(url)
+      else timer = setTimeout(fetchUrl, 3000)
+    }
+    void fetchUrl()
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
-  }, [phone.isLive, gameId])
+  }, [phone.isLive, whepUrl, gameId])
 
   useEffect(() => {
     const el = previewRef.current
