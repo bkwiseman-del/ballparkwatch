@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ScoreboardState } from '@/lib/scoreboard'
-import { whepPlay, type RtcSession } from '@/lib/whip'
-import { attachHls } from '@/lib/hls'
+import { attachWhep } from '@/lib/whip'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ScorebugBar } from '@/components/Scorebug'
 
@@ -31,50 +30,8 @@ export function PhoneVideo({
       setPlaying(false)
       return
     }
-    let session: RtcSession | null = null
-    let detachHls: (() => void) | null = null
-    let cancelled = false
-
-    // HLS fallback (hls.js / native) if the sub-second WebRTC play can't establish.
-    const fallbackToHls = () => {
-      if (cancelled || !hlsUrl || !el) return
-      el.srcObject = null
-      detachHls = attachHls(el, hlsUrl)
-      el.play().catch(() => {})
-      setPlaying(true)
-    }
-
-    console.info('[stream] viewer playing WHEP', whepUrl)
-    whepPlay(
-      whepUrl,
-      (stream) => {
-        if (cancelled) return
-        console.info('[stream] WHEP track received')
-        el.srcObject = stream
-        el.play().catch(() => {})
-        setPlaying(true)
-      },
-      (s) => console.info('[stream] WHEP connection state:', s),
-    )
-      .then((s) => {
-        if (cancelled) s.close()
-        else session = s
-      })
-      .catch((e) => {
-        console.error('[stream] WHEP failed, trying HLS:', e)
-        fallbackToHls()
-      })
-
-    return () => {
-      cancelled = true
-      session?.close()
-      detachHls?.()
-      if (el) {
-        el.srcObject = null
-        el.removeAttribute('src')
-      }
-      setPlaying(false)
-    }
+    // Reconnecting WHEP: survives the stream dropping and resuming on the same url.
+    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setPlaying })
   }, [live, whepUrl, hlsUrl])
 
   // While live, render the player (with a connecting note until the first frame lands).

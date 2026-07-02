@@ -8,6 +8,8 @@
 // NOTE: these talk to Cloudflare Stream and need a live Stream account to test end to
 // end; the shapes follow the WHIP (RFC 9725) / WHEP drafts Cloudflare implements.
 
+import { attachHls } from './hls'
+
 const ICE: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }]
 
 export type RtcSession = {
@@ -119,5 +121,89 @@ export async function whepPlay(
       }
       if (resource) fetch(resource, { method: 'DELETE' }).catch(() => {})
     },
+  }
+}
+
+// Play a Stream feed into a <video> with automatic reconnect — the live stream can drop
+// (broadcaster reloads, signal blips) and resume on the SAME url, and the viewer must
+// re-establish rather than sit on a dead session. Falls back to HLS if the WebRTC
+// handshake can't establish at all (e.g. a browser without WHEP). Returns a stop fn.
+export function attachWhep(
+  video: HTMLVideoElement,
+  whepUrl: string,
+  opts?: { hlsUrl?: string | null; onPlaying?: (playing: boolean) => void },
+): () => void {
+  let session: RtcSession | null = null
+  let detachHls: (() => void) | null = null
+  let retry: ReturnType<typeof setTimeout> | undefined
+  let attempts = 0
+  let cancelled = false
+
+  const scheduleRetry = (ms: number) => {
+    if (cancelled) return
+    clearTimeout(retry)
+    retry = setTimeout(connect, ms)
+  }
+
+  function connect() {
+    if (cancelled) return
+    attempts++
+    whepPlay(
+      whepUrl,
+      (stream) => {
+        if (cancelled) return
+        detachHls?.()
+        detachHls = null
+        video.srcObject = stream
+        video.play().catch(() => {})
+        opts?.onPlaying?.(true)
+      },
+      (state) => {
+        if (cancelled) return
+        if (state === 'connected') attempts = 0
+        if (state === 'failed' || state === 'disconnected') {
+          opts?.onPlaying?.(false)
+          try {
+            session?.close()
+          } catch {
+            /* ignore */
+          }
+          session = null
+          scheduleRetry(2000) // stream likely dropped — retry the same url
+        }
+      },
+    )
+      .then((s) => {
+        if (cancelled) s.close()
+        else session = s
+      })
+      .catch(() => {
+        if (cancelled) return
+        opts?.onPlaying?.(false)
+        // If the handshake itself won't establish, fall back to HLS after a couple tries
+        // (covers browsers without WHEP); otherwise keep retrying WHEP.
+        if (attempts >= 2 && opts?.hlsUrl) {
+          video.srcObject = null
+          detachHls = attachHls(video, opts.hlsUrl)
+          video.play().catch(() => {})
+          opts?.onPlaying?.(true)
+        } else {
+          scheduleRetry(2500)
+        }
+      })
+  }
+
+  connect()
+  return () => {
+    cancelled = true
+    clearTimeout(retry)
+    try {
+      session?.close()
+    } catch {
+      /* ignore */
+    }
+    detachHls?.()
+    video.srcObject = null
+    opts?.onPlaying?.(false)
   }
 }

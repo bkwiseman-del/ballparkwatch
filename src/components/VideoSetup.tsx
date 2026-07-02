@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { parseYouTubeId } from '@/lib/youtube'
 import { usePhoneVideo, type PhoneVideo } from '@/lib/phoneVideo'
+import { attachWhep } from '@/lib/whip'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import type { Game, VideoSource } from '@/lib/types'
 
@@ -203,6 +204,8 @@ function PhoneBroadcastSection({
   const [copied, setCopied] = useState(false)
   const [confirmKill, setConfirmKill] = useState(false)
   const previewRef = useRef<HTMLVideoElement>(null)
+  const [whepUrl, setWhepUrl] = useState<string | null>(null)
+  const [feedUp, setFeedUp] = useState(false)
 
   // Mint (or reuse) a scoped, revocable broadcast grant for the filming phone — it's
   // distinct from the viewer link and can be killed without rotating the share link.
@@ -224,9 +227,27 @@ function PhoneBroadcastSection({
       .catch(() => setQr(null))
   }, [link])
 
+  // The scorer watches the same Cloudflare Stream feed as viewers (WHEP). Fetch the
+  // playback URL for this game (the scorer is a member, so get_public_game returns it).
   useEffect(() => {
-    if (previewRef.current) previewRef.current.srcObject = phone.incoming
-  }, [phone.incoming])
+    if (!phone.isLive) return
+    let cancelled = false
+    supabase.rpc('get_public_game', { p_game_id: gameId }).then(({ data }) => {
+      if (!cancelled) setWhepUrl((data as { cf_whep_url?: string | null })?.cf_whep_url ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [phone.isLive, gameId])
+
+  useEffect(() => {
+    const el = previewRef.current
+    if (!phone.isLive || !whepUrl || !el) {
+      setFeedUp(false)
+      return
+    }
+    return attachWhep(el, whepUrl, { onPlaying: setFeedUp })
+  }, [phone.isLive, whepUrl])
 
   async function copy() {
     try {
@@ -250,25 +271,17 @@ function PhoneBroadcastSection({
           className={`h-2.5 w-2.5 rounded-full ${phone.isLive ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
         />
         <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
-          {phone.isLive ? `Live · ${phone.viewers} watching` : 'Not broadcasting'}
+          {phone.isLive ? 'Live' : 'Not broadcasting'}
         </span>
       </div>
 
       {/* live preview + remote terminate (only while a feed is up) */}
       {phone.isLive && (
         <div className="mb-4">
-          <div className="border-2 border-ink bg-black">
-            {phone.incoming ? (
-              <video
-                ref={previewRef}
-                autoPlay
-                playsInline
-                muted
-                controls
-                className="aspect-video w-full object-contain"
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center font-data text-sm text-cream/70">
+          <div className="relative border-2 border-ink bg-black">
+            <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />
+            {!feedUp && (
+              <div className="absolute inset-0 flex items-center justify-center font-data text-sm text-cream/70">
                 Connecting to the feed…
               </div>
             )}

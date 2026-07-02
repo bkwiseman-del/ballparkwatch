@@ -127,7 +127,11 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   }
 
   useEffect(() => {
-    if (!v.local) return // v.local set = we're broadcasting
+    // Cloudflare Stream records server-side, so we ONLY record locally as a fallback when
+    // the Stream publish has failed. Running the WebCodecs encoder alongside the WHIP
+    // encode double-encodes video on the phone — it cooks the device and throttles the
+    // live stream to black. Fallback-only keeps thermals at ~P2P levels.
+    if (!v.local || streamState !== 'error') return
     recChunks.current = []
     recStartedAt.current = Date.now()
     uploadedRef.current = false
@@ -166,7 +170,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     // FALLBACK: MediaRecorder (canvas stream, with a watchdog to the raw camera).
     return startMediaRecorder()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.local])
+  }, [v.local, streamState])
 
   // MediaRecorder fallback path, factored out so the WebCodecs branch can defer to it.
   // Returns a cleanup fn (matches the useEffect contract).

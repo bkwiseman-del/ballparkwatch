@@ -826,12 +826,11 @@ function FinalView({
   nameOf: (id: string) => string
   replay?: ReplayProps | null
 }) {
+  // Recap is the default landing tab; the replay sits one tap away.
   const finalTabs = replay
-    ? (['replay', 'recap', 'box', 'stats', 'plays'] as const)
+    ? (['recap', 'replay', 'box', 'stats', 'plays'] as const)
     : (['recap', 'box', 'stats', 'plays'] as const)
-  const [tab, setTab] = useState<'replay' | 'recap' | 'box' | 'stats' | 'plays'>(
-    replay ? 'replay' : 'recap',
-  )
+  const [tab, setTab] = useState<'replay' | 'recap' | 'box' | 'stats' | 'plays'>('recap')
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink lg:max-w-5xl">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
