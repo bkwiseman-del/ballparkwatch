@@ -49,19 +49,49 @@ export async function startCanvasRecording(opts: {
   videoBitrate?: number
   audioBitrate?: number
   fps?: number
+  // Encode resolution — defaults BELOW the canvas so the phone's second encode (this,
+  // alongside the WHIP live encode) stays light and the device runs cool. The canvas is
+  // downscaled into this size per frame; the live stream is unaffected.
+  targetHeight?: number
   onBytes?: (total: number) => void
 }): Promise<CanvasRecorder | null> {
   const { canvas, audioTrack } = opts
-  const fps = opts.fps ?? 30
-  const videoBitrate = opts.videoBitrate ?? 1_200_000
+  const fps = opts.fps ?? 24
+  const videoBitrate = opts.videoBitrate ?? 900_000
   const audioBitrate = opts.audioBitrate ?? 96_000
-  const width = canvas.width || 1280
-  const height = canvas.height || 720
+  // Downscale to the target height (default 480p), preserving the canvas aspect ratio;
+  // round width to even (H.264 requires even dimensions).
+  const srcW = canvas.width || 1280
+  const srcH = canvas.height || 720
+  const targetH = Math.min(opts.targetHeight ?? 480, srcH)
+  const height = targetH
+  const width = Math.round((srcW / srcH) * targetH / 2) * 2
+  const needScale = width !== srcW || height !== srcH
+  const scaleCanvas = needScale ? document.createElement('canvas') : null
+  if (scaleCanvas) {
+    scaleCanvas.width = width
+    scaleCanvas.height = height
+  }
+  const scaleCtx = scaleCanvas?.getContext('2d') ?? null
+  // The frame source we hand VideoEncoder each tick: the downscaled canvas, or the
+  // original if no scaling is needed.
+  const frameSource = (): HTMLCanvasElement => {
+    if (scaleCanvas && scaleCtx) {
+      scaleCtx.drawImage(canvas, 0, 0, width, height)
+      return scaleCanvas
+    }
+    return canvas
+  }
 
-  // Bail (→ MediaRecorder fallback) if the browser can't H.264-encode this frame.
+  // Prefer HARDWARE encoding so this doesn't cook the phone next to the WHIP encode.
+  // Bail (→ MediaRecorder fallback) if the browser can't H.264-encode this frame at all.
+  const vcfg = { codec: AVC_CODEC, width, height, bitrate: videoBitrate, framerate: fps, hardwareAcceleration: 'prefer-hardware' as const }
   try {
-    const ok = await g.VideoEncoder.isConfigSupported({ codec: AVC_CODEC, width, height, bitrate: videoBitrate, framerate: fps })
-    if (!ok?.supported) return null
+    const ok = await g.VideoEncoder.isConfigSupported(vcfg)
+    if (!ok?.supported) {
+      const soft = await g.VideoEncoder.isConfigSupported({ ...vcfg, hardwareAcceleration: 'no-preference' })
+      if (!soft?.supported) return null
+    }
   } catch {
     return null
   }
@@ -128,6 +158,7 @@ export async function startCanvasRecording(opts: {
     framerate: fps,
     // Emit avcC-formatted chunks (with a decoder description) so the muxer can write them.
     avc: { format: 'avc' },
+    hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'realtime',
   })
 
@@ -158,7 +189,7 @@ export async function startCanvasRecording(opts: {
     if (elapsed >= nextFrameAt && videoEnc.state === 'configured') {
       // Don't let the encoder queue run away on a slow phone — skip a frame instead.
       if (videoEnc.encodeQueueSize < 6) {
-        const frame = new g.VideoFrame(canvas, { timestamp: Math.round(elapsed * 1000), duration: frameDurUs })
+        const frame = new g.VideoFrame(frameSource(), { timestamp: Math.round(elapsed * 1000), duration: frameDurUs })
         const keyFrame = frameCount % (fps * 2) === 0
         try {
           videoEnc.encode(frame, { keyFrame })

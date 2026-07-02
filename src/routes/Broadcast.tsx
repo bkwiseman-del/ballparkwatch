@@ -127,11 +127,11 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   }
 
   useEffect(() => {
-    // Cloudflare Stream records server-side, so we ONLY record locally as a fallback when
-    // the Stream publish has failed. Running the WebCodecs encoder alongside the WHIP
-    // encode double-encodes video on the phone — it cooks the device and throttles the
-    // live stream to black. Fallback-only keeps thermals at ~P2P levels.
-    if (!v.local || streamState !== 'error') return
+    // Cloudflare WHIP does NOT record server-side (confirmed — see the build plan), so
+    // local device recording IS the replay. It's a SECOND encode alongside the WHIP live
+    // encode, so we keep it light: hardware-accelerated H.264, downscaled to ~480p/24fps
+    // (see canvasRecorder). If WHIP recording ever ships, delete this and it's free.
+    if (!v.local) return
     recChunks.current = []
     recStartedAt.current = Date.now()
     uploadedRef.current = false
@@ -147,7 +147,8 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
       let cancelled = false
       const audioTrack = v.local.getAudioTracks()[0] ?? v.getCameraStream()?.getAudioTracks()[0] ?? null
       recMime.current = 'video/mp4'
-      startCanvasRecording({ canvas, audioTrack, onBytes: (n) => setRecBytes(n) })
+      // 480p/24fps hardware encode — a light second pass next to the WHIP live encode.
+      startCanvasRecording({ canvas, audioTrack, targetHeight: 480, fps: 24, onBytes: (n) => setRecBytes(n) })
         .then((r) => {
           if (!r) {
             startMediaRecorder() // encoder unsupported for this frame — fall back
@@ -170,7 +171,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     // FALLBACK: MediaRecorder (canvas stream, with a watchdog to the raw camera).
     return startMediaRecorder()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.local, streamState])
+  }, [v.local])
 
   // MediaRecorder fallback path, factored out so the WebCodecs branch can defer to it.
   // Returns a cleanup fn (matches the useEffect contract).
@@ -456,13 +457,9 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
                     : 'connecting…'}
               </span>{' '}
               ·{' '}
-              {streamState === 'live' ? (
-                <span className="text-board-green">REC ☁</span>
-              ) : (
-                <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
-                  REC {(recBytes / 1e6).toFixed(1)}MB
-                </span>
-              )}
+              <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
+                REC {(recBytes / 1e6).toFixed(1)}MB
+              </span>
             </span>
             <button onClick={endBroadcast} className="bg-barn-red px-4 py-1.5 font-display text-cream">
               Stop
