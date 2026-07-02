@@ -1,0 +1,14 @@
+{
+  "name": "bandbox-recorder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bandbox server-side replay recorder — headless Chrome that opens /record/:gameId and captures the live WHEP feed.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer": "^23.0.0"
+  }
+}
