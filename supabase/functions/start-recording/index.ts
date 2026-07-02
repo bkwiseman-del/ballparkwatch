@@ -42,7 +42,9 @@ Deno.serve(async (req) => {
   const { data: found, error } = await db.rpc('stream_lookup', { p_token: token })
   const game = found as { game_id?: string; record_replay?: boolean } | null
   if (error || !game?.game_id) return json({ error: 'Invalid token' }, 403)
-  if (!game.record_replay) return json({ skipped: true, reason: 'replay recording not enabled for this game' }, 200)
+  // TESTING: record every broadcast (the record_replay flag gate is disabled until billing
+  // exists). Re-enable `if (!game.record_replay) return {skipped}` for the paid-only gate.
+  console.log('[start-recording] triggering recorder for game', game.game_id, 'record_replay=', game.record_replay)
 
   try {
     const res = await fetch(`${RECORDER_URL}/record`, {
