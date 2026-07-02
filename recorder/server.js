@@ -12,6 +12,10 @@
 import express from 'express'
 import puppeteer from 'puppeteer'
 
+// Never let a stray async error take down the whole recorder service.
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e?.message || e))
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', e?.message || e))
+
 const PORT = process.env.PORT || 3000
 const SECRET = process.env.RECORDER_SECRET || ''
 const APP_ORIGIN = (process.env.APP_ORIGIN || 'https://bandbox.tv').replace(/\/$/, '')
@@ -45,17 +49,19 @@ async function record(gameId, token) {
     console.log('[rec] already recording', gameId)
     return
   }
-  const b = await getBrowser()
-  // Fresh incognito context per recording → no shared service-worker cache, so the
-  // recorder page always loads the LATEST app code (avoids running stale recorder logic).
-  const context = await b.createBrowserContext()
-  const page = await context.newPage()
-  active.set(gameId, page)
-  const url = `${APP_ORIGIN}/record/${encodeURIComponent(gameId)}?token=${encodeURIComponent(token)}&max=${MAX_MINUTES}`
   console.log('[rec] start', gameId)
   remember(gameId, { status: 'launched' })
+  let context = null
+  let page = null
   let last = null
   try {
+    const b = await getBrowser()
+    // Fresh incognito context per recording → no shared service-worker cache, so the
+    // recorder page always loads the LATEST app code (avoids running stale recorder logic).
+    context = await b.createBrowserContext()
+    page = await context.newPage()
+    active.set(gameId, page)
+    const url = `${APP_ORIGIN}/record/${encodeURIComponent(gameId)}?token=${encodeURIComponent(token)}&max=${MAX_MINUTES}`
     page.on('console', (m) => console.log(`[page ${gameId}]`, m.text()))
     page.on('pageerror', (e) => {
       console.error(`[pageerror ${gameId}]`, e?.message || e)
@@ -78,11 +84,13 @@ async function record(gameId, token) {
       }
     }
   } catch (e) {
+    // A launch/nav failure here would otherwise be an unhandled rejection (record() is
+    // fire-and-forget) and CRASH the whole process — swallow it and record for /health.
     console.error('[rec] error', gameId, e?.message || e)
     remember(gameId, { status: 'manager-error', detail: String(e?.message || e), last })
   } finally {
     try {
-      await context.close()
+      await context?.close()
     } catch {
       /* ignore */
     }
