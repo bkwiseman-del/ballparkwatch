@@ -206,9 +206,11 @@ function PhoneBroadcastSection({
   const previewRef = useRef<HTMLVideoElement>(null)
   const [whepUrl, setWhepUrl] = useState<string | null>(null)
   const [feedUp, setFeedUp] = useState(false)
-  // Authoritative liveness from the broadcaster's DB heartbeat (not the flaky Realtime
-  // channel) — this drives whether we attach the preview + show the "Live" pill.
+  // The broadcaster's DB heartbeat is a secondary hint. The AUTHORITATIVE signal is the
+  // WHEP feed itself: if Cloudflare hands us frames (feedUp), a broadcast is live — full
+  // stop, regardless of any heartbeat blip. So "Live" = real frames OR a fresh heartbeat.
   const { live } = useBroadcastStatus(gameId, true)
+  const isLive = feedUp || live
 
   // Mint (or reuse) a scoped, revocable broadcast grant for the filming phone — it's
   // distinct from the viewer link and can be killed without rotating the share link.
@@ -231,11 +233,11 @@ function PhoneBroadcastSection({
   }, [link])
 
   // The scorer watches the same Cloudflare Stream feed as viewers (WHEP). Fetch the
-  // playback URL — but RETRY until it exists: when a broadcast just started, the
-  // broadcaster may not have stored cf_whep_url yet (race), so a single fetch gets null
-  // and the preview would stick on "connecting" until a manual reload.
+  // playback URL and RETRY until it exists — cf_whep_url is set the moment ANY WHIP
+  // publish connects (independent of the broadcaster's app version/heartbeat), so polling
+  // for it is the most reliable way to know a broadcast has started.
   useEffect(() => {
-    if (!live || whepUrl) return
+    if (whepUrl) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const fetchUrl = async () => {
@@ -250,16 +252,18 @@ function PhoneBroadcastSection({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [live, whepUrl, gameId])
+  }, [whepUrl, gameId])
 
+  // Attach WHEP whenever we have a URL — the feed itself tells us if it's live (feedUp).
+  // Kept independent of the heartbeat so a heartbeat blip can't tear down a working preview.
   useEffect(() => {
     const el = previewRef.current
-    if (!live || !whepUrl || !el) {
+    if (!whepUrl || !el) {
       setFeedUp(false)
       return
     }
     return attachWhep(el, whepUrl, { onPlaying: setFeedUp })
-  }, [live, whepUrl])
+  }, [whepUrl])
 
   async function copy() {
     try {
@@ -276,20 +280,22 @@ function PhoneBroadcastSection({
       {/* live health */}
       <div
         className={`mb-3 flex items-center gap-2 border-2 px-3 py-2 ${
-          live ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
+          isLive ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
         }`}
       >
         <span
-          className={`h-2.5 w-2.5 rounded-full ${live ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
+          className={`h-2.5 w-2.5 rounded-full ${isLive ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
         />
         <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
-          {live ? 'Live' : 'Not broadcasting'}
+          {isLive ? 'Live' : 'Not broadcasting'}
         </span>
       </div>
 
-      {/* live preview + remote terminate (only while a feed is up) */}
-      {live && (
-        <div className="mb-4">
+      {/* live preview + remote terminate. The <video> stays mounted whenever a WHEP URL
+          exists (so the feed can attach + report frames), but the block is only shown once
+          we're actually live — so a heartbeat blip can't hide a working preview. */}
+      {whepUrl && (
+        <div className="mb-4" style={isLive ? undefined : { display: 'none' }}>
           <div className="relative border-2 border-ink bg-black">
             <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />
             {!feedUp && (
