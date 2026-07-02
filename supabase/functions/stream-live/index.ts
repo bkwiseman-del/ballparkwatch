@@ -99,9 +99,10 @@ Deno.serve(async (req) => {
     if (game.cf_live_input_uid) {
       li = (await cf(`/live_inputs/${game.cf_live_input_uid}`)) as LiveInput
     } else {
-      // retentionDays bounds storage cost. Default short during validation; the paid
-      // tier will pass a longer value (or omit for permanent archive) later.
-      const retentionDays = Number.isFinite(body.retentionDays) ? body.retentionDays : 7
+      // retentionDays bounds storage cost. Cloudflare enforces a 30-day MINIMUM here,
+      // so true 24h free-tier deletion needs a separate cleanup job (delete the VOD via
+      // the API) — tracked separately. Default to the 30-day floor for now.
+      const retentionDays = Math.max(30, Number.isFinite(body.retentionDays) ? (body.retentionDays as number) : 30)
       li = (await cf('/live_inputs', {
         method: 'POST',
         body: JSON.stringify({
