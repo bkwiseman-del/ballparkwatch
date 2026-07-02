@@ -83,15 +83,12 @@ export async function startCanvasRecording(opts: {
     return canvas
   }
 
-  // Prefer HARDWARE encoding so this doesn't cook the phone next to the WHIP encode.
-  // Bail (→ MediaRecorder fallback) if the browser can't H.264-encode this frame at all.
-  const vcfg = { codec: AVC_CODEC, width, height, bitrate: videoBitrate, framerate: fps, hardwareAcceleration: 'prefer-hardware' as const }
+  // Bail (→ MediaRecorder fallback) if the browser can't H.264-encode this frame. The
+  // heat win comes from the 480p downscale, not a hardware hint — Safari rejects the
+  // `hardwareAcceleration` config outright (0-byte recordings), so we DON'T set it.
   try {
-    const ok = await g.VideoEncoder.isConfigSupported(vcfg)
-    if (!ok?.supported) {
-      const soft = await g.VideoEncoder.isConfigSupported({ ...vcfg, hardwareAcceleration: 'no-preference' })
-      if (!soft?.supported) return null
-    }
+    const ok = await g.VideoEncoder.isConfigSupported({ codec: AVC_CODEC, width, height, bitrate: videoBitrate, framerate: fps })
+    if (!ok?.supported) return null
   } catch {
     return null
   }
@@ -158,7 +155,6 @@ export async function startCanvasRecording(opts: {
     framerate: fps,
     // Emit avcC-formatted chunks (with a decoder description) so the muxer can write them.
     avc: { format: 'avc' },
-    hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'realtime',
   })
 

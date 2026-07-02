@@ -4,7 +4,7 @@ import { useScorer, type LineupPlayer } from '@/hooks/useScorer'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ShareSheet } from '@/components/ShareSheet'
 import { VideoSetup } from '@/components/VideoSetup'
-import { FieldDiamond, type BaseName, type Fielder } from '@/components/FieldDiamond'
+import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type BaseName, type Fielder } from '@/components/FieldDiamond'
 import { ArrowUpRightIcon } from '@/components/Icons'
 import { buildRecapSummary, generateRecap } from '@/lib/recap'
 import { displayName } from '@/lib/names'
@@ -1452,6 +1452,13 @@ function InPlayFlow({
   // if any, always wins.
   const derivedZone: HitZone | null = showCredit && fielders.length ? (POS_ZONE[fielders[0]] ?? null) : null
   const effectiveZone = zone ?? derivedZone
+  // The preview marker: if a fielder was tapped, point the ball at that EXACT fielder's
+  // position (so the line connects to the chip); otherwise use the explicit hit zone.
+  const markerPoint = fielders.length
+    ? (FIELDER_POS[POS_BY_NUM[fielders[0]]] ?? null)
+    : zone
+      ? hitPoint(zone)
+      : null
 
   const baseIds = {
     first: runners.first?.id ?? null,
@@ -1605,7 +1612,7 @@ function InPlayFlow({
                 nameOf={runnerName}
                 fielders={defense}
                 batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
-                marker={effectiveZone ? hitPoint(effectiveZone) : null}
+                marker={markerPoint}
                 className="block w-full"
               />
             </div>
