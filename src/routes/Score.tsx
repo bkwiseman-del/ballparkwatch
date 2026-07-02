@@ -134,7 +134,7 @@ export default function Score() {
                   }`}
                 />
               )}
-              {bstatus.live ? `Live · ${bstatus.viewers}` : bstatus.down ? 'Feed down' : 'Video'}
+              {bstatus.live ? 'Live' : bstatus.down ? 'Feed down' : 'Video'}
             </button>
           )}
           <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">

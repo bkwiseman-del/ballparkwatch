@@ -3,11 +3,14 @@ import Hls from 'hls.js'
 // Attach an HLS manifest to a <video>: native where supported (Safari/iOS), hls.js
 // everywhere else (Chrome/Firefox/Android). Returns a cleanup that detaches/destroys.
 // Used for the Cloudflare Stream VOD replay and the live HLS fallback.
-export function attachHls(video: HTMLVideoElement, url: string): () => void {
+export function attachHls(video: HTMLVideoElement, url: string, opts?: { onError?: () => void }): () => void {
   // Safari & iOS play HLS natively — just set src.
   if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = url
+    const onErr = () => opts?.onError?.()
+    video.addEventListener('error', onErr)
     return () => {
+      video.removeEventListener('error', onErr)
       video.removeAttribute('src')
       video.load()
     }
@@ -16,6 +19,9 @@ export function attachHls(video: HTMLVideoElement, url: string): () => void {
     const hls = new Hls({ enableWorker: true, lowLatencyMode: true })
     hls.loadSource(url)
     hls.attachMedia(video)
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (data.fatal) opts?.onError?.()
+    })
     return () => {
       try {
         hls.destroy()

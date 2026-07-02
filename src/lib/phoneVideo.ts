@@ -478,71 +478,64 @@ export type BroadcastStatus = {
   secsSinceBeat: number | null
 }
 
-// Passive monitor (no media, no signaling) for the scorer: listens for the
-// broadcaster's heartbeats so we can show whether a phone livestream is
-// happening and healthy, and flags it DOWN if heartbeats stop unexpectedly.
+// Passive monitor for the scorer/viewer: is the phone livestream happening and healthy?
+// Reads the broadcaster's DB heartbeat (bumped every ~5s while its WHIP publish is
+// connected) off the game row — plain reads stay reliable when the Realtime channel
+// drops beats, which used to cause false "lost signal" and stuck previews. A feed is
+// LIVE while the heartbeat is fresh; DOWN if it went stale mid-game (a real failure);
+// ENDED once the game goes final (a clean stop).
+const LIVE_WINDOW_MS = 15000 // tolerate a couple of missed 5s heartbeats before "down"
+
 export function useBroadcastStatus(gameId: string | undefined, active: boolean): BroadcastStatus {
-  const [live, setLive] = useState(false)
-  const [viewers, setViewers] = useState(0)
-  const [down, setDown] = useState(false)
-  const [ended, setEnded] = useState(false)
-  const [secsSinceBeat, setSecs] = useState<number | null>(null)
-  const bc = useRef<string | null>(null)
-  const timer = useRef<number | undefined>(undefined)
-  const everLive = useRef(false) // a feed has been seen since we started watching
-  const lastBeat = useRef<number | null>(null)
+  const [state, setState] = useState<BroadcastStatus>({
+    live: false,
+    viewers: 0,
+    down: false,
+    ended: false,
+    secsSinceBeat: null,
+  })
+  const seenRef = useRef<number | null>(null) // last heartbeat timestamp (ms)
+  const finalRef = useRef(false)
+  const everLive = useRef(false)
 
   useEffect(() => {
+    seenRef.current = null
+    finalRef.current = false
+    everLive.current = false
     if (!gameId || !active) {
-      setLive(false)
-      setViewers(0)
-      setDown(false)
-      setEnded(false)
-      setSecs(null)
-      everLive.current = false
-      lastBeat.current = null
+      setState({ live: false, viewers: 0, down: false, ended: false, secsSinceBeat: null })
       return
     }
-    const ch = supabase.channel(videoChannelName(gameId), { config: { broadcast: { self: false } } })
-    ch.on('broadcast', { event: 'sig' }, ({ payload }) => {
-      const m = payload as Sig
-      if (m?.kind === 'live') {
-        bc.current = m.from
-        everLive.current = true
-        lastBeat.current = Date.now()
-        setLive(true)
-        setDown(false)
-        setEnded(false) // a (re)started broadcast clears any prior "ended" notice
-        setViewers(m.viewers ?? 0)
-        window.clearTimeout(timer.current)
-        // Heartbeats vanished → if a feed had been running, it DIED (not a clean stop).
-        timer.current = window.setTimeout(() => {
-          setLive(false)
-          setViewers(0)
-          if (everLive.current) setDown(true)
-        }, LIVE_TIMEOUT_MS)
-      } else if (m?.kind === 'bye' && m.from === bc.current) {
-        // Clean stop — not a failure, but flag it so the scorer gets an explicit
-        // "broadcast ended" notice (only if a feed was actually running).
-        if (everLive.current) setEnded(true)
-        setLive(false)
-        setViewers(0)
-        setDown(false)
-        everLive.current = false
-        lastBeat.current = null
-        window.clearTimeout(timer.current)
-      }
-    }).subscribe()
-    // Tick the "seconds since last heartbeat" readout once a second.
+    let cancelled = false
+    const poll = async () => {
+      const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
+      if (cancelled) return
+      const g = data as { status?: string; stream_last_seen_at?: string | null } | null
+      if (g?.stream_last_seen_at) seenRef.current = new Date(g.stream_last_seen_at).getTime()
+      finalRef.current = g?.status === 'final'
+    }
+    void poll()
+    const pollTimer = window.setInterval(poll, 4000)
+    // Derive live/down/secs every second off the last-known heartbeat (smooth countup,
+    // fast down-detection without hammering the DB).
     const tick = window.setInterval(() => {
-      setSecs(lastBeat.current ? Math.floor((Date.now() - lastBeat.current) / 1000) : null)
+      const seen = seenRef.current
+      const live = seen != null && Date.now() - seen < LIVE_WINDOW_MS
+      if (live) everLive.current = true
+      setState({
+        live,
+        viewers: 0, // WHEP viewer count isn't tracked here; kept for interface stability
+        down: everLive.current && !live && !finalRef.current,
+        ended: everLive.current && finalRef.current,
+        secsSinceBeat: seen != null ? Math.max(0, Math.floor((Date.now() - seen) / 1000)) : null,
+      })
     }, 1000)
     return () => {
-      window.clearTimeout(timer.current)
+      cancelled = true
+      window.clearInterval(pollTimer)
       window.clearInterval(tick)
-      supabase.removeChannel(ch)
     }
   }, [gameId, active])
 
-  return { live, viewers, down, ended, secsSinceBeat }
+  return state
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { parseYouTubeId } from '@/lib/youtube'
-import { usePhoneVideo, type PhoneVideo } from '@/lib/phoneVideo'
+import { usePhoneVideo, useBroadcastStatus, type PhoneVideo } from '@/lib/phoneVideo'
 import { attachWhep } from '@/lib/whip'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import type { Game, VideoSource } from '@/lib/types'
@@ -206,6 +206,9 @@ function PhoneBroadcastSection({
   const previewRef = useRef<HTMLVideoElement>(null)
   const [whepUrl, setWhepUrl] = useState<string | null>(null)
   const [feedUp, setFeedUp] = useState(false)
+  // Authoritative liveness from the broadcaster's DB heartbeat (not the flaky Realtime
+  // channel) — this drives whether we attach the preview + show the "Live" pill.
+  const { live } = useBroadcastStatus(gameId, true)
 
   // Mint (or reuse) a scoped, revocable broadcast grant for the filming phone — it's
   // distinct from the viewer link and can be killed without rotating the share link.
@@ -232,7 +235,7 @@ function PhoneBroadcastSection({
   // broadcaster may not have stored cf_whep_url yet (race), so a single fetch gets null
   // and the preview would stick on "connecting" until a manual reload.
   useEffect(() => {
-    if (!phone.isLive || whepUrl) return
+    if (!live || whepUrl) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
     const fetchUrl = async () => {
@@ -247,16 +250,16 @@ function PhoneBroadcastSection({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [phone.isLive, whepUrl, gameId])
+  }, [live, whepUrl, gameId])
 
   useEffect(() => {
     const el = previewRef.current
-    if (!phone.isLive || !whepUrl || !el) {
+    if (!live || !whepUrl || !el) {
       setFeedUp(false)
       return
     }
     return attachWhep(el, whepUrl, { onPlaying: setFeedUp })
-  }, [phone.isLive, whepUrl])
+  }, [live, whepUrl])
 
   async function copy() {
     try {
@@ -273,19 +276,19 @@ function PhoneBroadcastSection({
       {/* live health */}
       <div
         className={`mb-3 flex items-center gap-2 border-2 px-3 py-2 ${
-          phone.isLive ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
+          live ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
         }`}
       >
         <span
-          className={`h-2.5 w-2.5 rounded-full ${phone.isLive ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
+          className={`h-2.5 w-2.5 rounded-full ${live ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
         />
         <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
-          {phone.isLive ? 'Live' : 'Not broadcasting'}
+          {live ? 'Live' : 'Not broadcasting'}
         </span>
       </div>
 
       {/* live preview + remote terminate (only while a feed is up) */}
-      {phone.isLive && (
+      {live && (
         <div className="mb-4">
           <div className="relative border-2 border-ink bg-black">
             <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />

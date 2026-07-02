@@ -63,7 +63,15 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   if (!CF_ACCOUNT_ID || !CF_STREAM_TOKEN) return json({ error: 'Stream not configured.' }, 500)
 
-  let body: { token?: string; gameId?: string; action?: string; name?: string; retentionDays?: number }
+  let body: {
+    token?: string
+    gameId?: string
+    action?: string
+    name?: string
+    retentionDays?: number
+    uploadLength?: number
+    recordingUid?: string
+  }
   try {
     body = await req.json()
   } catch {
@@ -91,6 +99,38 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (action === 'upload-init') {
+      // Phone (WHIP) broadcasts aren't recorded by Cloudflare, so the server-side recorder
+      // captures the feed and pushes the finished file here. Create a direct-creator tus
+      // upload; the recorder PATCHes the bytes straight to the returned URL (no CF token
+      // needed client-side), then calls action 'set-recording' with the uid.
+      const uploadLength = Number(body.uploadLength)
+      if (!Number.isFinite(uploadLength) || uploadLength <= 0) return json({ error: 'Bad uploadLength.' }, 400)
+      const res = await fetch(`${CF_API}?direct_user=true`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${CF_STREAM_TOKEN}`,
+          'Tus-Resumable': '1.0.0',
+          'Upload-Length': String(uploadLength),
+          'Upload-Metadata': `name ${btoa(`Bandbox ${resolvedGameId}`)}`,
+        },
+      })
+      if (res.status !== 201) {
+        const t = await res.text().catch(() => '')
+        return json({ error: `Cloudflare tus create failed (${res.status}): ${t}` }, 502)
+      }
+      const uploadUrl = res.headers.get('Location')
+      const uid = res.headers.get('stream-media-id')
+      if (!uploadUrl || !uid) return json({ error: 'Cloudflare did not return an upload URL.' }, 502)
+      return json({ uploadUrl, uid }, 200)
+    }
+
+    if (action === 'set-recording') {
+      if (!body.recordingUid) return json({ error: 'Missing recordingUid.' }, 400)
+      await db.rpc('stream_set_recording', { p_token: token, p_recording_uid: String(body.recordingUid) })
+      return json({ ok: true }, 200)
+    }
+
     if (action === 'finalize') {
       // Fetch the auto-recording VOD for this live input (ready ~60s after the stream
       // ends). Store the newest ready video as the replay. Works with the broadcaster's

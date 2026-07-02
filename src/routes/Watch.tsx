@@ -375,6 +375,9 @@ export default function Watch() {
   // original file (contiguous byte-slices), then played as one blob — so the ReplayView
   // and its scorebug sync are unchanged.
   const [replayUrl, setReplayUrl] = useState<string | null>(null)
+  // If the Cloudflare VOD fails to load (e.g. still processing right after a broadcast),
+  // fall back to the Supabase copy so the replay never shows a broken player.
+  const [vodBroken, setVodBroken] = useState(false)
   const recStarted = info?.recording_started_at ?? null
   const recPath = info?.recording_path ?? null
   const recMime = info?.recording_mime ?? null
@@ -462,7 +465,7 @@ export default function Watch() {
   // exists — the Stream VOD (preferred) or the local upload. The time anchor comes from
   // recording_started_at; if that's missing (older/early-ended broadcast) we fall back to
   // the game_start timestamp so the replay still plays (sync just approximate).
-  const replayVideoUrl = streamVod ?? replayUrl ?? null
+  const replayVideoUrl = (!vodBroken ? streamVod : null) ?? replayUrl ?? null
   const gameStartMs = (() => {
     const gs = events.find((e) => e.event_type === 'game_start')
     return gs?.wall_clock_ts ? new Date(gs.wall_clock_ts).getTime() : 0
@@ -487,6 +490,8 @@ export default function Watch() {
           // position, so the replay mirrors what viewers saw.
           lineupsRaw: { away: info.lineups?.away ?? [], home: info.lineups?.home ?? [] },
           players: info.players ?? {},
+          // Only offer a fallback if we're currently on the Stream VOD and a Supabase copy exists.
+          onVodError: streamVod && !vodBroken && replayUrl ? () => setVodBroken(true) : undefined,
         }
       : null
 
@@ -929,13 +934,14 @@ type ReplayProps = {
   cueNameOf: (id: string | null | undefined) => string | null
   lineupsRaw: { away: LineupSlot[]; home: LineupSlot[] }
   players: Record<string, { name: string; jersey: string | null }>
+  onVodError?: () => void // Stream VOD failed to load (e.g. still processing) → fall back
 }
 
 // Replay the recorded broadcast with the scorebug + AI commentary re-synced to the
 // video clock: as the video plays, each event fires at wall_clock_ts − started_at into
 // it (FX immediately; the spoken lines through the same cached-TTS queue as live), and
 // the scorebug is projected from the events reached so far. Scrubbing re-syncs both.
-function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players }: ReplayProps) {
+function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players, onVodError }: ReplayProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const sorted = useMemo(() => [...events].sort((a, b) => a.seq - b.seq), [events])
   const firedSeq = useRef(0)
@@ -947,10 +953,10 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     const el = videoRef.current
     if (!el || !url) return
     didSeek.current = false
-    if (isHlsUrl(url)) return attachHls(el, url)
+    if (isHlsUrl(url)) return attachHls(el, url, { onError: onVodError })
     el.src = url
     return () => el.removeAttribute('src')
-  }, [url])
+  }, [url, onVodError])
   const [live, setLive] = useState<LiveGame>(() => ({ ...INITIAL_LIVE }))
   // Events reached at the current video position — drives the synced field/batter view.
   const [visible, setVisible] = useState<ViewerEvent[]>([])

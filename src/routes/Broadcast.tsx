@@ -387,6 +387,16 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     }
   }, [v.local, token])
 
+  // Reliable liveness beacon for the scorer/viewer. While our WHIP publish is connected,
+  // bump a DB timestamp every few seconds; the scorer reads its freshness off the game row
+  // instead of the flaky Realtime channel (which caused false "lost signal"/stuck previews).
+  useEffect(() => {
+    if (streamState !== 'live') return
+    const beat = () => void supabase.rpc('stream_heartbeat', { p_token: token })
+    beat()
+    const id = setInterval(beat, 5000)
+    return () => clearInterval(id)
+  }, [streamState, token])
 
   // End everything cleanly: flush + stop the recorder (while the stream is still
   // alive) BEFORE tearing the stream down, so the recording is captured and uploaded.

@@ -149,7 +149,7 @@ export default function Recorder() {
         }) ?? ''
       uploader = createStreamUploader({ gameId, token, startedAt: Date.now(), mime: mime || 'video/webm' })
       recorder = mime
-        ? new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: 3_000_000, audioBitsPerSecond: 128_000 })
+        ? new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 128_000 })
         : new MediaRecorder(mixed)
       recorder.ondataavailable = (e) => {
         if (e.data?.size && uploader) {
