@@ -1217,18 +1217,35 @@ const RUNNER_ADVANCE: Partial<Record<EventType, number>> = {
 
 type OnBase = { key: BaseName; from: number; player: Player }
 
-// position number -> label (scorekeeping numbering)
-const POSITIONS: { n: number; label: string }[] = [
-  { n: 1, label: 'P' },
-  { n: 2, label: 'C' },
+// Fielder keypad display order — spatial and POSITION-first (position label is the
+// primary identifier; the scorekeeping 1–9 number is secondary). Laid out 5-wide:
+// infield + P on top, outfield + C on the bottom. Shortstop is included.
+const FIELDER_GRID: { n: number; label: string }[] = [
   { n: 3, label: '1B' },
   { n: 4, label: '2B' },
-  { n: 5, label: '3B' },
   { n: 6, label: 'SS' },
+  { n: 5, label: '3B' },
+  { n: 1, label: 'P' },
   { n: 7, label: 'LF' },
   { n: 8, label: 'CF' },
   { n: 9, label: 'RF' },
+  { n: 2, label: 'C' },
 ]
+
+// Fielder position → approximate hit location. A fielded out / fielder's choice / error
+// went to that fielder, so we derive the spray-chart location from who made the play
+// instead of a separate "where did it go" tap. Infielders → infield; outfielders → deep.
+const POS_ZONE: Record<number, HitZone> = {
+  1: { dir: 'C', depth: 'IF' },
+  2: { dir: 'C', depth: 'IF' },
+  3: { dir: 'R', depth: 'IF' },
+  4: { dir: 'R', depth: 'IF' },
+  5: { dir: 'L', depth: 'IF' },
+  6: { dir: 'L', depth: 'IF' },
+  7: { dir: 'L', depth: 'deep' },
+  8: { dir: 'C', depth: 'deep' },
+  9: { dir: 'R', depth: 'deep' },
+}
 
 function InPlayFlow({
   batter,
@@ -1261,6 +1278,13 @@ function InPlayFlow({
   const showCredit = isOut || isError
   // A clean hit with the bases empty needs no runner resolution → the zone tap commits.
   const autoHit = isCleanHit && onBase.length === 0
+
+  // For a fielded ball (out / FC / error) the location is wherever the fielder was, so we
+  // derive it from who made the play instead of asking a separate "where did it go" — only
+  // clean hits (no fielder credited) still need the zone grid. The scorer's explicit zone,
+  // if any, always wins.
+  const derivedZone: HitZone | null = showCredit && fielders.length ? (POS_ZONE[fielders[0]] ?? null) : null
+  const effectiveZone = zone ?? derivedZone
 
   const baseIds = {
     first: runners.first?.id ?? null,
@@ -1389,28 +1413,32 @@ function InPlayFlow({
               </>
             )}
 
-            {/* Where did it go — a labeled direction × depth zone (a menu, not a field
-                tap), feeding the spray chart. Required to commit a bases-empty hit;
-                optional enrichment otherwise. */}
-            <SectionLabel>{autoHit ? 'Where did it go? · tap to record' : 'Where did it go? · optional'}</SectionLabel>
-            <ZoneGrid selected={zone} onPick={onZone} />
-            {autoHit && (
-              <button
-                onClick={() => onZone(null)}
-                className="mt-2 w-full border-2 border-cream/30 py-2 font-athletic text-xs font-semibold uppercase tracking-wide text-cream/70"
-              >
-                Commit — location not sure
-              </button>
+            {/* Where did it go — only for clean hits (no fielder to derive from). For a
+                fielded ball the location comes from who made the play (above). Required
+                to commit a bases-empty hit; optional enrichment otherwise. */}
+            {!showCredit && (
+              <>
+                <SectionLabel>{autoHit ? 'Where did it go? · tap to record' : 'Where did it go? · optional'}</SectionLabel>
+                <ZoneGrid selected={zone} onPick={onZone} />
+                {autoHit && (
+                  <button
+                    onClick={() => onZone(null)}
+                    className="mt-2 w-full border-2 border-cream/30 py-2 font-athletic text-xs font-semibold uppercase tracking-wide text-cream/70"
+                  >
+                    Commit — location not sure
+                  </button>
+                )}
+              </>
             )}
 
-            {/* Display-only field: shows the runners + a preview of the picked zone. */}
+            {/* Display-only field: shows the runners + a preview of the location. */}
             <div className="mx-auto mt-3 w-full max-w-[280px] border-2 border-gold/40">
               <FieldDiamond
                 bases={baseIds}
                 nameOf={runnerName}
                 fielders={defense}
                 batterLabel={batter ? (batter.name.split(' ').pop() ?? batter.name).toUpperCase() : null}
-                marker={zone ? hitPoint(zone) : null}
+                marker={effectiveZone ? hitPoint(effectiveZone) : null}
                 className="block w-full"
               />
             </div>
@@ -1430,7 +1458,7 @@ function InPlayFlow({
                     resolution,
                     rbi: runs,
                     advances,
-                    ...(zone ? { hit: zone } : {}),
+                    ...(effectiveZone ? { hit: effectiveZone } : {}),
                     ...(fielders.length ? { fielders } : {}),
                   })
                 }
@@ -1508,23 +1536,29 @@ function FielderGrid({
 }) {
   return (
     <div className="grid grid-cols-5 gap-1.5">
-      {POSITIONS.map((p) => {
+      {FIELDER_GRID.map((p) => {
         const order = sequence.indexOf(p.n)
         const active = order !== -1
         return (
           <button
             key={p.n}
             onClick={() => onAppend(p.n)}
-            className={`flex h-11 flex-col items-center justify-center ${active ? 'bg-gold text-ink' : 'border border-cream/30 text-cream'}`}
+            className={`relative flex h-12 flex-col items-center justify-center ${active ? 'bg-gold text-ink' : 'border border-cream/30 text-cream'}`}
           >
-            <span className="font-display text-sm leading-none">{p.n}</span>
-            <span className="font-athletic text-[8px] uppercase">{p.label}</span>
+            {/* position label is primary; scorekeeping number is the secondary hint */}
+            <span className="font-display text-sm leading-none">{p.label}</span>
+            <span className="font-athletic text-[9px] uppercase opacity-60">{p.n}</span>
+            {active && (
+              <span className="absolute right-1 top-0.5 font-athletic text-[10px] font-bold leading-none">
+                {order + 1}
+              </span>
+            )}
           </button>
         )
       })}
       <button
         onClick={onClear}
-        className="flex h-11 items-center justify-center border-2 border-dashed border-cream/25 font-athletic text-xs uppercase text-cream/60"
+        className="flex h-12 items-center justify-center border-2 border-dashed border-cream/25 font-athletic text-xs uppercase text-cream/60"
       >
         Clear
       </button>
@@ -1562,6 +1596,12 @@ function Resolver({
       .map((b) => onBase.find((r) => r.from === b))
       .filter((r): r is OnBase => !!r)
     ordered.slice(0, extraOuts).forEach((r) => (initial[r.player.id] = 0))
+  }
+  // Fielder's choice with a single runner: the play was made on that (lead) runner, so
+  // pre-mark them out and the batter safe at first. The scorer can still change it.
+  if (result === 'fielders_choice' && onBase.length === 1) {
+    initial[onBase[0].player.id] = 0
+    initial['batter'] = 1
   }
   const [dest, setDest] = useState<Record<string, Dest>>(initial)
 
