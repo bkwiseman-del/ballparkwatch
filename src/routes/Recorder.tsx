@@ -50,13 +50,15 @@ export default function Recorder() {
     let audioSrc: MediaStreamAudioSourceNode | null = null
     let currentStream: MediaStream | null = null
     let mediaReceived = false
-    let raf = 0
+    let drawTimer: ReturnType<typeof setInterval> | undefined
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     let silentTimer: ReturnType<typeof setTimeout> | undefined
     let maxTimer: ReturnType<typeof setTimeout> | undefined
     let statusPoll: ReturnType<typeof setInterval> | undefined
     let gapPoll: ReturnType<typeof setInterval> | undefined
     let lastMediaAt = Date.now()
+    let lastVideoTime = -1
+    let forceReconnect: (() => void) | undefined // set once the WHEP connect loop is live
 
     // Stable capture surfaces (never torn down until finish → one continuous recording).
     const video = document.createElement('video')
@@ -68,14 +70,21 @@ export default function Recorder() {
     canvas.height = 720
     const ctx = canvas.getContext('2d')
 
+    // Drive the canvas on a timer, NOT requestAnimationFrame — headless Chrome throttles/
+    // stops rAF for the offscreen recorder page, which froze the canvas (and thus
+    // canvas.captureStream) and truncated recordings to a few seconds. setInterval keeps
+    // ticking. lastMediaAt only advances when the video's playhead actually moves, so a
+    // frozen WHEP feed (last frame stuck) is detectable instead of looking "alive".
     const draw = () => {
       if (ctx && video.videoWidth) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        lastMediaAt = Date.now()
+        if (video.currentTime !== lastVideoTime) {
+          lastMediaAt = Date.now()
+          lastVideoTime = video.currentTime
+        }
       }
-      raf = requestAnimationFrame(draw)
     }
-    draw()
+    drawTimer = setInterval(draw, 33) // ~30fps
 
     const routeAudio = () => {
       if (!audioCtx || !audioDest || !currentStream) return
@@ -99,7 +108,7 @@ export default function Recorder() {
       clearTimeout(maxTimer)
       clearInterval(statusPoll)
       clearInterval(gapPoll)
-      cancelAnimationFrame(raf)
+      clearInterval(drawTimer)
       if (!started) {
         setStatus('error')
         setDetail('game never went live')
@@ -160,10 +169,14 @@ export default function Recorder() {
       recorder.start(4000)
       setStatus('recording')
       maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
-      // Wrap up if the feed's been gone a long time (broadcast ended without a final).
+      // Watch the feed. A frozen playhead (WHEP connected but no new frames — the silent
+      // case that truncated recordings) forces a reconnect to resume real media; a long
+      // outage wraps up (broadcast ended without a final).
       gapPoll = setInterval(() => {
-        if (Date.now() - lastMediaAt > 120_000) void finish()
-      }, 15_000)
+        const gap = Date.now() - lastMediaAt
+        if (gap > 120_000) return void finish()
+        if (gap > 6_000) forceReconnect?.()
+      }, 5_000)
     }
 
     const wireStream = (stream: MediaStream) => {
@@ -243,6 +256,18 @@ export default function Recorder() {
         }
       }
       void connect()
+      // Let the gap watchdog force a fresh WHEP subscription when the feed freezes.
+      forceReconnect = () => {
+        if (done || cancelled) return
+        try {
+          session?.close()
+        } catch {
+          /* ignore */
+        }
+        session = null
+        clearTimeout(reconnectTimer)
+        void connect()
+      }
     })()
 
     return () => {
@@ -253,7 +278,7 @@ export default function Recorder() {
       clearTimeout(maxTimer)
       clearInterval(statusPoll)
       clearInterval(gapPoll)
-      cancelAnimationFrame(raf)
+      clearInterval(drawTimer)
       try {
         if (recorder && recorder.state !== 'inactive') recorder.stop()
       } catch {
