@@ -15,8 +15,16 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon-32.png', 'favicon-16.png', 'ball.png', 'apple-touch-icon.png', 'push-sw.js'],
-      // Inject our push + notificationclick handlers into the generated Workbox SW.
-      workbox: { importScripts: ['/push-sw.js'] },
+      workbox: {
+        // Inject our push + notificationclick handlers into the generated Workbox SW.
+        importScripts: ['/push-sw.js'],
+        // A new SW takes over and controls open tabs IMMEDIATELY, and old precaches are
+        // purged — so a deploy actually reaches users on their next load instead of
+        // serving stale code until every tab closes.
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+      },
       manifest: {
         name: 'Bandbox',
         short_name: 'Bandbox',

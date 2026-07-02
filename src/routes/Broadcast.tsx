@@ -67,6 +67,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const uploadedRef = useRef(false)
   const whipRef = useRef<RtcSession | null>(null)
   const [streamState, setStreamState] = useState<'off' | 'connecting' | 'live' | 'error'>('off')
+  const [streamErr, setStreamErr] = useState<string>('') // shown on-screen (phones have no console)
 
   // Upload one part to a signed URL, with a few retries (mobile networks blip).
   async function uploadPart(path: string, body: Blob, contentType: string): Promise<boolean> {
@@ -303,12 +304,15 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         if (cancelled) return
         if (error || !data?.whipUrl) {
           console.error('[stream] live-input error:', error, data)
+          setStreamErr(`live-input: ${error?.message ?? data?.error ?? 'unknown'}`)
           setStreamState('error')
           return
         }
         console.info('[stream] publishing via WHIP', data.whipUrl)
+        setStreamErr('')
         const session = await whipPublish(data.whipUrl, v.local!, (s) => {
           console.info('[stream] WHIP connection state:', s)
+          if (s === 'failed') setStreamErr('WHIP connection failed (ICE)')
           setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting')
         })
         if (cancelled) {
@@ -318,7 +322,10 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         whipRef.current = session
       } catch (e) {
         console.error('[stream] WHIP publish failed:', e)
-        if (!cancelled) setStreamState('error')
+        if (!cancelled) {
+          setStreamErr(e instanceof Error ? e.message : 'WHIP publish failed')
+          setStreamState('error')
+        }
       }
     })()
     return () => {
@@ -449,6 +456,11 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
               Stop
             </button>
           </div>
+          {streamState === 'error' && streamErr && (
+            <div className="absolute inset-x-0 top-10 bg-barn-red/80 px-4 py-1 text-center font-data text-[11px] text-cream">
+              Stream: {streamErr}
+            </div>
+          )}
 
           <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-black/50 px-4 py-3">
             {v.zoomRange && (

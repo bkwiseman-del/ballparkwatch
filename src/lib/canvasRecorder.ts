@@ -107,11 +107,16 @@ export async function startCanvasRecording(opts: {
   })
 
   let bytes = 0
+  const frameDurUs = Math.round(1_000_000 / fps) // each VideoFrame carries this duration
   const videoEnc: AnyEncoder = new g.VideoEncoder({
     output: (chunk: any, meta: any) => {
-      bytes += chunk.byteLength ?? 0
-      muxer.addVideoChunk(chunk, meta)
-      opts.onBytes?.(bytes)
+      try {
+        muxer.addVideoChunk(chunk, meta)
+        bytes += chunk.byteLength ?? 0
+        opts.onBytes?.(bytes)
+      } catch {
+        /* drop a bad chunk rather than kill the recording */
+      }
     },
     error: () => {},
   })
@@ -153,7 +158,7 @@ export async function startCanvasRecording(opts: {
     if (elapsed >= nextFrameAt && videoEnc.state === 'configured') {
       // Don't let the encoder queue run away on a slow phone — skip a frame instead.
       if (videoEnc.encodeQueueSize < 6) {
-        const frame = new g.VideoFrame(canvas, { timestamp: Math.round(elapsed * 1000) })
+        const frame = new g.VideoFrame(canvas, { timestamp: Math.round(elapsed * 1000), duration: frameDurUs })
         const keyFrame = frameCount % (fps * 2) === 0
         try {
           videoEnc.encode(frame, { keyFrame })

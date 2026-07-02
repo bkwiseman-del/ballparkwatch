@@ -30,6 +30,10 @@ alter table bpw.games
 -- read/write only that game's Stream fields, so the Edge Function never needs
 -- broad table grants.
 
+-- All three resolve the broadcast token via bpw.broadcast_game_id() — the canonical
+-- resolver (a live grant OR the game's share_token), same as sign-upload uses. (An
+-- earlier version matched share_token directly, which 403'd for grant-token broadcasters.)
+
 -- Look up the game + any existing live input for a broadcast token, so the Edge
 -- Function knows whether to reuse or create a Stream live input.
 create or replace function bpw.stream_lookup(p_token text)
@@ -45,7 +49,7 @@ as $$
     'cf_customer_code', g.cf_customer_code
   )
   from bpw.games g
-  where g.share_token = p_token;
+  where g.id = bpw.broadcast_game_id(p_token);
 $$;
 
 -- Store a freshly created live input's ids + viewer-safe playback URLs on the game.
@@ -66,7 +70,7 @@ begin
          cf_customer_code   = p_code,
          cf_whep_url         = p_whep,
          cf_hls_url          = p_hls
-   where share_token = p_token;
+   where id = bpw.broadcast_game_id(p_token);
 end;
 $$;
 
@@ -78,7 +82,8 @@ security definer
 set search_path = bpw, public
 as $$
 begin
-  update bpw.games set cf_recording_uid = p_recording_uid where share_token = p_token;
+  update bpw.games set cf_recording_uid = p_recording_uid
+   where id = bpw.broadcast_game_id(p_token);
 end;
 $$;
 
