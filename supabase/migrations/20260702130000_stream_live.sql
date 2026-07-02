@@ -74,6 +74,21 @@ begin
 end;
 $$;
 
+-- Anchor the recording clock when the Stream publish connects (video t=0 = ingest
+-- start). The replay maps event wall_clock_ts to a video offset against this. Only set
+-- once. (Local recording used to set recording_started_at, but it's fallback-only now.)
+create or replace function bpw.stream_mark_started(p_token text)
+returns void
+language plpgsql
+security definer
+set search_path = bpw, public
+as $$
+begin
+  update bpw.games set recording_started_at = now()
+   where id = bpw.broadcast_game_id(p_token) and recording_started_at is null;
+end;
+$$;
+
 -- Record the VOD uid of the auto-recording once the broadcast ends (the replay).
 create or replace function bpw.stream_set_recording(p_token text, p_recording_uid text)
 returns void
@@ -89,9 +104,11 @@ $$;
 
 revoke all on function bpw.stream_lookup(text) from public;
 revoke all on function bpw.stream_attach(text, text, text, text, text) from public;
+revoke all on function bpw.stream_mark_started(text) from public;
 revoke all on function bpw.stream_set_recording(text, text) from public;
 grant execute on function bpw.stream_lookup(text) to anon, authenticated, service_role;
 grant execute on function bpw.stream_attach(text, text, text, text, text) to anon, authenticated, service_role;
+grant execute on function bpw.stream_mark_started(text) to anon, authenticated, service_role;
 grant execute on function bpw.stream_set_recording(text, text) to anon, authenticated, service_role;
 
 -- ---------- expose viewer-safe Stream URLs on the public game ----------
