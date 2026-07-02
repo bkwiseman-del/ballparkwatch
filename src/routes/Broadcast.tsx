@@ -7,6 +7,10 @@ import { whipPublish, type RtcSession } from '@/lib/whip'
 import { gameChannelName } from '@/lib/realtime'
 import { HeaderWordmark } from '@/components/Logo'
 
+// Free tier is LIVE-ONLY: no on-device video recording (paid gets a server-side recorder).
+// The recording machinery stays wired but gated; flip this to re-enable. See the build plan.
+const RECORD_LOCAL_REPLAY = false
+
 type Resolved = {
   game_id: string
   video_source: string
@@ -162,11 +166,12 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   }
 
   useEffect(() => {
-    // Cloudflare WHIP does NOT record server-side (confirmed — see the build plan), so
-    // local device recording IS the replay. It's a SECOND encode alongside the WHIP live
-    // encode, so we keep it light: hardware-accelerated H.264, downscaled to ~480p/24fps
-    // (see canvasRecorder). If WHIP recording ever ships, delete this and it's free.
-    if (!v.local) return
+    // LIVE-ONLY: the free tier does NOT record video — the phone's only job is the WHIP
+    // live stream (no second encode → cool phone, no memory/upload/storage). Video replay
+    // is a PAID feature via the server-side recorder (see the build plan). The local
+    // recording machinery below stays wired but gated off; flip RECORD_LOCAL_REPLAY to
+    // re-enable it if ever needed. Free still gets the zero-cost DATA replay (box/stats/plays).
+    if (!v.local || !RECORD_LOCAL_REPLAY) return
     resetUploader()
     recStartedAt.current = Date.now()
     setRecBytes(0)
@@ -377,19 +382,6 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     }
   }, [v.local, token])
 
-  // After the game, ask Cloudflare for the auto-recording's VOD id (ready ~60s after the
-  // stream ends) and store it as the replay. Poll a few times, best-effort.
-  const finalizeStream = useCallback(async () => {
-    for (let i = 0; i < 8; i++) {
-      try {
-        const { data } = await supabase.functions.invoke('stream-live', { body: { token, action: 'finalize' } })
-        if (data?.ready) return
-      } catch {
-        /* retry */
-      }
-      await new Promise((r) => setTimeout(r, 15000))
-    }
-  }, [token])
 
   // End everything cleanly: flush + stop the recorder (while the stream is still
   // alive) BEFORE tearing the stream down, so the recording is captured and uploaded.
@@ -398,8 +390,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     whipRef.current = null
     await finishRecording()
     vstop()
-    void finalizeStream() // grab the Stream recording in the background
-  }, [vstop, finishRecording, finalizeStream])
+  }, [vstop, finishRecording])
 
   // End the broadcast when the scorer ends the game. Catch it instantly off the
   // scorer's state broadcast, and poll as a fallback in case that event is missed.
@@ -432,26 +423,21 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
       <Center>
         <div className="space-y-2">
           <p className="font-display text-2xl text-gold">Game over</p>
-          {saveState === 'saving' && (
+          {RECORD_LOCAL_REPLAY && saveState === 'saving' && (
             <p className="font-data text-sm text-gold">
               Saving the replay{progress ? ` (${progress})` : ''}… keep this screen open.
             </p>
           )}
-          {saveState === 'saved' && (
+          {RECORD_LOCAL_REPLAY && saveState === 'saved' && (
             <p className="font-data text-sm text-board-green">Replay saved ✓ You can close this screen.</p>
           )}
-          {saveState === 'failed' && (
+          {RECORD_LOCAL_REPLAY && saveState === 'failed' && (
             <>
               <p className="font-data text-sm text-barn-red">Couldn’t save the replay (the game stats are safe).</p>
               {saveErr && <p className="font-data text-[11px] text-muted-green">{saveErr}</p>}
             </>
           )}
-          {saveState === 'idle' && recBytes === 0 && (
-            <p className="font-data text-[11px] text-muted-green">
-              (No video was captured on this device — recording isn’t supported by this browser.)
-            </p>
-          )}
-          {saveState === 'idle' && (
+          {(!RECORD_LOCAL_REPLAY || saveState === 'idle') && (
             <p className="font-data text-sm text-muted-green">The broadcast has ended. You can close this screen.</p>
           )}
         </div>
@@ -487,11 +473,16 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
                   : streamState === 'error'
                     ? 'stream offline'
                     : 'connecting…'}
-              </span>{' '}
-              ·{' '}
-              <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
-                REC {(recBytes / 1e6).toFixed(1)}MB
               </span>
+              {RECORD_LOCAL_REPLAY && (
+                <>
+                  {' '}
+                  ·{' '}
+                  <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
+                    REC {(recBytes / 1e6).toFixed(1)}MB
+                  </span>
+                </>
+              )}
             </span>
             <button onClick={endBroadcast} className="bg-barn-red px-4 py-1.5 font-display text-cream">
               Stop
