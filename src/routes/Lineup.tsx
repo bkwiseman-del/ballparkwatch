@@ -118,6 +118,25 @@ export default function Lineup() {
     setDirty(true)
   }
 
+  // Edit an existing player's name/number in place (tap a lineup row). Writes the
+  // players table and updates the local roster so the row reflects it immediately.
+  async function editPlayerInfo(teamId: string, playerId: string, name: string, jersey: string): Promise<void> {
+    setError(null)
+    const jn = jersey.replace(/[^0-9]/g, '')
+    const nm = name.trim()
+    const { error: e } = await supabase
+      .from('players')
+      .update({ name: nm, jersey_number: jn ? Number(jn) : null })
+      .eq('id', playerId)
+    if (e) return setError(e.message)
+    setRosters((prev) => ({
+      ...prev,
+      [teamId]: (prev[teamId] ?? []).map((p) =>
+        p.id === playerId ? { ...p, name: nm, jersey_number: jn || null } : p,
+      ),
+    }))
+  }
+
   async function save() {
     if (!gameId || !game) return
     setError(null)
@@ -170,7 +189,8 @@ export default function Lineup() {
         <div className="mx-auto max-w-3xl px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5">
         <h1 className="mb-1 font-display text-2xl">Lineups &amp; Positions</h1>
         <p className="mb-5 font-data text-sm text-muted-tan">
-          Add everyone who’s playing to the batting order (drag ⠿ or ▲▼ to reorder). In a continuous
+          Add everyone who’s playing to the batting order (drag ⠿ or ▲▼ to reorder; tap a player to
+          edit their name or number). In a continuous
           order everyone bats — a player sitting on defense stays in the order with position{' '}
           <b>BENCH</b>. Leave a player out of the order only if they’re not here today.
         </p>
@@ -199,6 +219,7 @@ export default function Lineup() {
               }))
             }}
             onAddPlayer={(name, jersey) => addPlayer(game.away_team_id, name, jersey)}
+            onEditPlayer={(pid, name, jersey) => editPlayerInfo(game.away_team_id, pid, name, jersey)}
           />
           <TeamLineup
             team={home}
@@ -217,6 +238,7 @@ export default function Lineup() {
               }))
             }}
             onAddPlayer={(name, jersey) => addPlayer(game.home_team_id, name, jersey)}
+            onEditPlayer={(pid, name, jersey) => editPlayerInfo(game.home_team_id, pid, name, jersey)}
             accent
           />
         </div>
@@ -261,6 +283,7 @@ function TeamLineup({
   positions,
   setPosition,
   onAddPlayer,
+  onEditPlayer,
   accent = false,
 }: {
   team: Team
@@ -270,9 +293,24 @@ function TeamLineup({
   positions: Record<string, string>
   setPosition: (playerId: string, pos: string) => void
   onAddPlayer: (name: string, jersey: string) => Promise<void>
+  onEditPlayer: (playerId: string, name: string, jersey: string) => Promise<void>
   accent?: boolean
 }) {
   const byId = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster])
+  // Tap a player row to edit their name/number inline.
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editNm, setEditNm] = useState('')
+  const [editJn, setEditJn] = useState('')
+  const beginEdit = (p: Player) => {
+    setEditId(p.id)
+    setEditNm(p.name ?? '')
+    setEditJn(p.jersey_number != null ? String(p.jersey_number) : '')
+  }
+  const commitEdit = async () => {
+    if (!editId) return
+    await onEditPlayer(editId, editNm, editJn)
+    setEditId(null)
+  }
   const [adding, setAdding] = useState(false)
   const [nm, setNm] = useState('')
   const [jn, setJn] = useState('')
@@ -366,10 +404,43 @@ function TeamLineup({
                 ⠿
               </span>
               <span className="w-5 text-right font-athletic text-base font-bold text-ink">{i + 1}</span>
-              <span className="w-7 text-right font-athletic text-lg font-bold text-barn-red">
-                {p?.jersey_number ?? '—'}
-              </span>
-              <span className="font-display text-base">{p?.name ?? '?'}</span>
+              {editId === pid ? (
+                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <input
+                    value={editJn}
+                    onChange={(e) => setEditJn(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                    placeholder="#"
+                    inputMode="numeric"
+                    className="w-11 appearance-none rounded-none border-2 border-ink bg-white px-1 py-1 text-center font-athletic text-sm outline-none focus:border-board-green"
+                  />
+                  <input
+                    value={editNm}
+                    onChange={(e) => setEditNm(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void commitEdit()}
+                    autoFocus
+                    className="min-w-0 flex-1 appearance-none rounded-none border-2 border-ink bg-white px-2 py-1 font-data text-sm outline-none focus:border-board-green"
+                  />
+                  <button onClick={() => void commitEdit()} className="shrink-0 bg-board-green px-2.5 py-1.5 font-display text-sm text-cream" title="Save">
+                    ✓
+                  </button>
+                  <button onClick={() => setEditId(null)} className="shrink-0 border-2 border-ink px-2 py-1.5 font-display text-sm text-ink" title="Cancel">
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => p && beginEdit(p)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  title="Tap to edit name/number"
+                >
+                  <span className="w-7 text-right font-athletic text-lg font-bold text-barn-red">
+                    {p?.jersey_number ?? '—'}
+                  </span>
+                  <span className="truncate font-display text-base">{p?.name ?? '?'}</span>
+                </button>
+              )}
+              {editId !== pid && (
+              <>
               <select
                 value={positions[pid] ?? p?.default_position ?? ''}
                 onChange={(e) => setPosition(pid, e.target.value)}
@@ -412,6 +483,8 @@ function TeamLineup({
               >
                 ✕
               </button>
+              </>
+              )}
             </li>
           )
         })}
