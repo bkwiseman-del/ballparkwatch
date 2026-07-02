@@ -221,7 +221,7 @@ export function attachWhep(
         // (covers browsers without WHEP); otherwise keep retrying WHEP.
         if (attempts >= 2 && opts?.hlsUrl) {
           video.srcObject = null
-          detachHls = attachHls(video, opts.hlsUrl)
+          detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true })
           video.play().catch(() => {})
           opts?.onPlaying?.(true)
         } else {

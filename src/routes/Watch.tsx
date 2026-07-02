@@ -546,6 +546,7 @@ export default function Watch() {
       gameId={gameId}
       board={board}
       live={phoneStatus.live}
+      attempt={live.status === 'live'}
       whepUrl={info.cf_whep_url}
       hlsUrl={info.cf_hls_url}
     />
@@ -872,6 +873,15 @@ function FinalView({
     ? (['recap', 'replay', 'box', 'stats', 'plays'] as const)
     : (['recap', 'box', 'stats', 'plays'] as const)
   const [tab, setTab] = useState<'replay' | 'recap' | 'box' | 'stats' | 'plays'>('recap')
+  // A play tapped in the Plays tab jumps the replay to that moment. The nonce forces a
+  // re-seek even when the same play is tapped twice.
+  const [seekReq, setSeekReq] = useState<{ sec: number; nonce: number } | null>(null)
+  const seekNonce = useRef(0)
+  const seekToPlay = (sec: number) => {
+    seekNonce.current += 1
+    setSeekReq({ sec, nonce: seekNonce.current })
+    setTab('replay')
+  }
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink lg:max-w-5xl">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
@@ -914,11 +924,23 @@ function FinalView({
       </div>
 
       <div className="flex-1 p-4 min-[760px]:p-6">
-        {tab === 'replay' && replay && <ReplayView {...replay} />}
+        {/* Replay stays mounted (hidden on other tabs) so its playback position survives
+            tab switches — leaving pauses it, returning resumes from where it left off. */}
+        {replay && (
+          <div className={tab === 'replay' ? '' : 'hidden'}>
+            <ReplayView {...replay} active={tab === 'replay'} seekReq={seekReq} />
+          </div>
+        )}
         {tab === 'recap' && <RecapFinal recap={recap} events={events} board={board} />}
         {tab === 'box' && <BoxTab board={board} events={events} startPos={startPos} nameOf={nameOf} />}
         {tab === 'stats' && <StatsTab board={board} events={events} />}
-        {tab === 'plays' && <PlaysTab events={events} />}
+        {tab === 'plays' && (
+          <PlaysTab
+            events={events}
+            onSeek={replay ? seekToPlay : undefined}
+            startedAtMs={replay?.startedAtMs}
+          />
+        )}
       </div>
     </div>
   )
@@ -935,13 +957,15 @@ type ReplayProps = {
   lineupsRaw: { away: LineupSlot[]; home: LineupSlot[] }
   players: Record<string, { name: string; jersey: string | null }>
   onVodError?: () => void // Stream VOD failed to load (e.g. still processing) → fall back
+  active?: boolean // is the replay tab showing? (kept mounted so position persists)
+  seekReq?: { sec: number; nonce: number } | null // jump to this video time (from a play tap)
 }
 
 // Replay the recorded broadcast with the scorebug + AI commentary re-synced to the
 // video clock: as the video plays, each event fires at wall_clock_ts − started_at into
 // it (FX immediately; the spoken lines through the same cached-TTS queue as live), and
 // the scorebug is projected from the events reached so far. Scrubbing re-syncs both.
-function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players, onVodError }: ReplayProps) {
+function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players, onVodError, active, seekReq }: ReplayProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const sorted = useMemo(() => [...events].sort((a, b) => a.seq - b.seq), [events])
   const firedSeq = useRef(0)
@@ -957,6 +981,29 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     el.src = url
     return () => el.removeAttribute('src')
   }, [url, onVodError])
+
+  // The replay stays MOUNTED across tab switches (so playback position is preserved).
+  // Pause it when its tab isn't showing; resume from where it left off when it returns.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (active === false) v.pause()
+    else void v.play().catch(() => {})
+  }, [active])
+
+  // Jump to a specific video time when a play is tapped in the Plays tab, then play.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !seekReq) return
+    didSeek.current = true // don't let onLoadedMetadata reset us to the pre-game offset
+    const go = () => {
+      const dur = isFinite(v.duration) ? v.duration : Infinity
+      v.currentTime = Math.max(0, Math.min(seekReq.sec, dur - 0.25))
+      void v.play().catch(() => {})
+    }
+    if (v.readyState >= 1) go()
+    else v.addEventListener('loadedmetadata', go, { once: true })
+  }, [seekReq])
   const [live, setLive] = useState<LiveGame>(() => ({ ...INITIAL_LIVE }))
   // Events reached at the current video position — drives the synced field/batter view.
   const [visible, setVisible] = useState<ViewerEvent[]>([])
@@ -1113,7 +1160,6 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
             <video
               ref={videoRef}
               controls
-              autoPlay
               playsInline
               onPlay={() => {
                 void audio.enable()
@@ -1497,22 +1543,61 @@ const KIND_COLOR: Record<PlayKind, string> = {
   neutral: 'text-muted-green',
 }
 
-function PlaysTab({ events }: { events: ViewerEvent[] }) {
+function PlaysTab({
+  events,
+  onSeek,
+  startedAtMs,
+}: {
+  events: ViewerEvent[]
+  onSeek?: (sec: number) => void // provided only on the Final screen when a replay exists
+  startedAtMs?: number // the replay video's t=0 anchor, to map a play → video time
+}) {
   const map = nameMap(events)
   const plays = buildPlayByPlay(events, (id) => (id ? map.get(id) ?? null : null))
+  // seq → wall-clock ms, so a tapped play can jump the replay to that moment.
+  const tsBySeq = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const e of events) if (e.wall_clock_ts) m.set(e.seq, new Date(e.wall_clock_ts).getTime())
+    return m
+  }, [events])
   if (plays.length === 0) return <Empty>No plays yet.</Empty>
+  const canSeek = !!onSeek && startedAtMs != null
   return (
     // Two balanced columns on desktop so a long game doesn't become one tall strip.
     <ul className="divide-y divide-cream/10 lg:columns-2 lg:gap-8 lg:divide-y-0">
-      {plays.map((p) => (
-        <li key={p.seq} className="flex gap-3 py-2.5 lg:break-inside-avoid lg:border-b lg:border-cream/10">
+      {plays.map((p) => {
+        const ts = tsBySeq.get(p.seq)
+        const sec = canSeek && ts ? Math.max(0, (ts - (startedAtMs as number)) / 1000) : null
+        const inning = (
           <span className={`w-12 shrink-0 font-athletic text-xs font-semibold uppercase ${KIND_COLOR[p.kind]}`}>
             {p.half === 'top' ? '▲' : '▼'}
             {p.inning}
           </span>
-          <span className="font-data text-[13px] text-cream">{p.text}</span>
-        </li>
-      ))}
+        )
+        if (sec == null) {
+          return (
+            <li key={p.seq} className="flex gap-3 py-2.5 lg:break-inside-avoid lg:border-b lg:border-cream/10">
+              {inning}
+              <span className="font-data text-[13px] text-cream">{p.text}</span>
+            </li>
+          )
+        }
+        return (
+          <li key={p.seq} className="lg:break-inside-avoid lg:border-b lg:border-cream/10">
+            <button
+              onClick={() => onSeek!(sec)}
+              title="Watch this play in the replay"
+              className="flex w-full items-center gap-3 py-2.5 text-left transition-colors hover:bg-cream/5"
+            >
+              {inning}
+              <span className="flex-1 font-data text-[13px] text-cream">{p.text}</span>
+              <span aria-hidden className="shrink-0 font-data text-[11px] text-gold/80">
+                ▶
+              </span>
+            </button>
+          </li>
+        )
+      })}
     </ul>
   )
 }
