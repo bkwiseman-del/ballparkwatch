@@ -76,54 +76,84 @@ export default function Recorder() {
         return
       }
       setStatus('waiting')
+      const startupDeadline = Date.now() + 90_000 // keep retrying the join for ~90s
 
-      try {
-        session = await whepPlay(
-          whep,
-          (stream) => {
-            if (cancelled || started) return
-            started = true
-            const mime =
-              ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => {
-                try {
-                  return MediaRecorder.isTypeSupported(m)
-                } catch {
-                  return false
+      const onMedia = (stream: MediaStream) => {
+        if (cancelled || started) return
+        started = true
+        const mime =
+          ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => {
+            try {
+              return MediaRecorder.isTypeSupported(m)
+            } catch {
+              return false
+            }
+          }) ?? ''
+        uploader = createStreamUploader({ gameId, token, startedAt: Date.now(), mime: mime || 'video/webm' })
+        recorder = mime
+          ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3_000_000, audioBitsPerSecond: 128_000 })
+          : new MediaRecorder(stream)
+        recorder.ondataavailable = (e) => {
+          if (e.data?.size && uploader) {
+            uploader.add(e.data)
+            setBytes(uploader.bytes())
+          }
+        }
+        recorder.start(4000)
+        setStatus('recording')
+        maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
+      }
+
+      // Retry the WHEP join until media actually arrives — the recorder is launched right
+      // as the broadcaster's stream is coming up, so the first attempt can connect with no
+      // track yet (ICE 'connected', silent). Keep trying until the startup deadline.
+      const tryConnect = async () => {
+        if (cancelled || started) return
+        let attemptSession: RtcSession | null = null
+        const retry = () => {
+          try {
+            attemptSession?.close()
+          } catch {
+            /* ignore */
+          }
+          if (!started && !cancelled && Date.now() < startupDeadline) setTimeout(tryConnect, 2500)
+          else if (!started && !cancelled) {
+            setStatus('error')
+            setDetail('never received media')
+          }
+        }
+        // If this attempt gets no media in a few seconds, tear it down and retry.
+        const silentTimer = setTimeout(() => {
+          if (!started) retry()
+        }, 8000)
+        try {
+          attemptSession = await whepPlay(
+            whep,
+            (stream) => {
+              clearTimeout(silentTimer)
+              session = attemptSession
+              onMedia(stream)
+            },
+            (state) => {
+              if (cancelled) return
+              if (state === 'failed' || state === 'disconnected') {
+                if (started) {
+                  clearTimeout(endTimer)
+                  endTimer = setTimeout(() => void finish(), 12_000) // stream ended → wrap up
+                } else {
+                  clearTimeout(silentTimer)
+                  retry()
                 }
-              }) ?? ''
-            uploader = createStreamUploader({ gameId, token, startedAt: Date.now(), mime: mime || 'video/webm' })
-            recorder = mime
-              ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3_000_000, audioBitsPerSecond: 128_000 })
-              : new MediaRecorder(stream)
-            recorder.ondataavailable = (e) => {
-              if (e.data?.size && uploader) {
-                uploader.add(e.data)
-                setBytes(uploader.bytes())
               }
-            }
-            recorder.start(4000)
-            setStatus('recording')
-            // Safety cap so a forgotten stream can't record forever.
-            maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
-          },
-          (state) => {
-            if (cancelled) return
-            if (state === 'failed' || state === 'disconnected') {
-              // Live stream ended (or dropped). Wait a short grace for a resume; if none,
-              // finalize. (A brief blip that resumes on the SAME session keeps recording.)
-              if (started) {
-                clearTimeout(endTimer)
-                endTimer = setTimeout(() => void finish(), 12_000)
-              }
-            }
-          },
-        )
-      } catch {
-        if (!cancelled) {
-          setStatus('error')
-          setDetail('could not join the live feed')
+            },
+          )
+          if (cancelled) attemptSession.close()
+        } catch {
+          clearTimeout(silentTimer)
+          retry()
         }
       }
+      void tryConnect()
     })()
 
     return () => {

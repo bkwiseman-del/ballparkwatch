@@ -67,6 +67,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const webRecRef = useRef<CanvasRecorder | null>(null)
   const uploadedRef = useRef(false)
   const whipRef = useRef<RtcSession | null>(null)
+  const recordKickedRef = useRef(false)
   const [streamState, setStreamState] = useState<'off' | 'connecting' | 'live' | 'error'>('off')
   const [streamErr, setStreamErr] = useState<string>('') // shown on-screen (phones have no console)
 
@@ -337,6 +338,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   useEffect(() => {
     if (!v.local) return
     let cancelled = false
+    recordKickedRef.current = false
     setStreamState('connecting')
     ;(async () => {
       try {
@@ -355,9 +357,12 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         const session = await whipPublish(data.whipUrl, v.local!, (s) => {
           console.info('[stream] WHIP connection state:', s)
           if (s === 'failed') setStreamErr('WHIP connection failed (ICE)')
-          if (s === 'connected') {
-            // Anchor the recording clock for replay sync (video t=0 = ingest start).
-            void supabase.rpc('stream_mark_started', { p_token: token })
+          if (s === 'connected' && !recordKickedRef.current) {
+            recordKickedRef.current = true
+            // Media is now flowing → kick off the PAID server-side recorder (no-op unless
+            // the game is flagged record_replay). The recorder subscribes to the live feed
+            // and captures the full-quality replay server-side — the phone never records.
+            void supabase.functions.invoke('start-recording', { body: { token } })
           }
           setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting')
         })
