@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { whepPlay, type RtcSession } from '@/lib/whip'
@@ -6,25 +6,27 @@ import { createStreamUploader } from '@/lib/streamUpload'
 
 // Server-side (headless) recorder for the PAID full-quality replay. A headless Chrome
 // opens /record/:gameId?token=<broadcast grant>; this joins the live WHEP feed and records
-// the full-quality stream via MediaRecorder → the streaming uploader → the game's replay.
-// The phone is untouched (still WHIPs full-quality live). Ends when the live stream stops.
+// the full-quality stream for the whole game. The phone is untouched (still WHIPs live).
 //
-// Status is mirrored to document.title + window.__recorder so the orchestrator can poll
-// the headless page and tear the machine down when it reads "done".
+// RECONNECT-PROOF: the incoming feed is drawn onto a stable canvas and its audio is routed
+// through a stable Web-Audio sink, so ONE continuous MediaRecorder keeps running even when
+// the broadcaster's stream blips/reconnects (which drops the WHEP peer connection). We
+// reconnect WHEP under it, and only FINISH when the game goes final (or media is gone for a
+// long stretch, or a safety cap) — never on a transient drop.
+//
+// Status is mirrored to window.__recorder / document.title so the manager can poll it.
 type Status = 'starting' | 'waiting' | 'recording' | 'saving' | 'done' | 'error'
 
 export default function Recorder() {
   const { gameId } = useParams()
   const [params] = useSearchParams()
   const token = params.get('token')
-  const maxMinutes = Number(params.get('max') ?? 240) // safety cap
+  const maxMinutes = Number(params.get('max') ?? 240)
   const [status, setStatus] = useState<Status>('starting')
   const [detail, setDetail] = useState('')
   const [bytes, setBytes] = useState(0)
-  const doneRef = useRef(false)
 
   useEffect(() => {
-    // Expose status for the headless orchestrator.
     document.title = `rec:${status}`
     ;(window as unknown as { __recorder?: Record<string, unknown> }).__recorder = { status, bytes, gameId }
   }, [status, bytes, gameId])
@@ -35,35 +37,135 @@ export default function Recorder() {
       setDetail('missing gameId or token')
       return
     }
+    let cancelled = false
+    let done = false
+    let started = false
     let session: RtcSession | null = null
     let recorder: MediaRecorder | null = null
     let uploader: ReturnType<typeof createStreamUploader> | null = null
-    let started = false
-    let endTimer: ReturnType<typeof setTimeout> | undefined
+    let audioCtx: AudioContext | null = null
+    let audioDest: MediaStreamAudioDestinationNode | null = null
+    let audioSrc: MediaStreamAudioSourceNode | null = null
+    let raf = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+    let silentTimer: ReturnType<typeof setTimeout> | undefined
     let maxTimer: ReturnType<typeof setTimeout> | undefined
-    let cancelled = false
+    let statusPoll: ReturnType<typeof setInterval> | undefined
+    let gapPoll: ReturnType<typeof setInterval> | undefined
+    let lastMediaAt = Date.now()
+
+    // Stable capture surfaces (never torn down until finish → one continuous recording).
+    const video = document.createElement('video')
+    video.muted = true
+    video.playsInline = true
+    video.autoplay = true
+    const canvas = document.createElement('canvas')
+    canvas.width = 1280
+    canvas.height = 720
+    const ctx = canvas.getContext('2d')
+
+    const draw = () => {
+      if (ctx && video.videoWidth) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        lastMediaAt = Date.now()
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    draw()
 
     const finish = async () => {
-      if (doneRef.current) return
-      doneRef.current = true
-      clearTimeout(endTimer)
+      if (done) return
+      done = true
+      clearTimeout(reconnectTimer)
+      clearTimeout(silentTimer)
       clearTimeout(maxTimer)
+      clearInterval(statusPoll)
+      clearInterval(gapPoll)
+      cancelAnimationFrame(raf)
       setStatus('saving')
       try {
         if (recorder && recorder.state !== 'inactive') recorder.stop()
       } catch {
         /* ignore */
       }
-      // give the final ondataavailable a tick to land
-      await new Promise((r) => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 500)) // let the final chunk land
       try {
         session?.close()
+      } catch {
+        /* ignore */
+      }
+      try {
+        await audioCtx?.close()
       } catch {
         /* ignore */
       }
       const ok = uploader ? await uploader.finalize() : false
       setStatus(ok ? 'done' : 'error')
       if (!ok) setDetail('save failed')
+    }
+
+    // Build the ONE continuous recorder off the stable canvas + audio sink.
+    const startRecorder = () => {
+      if (started || cancelled) return
+      started = true
+      audioCtx = new AudioContext()
+      audioDest = audioCtx.createMediaStreamDestination()
+      const videoTrack = (canvas as HTMLCanvasElement & { captureStream(fps?: number): MediaStream })
+        .captureStream(30)
+        .getVideoTracks()[0]
+      const mixed = new MediaStream([videoTrack, ...audioDest.stream.getAudioTracks()])
+      const mime =
+        ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => {
+          try {
+            return MediaRecorder.isTypeSupported(m)
+          } catch {
+            return false
+          }
+        }) ?? ''
+      uploader = createStreamUploader({ gameId, token, startedAt: Date.now(), mime: mime || 'video/webm' })
+      recorder = mime
+        ? new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: 3_000_000, audioBitsPerSecond: 128_000 })
+        : new MediaRecorder(mixed)
+      recorder.ondataavailable = (e) => {
+        if (e.data?.size && uploader) {
+          uploader.add(e.data)
+          setBytes(uploader.bytes())
+        }
+      }
+      recorder.start(4000)
+      setStatus('recording')
+
+      // Safety cap.
+      maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
+      // Finish when the scorer ends the game (the true end signal — captures the whole game).
+      statusPoll = setInterval(async () => {
+        const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
+        if ((data as { status?: string } | null)?.status === 'final') void finish()
+      }, 10_000)
+      // Or if the feed has been gone a long time (broadcast ended without a final), wrap up.
+      gapPoll = setInterval(() => {
+        if (Date.now() - lastMediaAt > 120_000) void finish()
+      }, 15_000)
+    }
+
+    // Point the stable surfaces at a freshly (re)connected WHEP stream.
+    const wireStream = (stream: MediaStream) => {
+      video.srcObject = stream
+      video.play().catch(() => {})
+      lastMediaAt = Date.now()
+      startRecorder()
+      if (audioCtx && audioDest) {
+        try {
+          audioSrc?.disconnect()
+        } catch {
+          /* ignore */
+        }
+        const at = stream.getAudioTracks()
+        if (at.length) {
+          audioSrc = audioCtx.createMediaStreamSource(new MediaStream([at[0]]))
+          audioSrc.connect(audioDest)
+        }
+      }
     }
 
     ;(async () => {
@@ -76,96 +178,71 @@ export default function Recorder() {
         return
       }
       setStatus('waiting')
-      const startupDeadline = Date.now() + 90_000 // keep retrying the join for ~90s
+      const startupDeadline = Date.now() + 120_000
 
-      const onMedia = (stream: MediaStream) => {
-        if (cancelled || started) return
-        started = true
-        const mime =
-          ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((m) => {
-            try {
-              return MediaRecorder.isTypeSupported(m)
-            } catch {
-              return false
-            }
-          }) ?? ''
-        uploader = createStreamUploader({ gameId, token, startedAt: Date.now(), mime: mime || 'video/webm' })
-        recorder = mime
-          ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3_000_000, audioBitsPerSecond: 128_000 })
-          : new MediaRecorder(stream)
-        recorder.ondataavailable = (e) => {
-          if (e.data?.size && uploader) {
-            uploader.add(e.data)
-            setBytes(uploader.bytes())
-          }
-        }
-        recorder.start(4000)
-        setStatus('recording')
-        maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
-      }
-
-      // Retry the WHEP join until media actually arrives — the recorder is launched right
-      // as the broadcaster's stream is coming up, so the first attempt can connect with no
-      // track yet (ICE 'connected', silent). Keep trying until the startup deadline.
-      const tryConnect = async () => {
-        if (cancelled || started) return
-        let attemptSession: RtcSession | null = null
-        const retry = () => {
+      const connect = async () => {
+        if (cancelled || done) return
+        let attempt: RtcSession | null = null
+        const drop = () => {
           try {
-            attemptSession?.close()
+            attempt?.close()
           } catch {
             /* ignore */
           }
-          if (!started && !cancelled && Date.now() < startupDeadline) setTimeout(tryConnect, 2500)
-          else if (!started && !cancelled) {
+          if (done || cancelled) return
+          if (!started && Date.now() > startupDeadline) {
             setStatus('error')
             setDetail('never received media')
+            return
           }
+          clearTimeout(reconnectTimer)
+          reconnectTimer = setTimeout(connect, 2000) // survive blips: reconnect under the recorder
         }
-        // If this attempt gets no media in a few seconds, tear it down and retry.
-        const silentTimer = setTimeout(() => {
-          if (!started) retry()
+        // No media on this attempt within a few seconds → retry.
+        clearTimeout(silentTimer)
+        silentTimer = setTimeout(() => {
+          if (!video.videoWidth) drop()
         }, 8000)
         try {
-          attemptSession = await whepPlay(
+          attempt = await whepPlay(
             whep,
             (stream) => {
               clearTimeout(silentTimer)
-              session = attemptSession
-              onMedia(stream)
+              session = attempt
+              wireStream(stream)
             },
             (state) => {
-              if (cancelled) return
               if (state === 'failed' || state === 'disconnected') {
-                if (started) {
-                  clearTimeout(endTimer)
-                  endTimer = setTimeout(() => void finish(), 12_000) // stream ended → wrap up
-                } else {
-                  clearTimeout(silentTimer)
-                  retry()
-                }
+                clearTimeout(silentTimer)
+                drop()
               }
             },
           )
-          if (cancelled) attemptSession.close()
+          if (cancelled) attempt.close()
         } catch {
           clearTimeout(silentTimer)
-          retry()
+          drop()
         }
       }
-      void tryConnect()
+      void connect()
     })()
 
     return () => {
       cancelled = true
-      clearTimeout(endTimer)
+      done = true
+      clearTimeout(reconnectTimer)
+      clearTimeout(silentTimer)
       clearTimeout(maxTimer)
+      clearInterval(statusPoll)
+      clearInterval(gapPoll)
+      cancelAnimationFrame(raf)
       try {
         if (recorder && recorder.state !== 'inactive') recorder.stop()
       } catch {
         /* ignore */
       }
       session?.close()
+      audioCtx?.close().catch(() => {})
     }
   }, [gameId, token, maxMinutes])
 
