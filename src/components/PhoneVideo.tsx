@@ -1,31 +1,83 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ScoreboardState } from '@/lib/scoreboard'
-import { usePhoneVideo } from '@/lib/phoneVideo'
+import { whepPlay, type RtcSession } from '@/lib/whip'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ScorebugBar } from '@/components/Scorebug'
 
-// Watch-page video for "another phone" games — RECEIVE ONLY. Viewers can't
-// broadcast; the scorer controls that via a private broadcaster link/QR. Shows
-// the live peer-to-peer feed with the scorebug overlaid when someone is filming,
-// otherwise the full scoreboard with a small status line.
-export function PhoneVideo({ gameId, board }: { gameId?: string; board: ScoreboardState }) {
-  const v = usePhoneVideo(gameId, true)
-  const remoteRef = useRef<HTMLVideoElement>(null)
+// Watch-page video for phone-broadcast games — RECEIVE ONLY. The broadcaster publishes
+// to Cloudflare Stream (WHIP); viewers here play it sub-second via WHEP, falling back to
+// HLS (native on Safari) if the WebRTC play can't establish. When nobody's broadcasting,
+// we show the full scoreboard. `live` comes from the broadcaster's presence heartbeat.
+export function PhoneVideo({
+  gameId: _gameId,
+  board,
+  live,
+  whepUrl,
+  hlsUrl,
+}: {
+  gameId?: string
+  board: ScoreboardState
+  live: boolean
+  whepUrl?: string | null
+  hlsUrl?: string | null
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
 
   useEffect(() => {
-    if (remoteRef.current) remoteRef.current.srcObject = v.incoming
-  }, [v.incoming])
+    const el = videoRef.current
+    if (!live || !whepUrl || !el) {
+      setPlaying(false)
+      return
+    }
+    let session: RtcSession | null = null
+    let cancelled = false
 
-  if (v.incoming) {
+    // HLS fallback: point the <video> straight at the manifest. Safari plays HLS
+    // natively; other browsers would need hls.js (added later if WHEP ever fails there).
+    const fallbackToHls = () => {
+      if (cancelled || !hlsUrl || !el) return
+      el.srcObject = null
+      el.src = hlsUrl
+      el.play().catch(() => {})
+      setPlaying(true)
+    }
+
+    whepPlay(whepUrl, (stream) => {
+      if (cancelled) return
+      el.srcObject = stream
+      el.play().catch(() => {})
+      setPlaying(true)
+    })
+      .then((s) => {
+        if (cancelled) s.close()
+        else session = s
+      })
+      .catch(fallbackToHls)
+
+    return () => {
+      cancelled = true
+      session?.close()
+      if (el) {
+        el.srcObject = null
+        el.removeAttribute('src')
+      }
+      setPlaying(false)
+    }
+  }, [live, whepUrl, hlsUrl])
+
+  // While live, render the player (with a connecting note until the first frame lands).
+  if (live && whepUrl) {
     return (
       <div>
-        <video
-          ref={remoteRef}
-          autoPlay
-          playsInline
-          controls
-          className="aspect-video w-full bg-black object-contain"
-        />
+        <div className="relative bg-black">
+          <video ref={videoRef} autoPlay playsInline controls className="aspect-video w-full bg-black object-contain" />
+          {!playing && (
+            <p className="absolute inset-0 flex items-center justify-center font-data text-xs text-cream/70">
+              Connecting to the live feed…
+            </p>
+          )}
+        </div>
         <ScorebugBar state={board} />
       </div>
     )
@@ -34,7 +86,7 @@ export function PhoneVideo({ gameId, board }: { gameId?: string; board: Scoreboa
   return (
     <>
       <ScorePanel state={board} />
-      {v.isLive && (
+      {live && (
         <p className="border-b-2 border-gold bg-[#122019] px-4 py-2 text-center font-data text-xs text-cream/80">
           Connecting to the live phone feed…
         </p>

@@ -52,6 +52,10 @@ type PublicGame = {
   recording_mime?: string | null
   recording_duration_ms?: number | null
   recording_segments?: string[] | null
+  cf_whep_url?: string | null
+  cf_hls_url?: string | null
+  cf_recording_uid?: string | null
+  cf_customer_code?: string | null
   sponsors?: { name: string | null; image: string; url: string | null }[]
 }
 
@@ -488,7 +492,13 @@ export default function Watch() {
       <ScorebugBar state={board} />
     </div>
   ) : info.video_source === 'phone_whip' ? (
-    <PhoneVideo gameId={gameId} board={board} />
+    <PhoneVideo
+      gameId={gameId}
+      board={board}
+      live={phoneStatus.live}
+      whepUrl={info.cf_whep_url}
+      hlsUrl={info.cf_hls_url}
+    />
   ) : (
     <ScorePanel state={board} />
   )

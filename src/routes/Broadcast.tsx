@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { usePhoneVideo } from '@/lib/phoneVideo'
 import { startCanvasRecording, webCodecsSupported, type CanvasRecorder } from '@/lib/canvasRecorder'
+import { whipPublish, type RtcSession } from '@/lib/whip'
 import { gameChannelName } from '@/lib/realtime'
 import { HeaderWordmark } from '@/components/Logo'
 
@@ -64,6 +65,8 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const recRef = useRef<MediaRecorder | null>(null)
   const webRecRef = useRef<CanvasRecorder | null>(null)
   const uploadedRef = useRef(false)
+  const whipRef = useRef<RtcSession | null>(null)
+  const [streamState, setStreamState] = useState<'off' | 'connecting' | 'live' | 'error'>('off')
 
   // Upload one part to a signed URL, with a few retries (mobile networks blip).
   async function uploadPart(path: string, body: Blob, contentType: string): Promise<boolean> {
@@ -285,12 +288,66 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Publish the SAME upright 16:9 canvas (v.local) to Cloudflare Stream via WHIP once
+  // we're broadcasting. Stream fans it out to viewers (WHEP, sub-second) and records it
+  // server-side. The local recording (above) stays on as the drop-proof backup.
+  useEffect(() => {
+    if (!v.local) return
+    let cancelled = false
+    setStreamState('connecting')
+    ;(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('stream-live', {
+          body: { token, action: 'start' },
+        })
+        if (cancelled) return
+        if (error || !data?.whipUrl) {
+          setStreamState('error')
+          return
+        }
+        const session = await whipPublish(data.whipUrl, v.local!, (s) =>
+          setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting'),
+        )
+        if (cancelled) {
+          session.close()
+          return
+        }
+        whipRef.current = session
+      } catch {
+        if (!cancelled) setStreamState('error')
+      }
+    })()
+    return () => {
+      cancelled = true
+      whipRef.current?.close()
+      whipRef.current = null
+      setStreamState('off')
+    }
+  }, [v.local, token])
+
+  // After the game, ask Cloudflare for the auto-recording's VOD id (ready ~60s after the
+  // stream ends) and store it as the replay. Poll a few times, best-effort.
+  const finalizeStream = useCallback(async () => {
+    for (let i = 0; i < 8; i++) {
+      try {
+        const { data } = await supabase.functions.invoke('stream-live', { body: { token, action: 'finalize' } })
+        if (data?.ready) return
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 15000))
+    }
+  }, [token])
+
   // End everything cleanly: flush + stop the recorder (while the stream is still
   // alive) BEFORE tearing the stream down, so the recording is captured and uploaded.
   const endBroadcast = useCallback(async () => {
+    whipRef.current?.close()
+    whipRef.current = null
     await finishRecording()
     vstop()
-  }, [vstop, finishRecording])
+    void finalizeStream() // grab the Stream recording in the background
+  }, [vstop, finishRecording, finalizeStream])
 
   // End the broadcast when the scorer ends the game. Catch it instantly off the
   // scorer's state broadcast, and poll as a fallback in case that event is missed.
@@ -363,7 +420,23 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
           <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-black/50 px-4 py-2">
             <span className="flex items-center gap-2 font-athletic text-sm font-semibold uppercase tracking-wide">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />
-              Live · {v.viewers} watching ·{' '}
+              Live ·{' '}
+              <span
+                className={
+                  streamState === 'live'
+                    ? 'text-board-green'
+                    : streamState === 'error'
+                      ? 'text-barn-red'
+                      : 'text-gold'
+                }
+              >
+                {streamState === 'live'
+                  ? 'streaming'
+                  : streamState === 'error'
+                    ? 'stream offline'
+                    : 'connecting…'}
+              </span>{' '}
+              ·{' '}
               <span className={recBytes > 0 ? 'text-board-green' : 'text-gold'}>
                 REC {(recBytes / 1e6).toFixed(1)}MB
               </span>
