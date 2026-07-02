@@ -146,6 +146,7 @@ export function attachWhep(
   let session: RtcSession | null = null
   let detachHls: (() => void) | null = null
   let retry: ReturnType<typeof setTimeout> | undefined
+  let mediaWatch: ReturnType<typeof setTimeout> | undefined
   let attempts = 0
   let cancelled = false
 
@@ -154,14 +155,38 @@ export function attachWhep(
     clearTimeout(retry)
     retry = setTimeout(connect, ms)
   }
+  const clearMediaWatch = () => {
+    if (mediaWatch) clearTimeout(mediaWatch)
+    mediaWatch = undefined
+  }
 
   function connect() {
     if (cancelled) return
     attempts++
+    let gotMedia = false
+
+    // Watchdog for the "connected but silent" case: if the broadcaster is still spinning
+    // up, Cloudflare accepts our WHEP connection but no track ever arrives (ICE is
+    // 'connected', so the failed/disconnected retry never fires). Without this we'd sit on
+    // "connecting…" until a manual reload. If no media lands in a few seconds, retry.
+    clearMediaWatch()
+    mediaWatch = setTimeout(() => {
+      if (cancelled || gotMedia) return
+      try {
+        session?.close()
+      } catch {
+        /* ignore */
+      }
+      session = null
+      scheduleRetry(500)
+    }, 5000)
+
     whepPlay(
       whepUrl,
       (stream) => {
         if (cancelled) return
+        gotMedia = true
+        clearMediaWatch()
         detachHls?.()
         detachHls = null
         video.srcObject = stream
@@ -173,6 +198,7 @@ export function attachWhep(
         if (state === 'connected') attempts = 0
         if (state === 'failed' || state === 'disconnected') {
           opts?.onPlaying?.(false)
+          clearMediaWatch()
           try {
             session?.close()
           } catch {
@@ -189,6 +215,7 @@ export function attachWhep(
       })
       .catch(() => {
         if (cancelled) return
+        clearMediaWatch()
         opts?.onPlaying?.(false)
         // If the handshake itself won't establish, fall back to HLS after a couple tries
         // (covers browsers without WHEP); otherwise keep retrying WHEP.
@@ -207,6 +234,7 @@ export function attachWhep(
   return () => {
     cancelled = true
     clearTimeout(retry)
+    clearMediaWatch()
     try {
       session?.close()
     } catch {
