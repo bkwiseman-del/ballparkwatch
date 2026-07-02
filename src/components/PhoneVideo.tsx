@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ScoreboardState } from '@/lib/scoreboard'
 import { whepPlay, type RtcSession } from '@/lib/whip'
+import { attachHls } from '@/lib/hls'
 import { ScorePanel } from '@/components/ScorePanel'
 import { ScorebugBar } from '@/components/Scorebug'
 
@@ -31,14 +32,14 @@ export function PhoneVideo({
       return
     }
     let session: RtcSession | null = null
+    let detachHls: (() => void) | null = null
     let cancelled = false
 
-    // HLS fallback: point the <video> straight at the manifest. Safari plays HLS
-    // natively; other browsers would need hls.js (added later if WHEP ever fails there).
+    // HLS fallback (hls.js / native) if the sub-second WebRTC play can't establish.
     const fallbackToHls = () => {
       if (cancelled || !hlsUrl || !el) return
       el.srcObject = null
-      el.src = hlsUrl
+      detachHls = attachHls(el, hlsUrl)
       el.play().catch(() => {})
       setPlaying(true)
     }
@@ -58,6 +59,7 @@ export function PhoneVideo({
     return () => {
       cancelled = true
       session?.close()
+      detachHls?.()
       if (el) {
         el.srcObject = null
         el.removeAttribute('src')

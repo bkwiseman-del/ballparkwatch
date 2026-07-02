@@ -23,6 +23,7 @@ import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from 
 import { gameChannelName } from '@/lib/realtime'
 import { parseYouTubeId } from '@/lib/youtube'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
+import { attachHls, isHlsUrl } from '@/lib/hls'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { Bunting } from '@/components/Bunting'
@@ -407,6 +408,13 @@ export default function Watch() {
     setReplayUrl(recPath ? supabase.storage.from('bpw-video').getPublicUrl(recPath).data.publicUrl : null)
   }, [recStarted, recPath, recMime, recSegKey])
 
+  // Prefer Cloudflare Stream's server-side auto-recording (upright, ABR, HLS) when we
+  // have one; the local upload is the backup. Same wall-clock anchor for event sync.
+  const streamVod =
+    info?.cf_recording_uid && info?.cf_customer_code
+      ? `https://${info.cf_customer_code}.cloudflarestream.com/${info.cf_recording_uid}/manifest/video.m3u8`
+      : null
+
   if (error) return <Center>{error}</Center>
   if (!info) return <Center>Loading…</Center>
 
@@ -425,7 +433,8 @@ export default function Watch() {
   const replay: ReplayProps | null =
     info.recording_started_at
       ? {
-          url: replayUrl ?? '',
+          // Prefer the Stream VOD (upright/ABR); the local upload is the fallback.
+          url: streamVod ?? replayUrl ?? '',
           startedAtMs: new Date(info.recording_started_at).getTime(),
           gameId: info.id,
           events,
@@ -897,6 +906,16 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
   const firedSeq = useRef(0)
   const lastTime = useRef(0)
   const didSeek = useRef(false)
+
+  // Attach the source: HLS (Stream VOD) via hls.js/native, or a plain file/blob URL.
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el || !url) return
+    didSeek.current = false
+    if (isHlsUrl(url)) return attachHls(el, url)
+    el.src = url
+    return () => el.removeAttribute('src')
+  }, [url])
   const [live, setLive] = useState<LiveGame>(() => ({ ...INITIAL_LIVE }))
   // Events reached at the current video position — drives the synced field/batter view.
   const [visible, setVisible] = useState<ViewerEvent[]>([])
@@ -1017,7 +1036,6 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           <div className="bg-black">
             <video
               ref={videoRef}
-              src={url}
               controls
               autoPlay
               playsInline
