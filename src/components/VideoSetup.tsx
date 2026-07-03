@@ -10,7 +10,7 @@ import type { Game, VideoSource } from '@/lib/types'
 const SOURCES: { value: VideoSource; label: string }[] = [
   { value: 'none', label: 'No video' },
   { value: 'phone_whip', label: 'Another phone' },
-  { value: 'youtube', label: 'External camera' },
+  { value: 'camera_rtmp', label: 'External camera' },
 ]
 
 // Per-game video setup. Reachable both from game setup (when a camera is picked)
@@ -31,7 +31,8 @@ export function VideoSetup({
   embed?: boolean // render inline (in a tab) instead of as a full-screen modal
 }) {
   const [source, setSource] = useState<VideoSource>(game.video_source)
-  const isYouTube = source === 'youtube'
+  const isYouTube = source === 'youtube' // legacy games only (no longer offered)
+  const isRtmp = source === 'camera_rtmp'
   const isPhone = source === 'phone_whip'
   // Active viewer connection so the scorer can preview the live feed + remotely
   // terminate it. (Only runs for phone games.)
@@ -111,6 +112,8 @@ export function VideoSetup({
 
       {isPhone ? (
         <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
+      ) : isRtmp ? (
+        <CameraRtmpSection gameId={game.id} shareToken={game.share_token} />
       ) : isYouTube ? (
         <>
           <section className="mb-6">
@@ -371,6 +374,136 @@ function PhoneBroadcastSection({
         </>
       ) : (
         <p className="py-4 text-center font-data text-sm text-muted-tan">Preparing broadcaster link…</p>
+      )}
+    </section>
+  )
+}
+
+// External camera / encoder (OBS, hardware encoder, RTMP-capable camera). We create/reuse
+// the game's Cloudflare live input and surface its RTMP ingest URL + stream key; the user
+// pastes those into their software. Cloudflare records RTMP ingest natively (so no headless
+// recorder is needed), and viewers watch the same WHEP/HLS feed as a phone broadcast.
+function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken: string }) {
+  const [rtmp, setRtmp] = useState<{ url: string; key: string } | null>(null)
+  const [whepUrl, setWhepUrl] = useState<string | null>(null)
+  const [hlsUrl, setHlsUrl] = useState<string | null>(null)
+  const [feedUp, setFeedUp] = useState(false)
+  const [feedStatus, setFeedStatus] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+  const previewRef = useRef<HTMLVideoElement>(null)
+
+  // Mint a broadcast grant, then create/reuse the Cloudflare live input and pull its RTMP
+  // ingest creds + the viewer-safe WHEP/HLS playback urls.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data: t } = await supabase.rpc('mint_broadcast_grant', { p_game_id: gameId })
+      if (cancelled) return
+      const token = (t as string) || shareToken
+      const { data, error } = await supabase.functions.invoke('stream-live', {
+        body: { token, action: 'start' },
+      })
+      if (cancelled) return
+      const d = data as { rtmps?: { url?: string; streamKey?: string }; whepUrl?: string; hlsUrl?: string; error?: string } | null
+      if (error || !d?.rtmps?.url || !d.rtmps.streamKey) {
+        setErr(error?.message ?? d?.error ?? 'Could not get camera ingest details.')
+        return
+      }
+      setRtmp({ url: d.rtmps.url, key: d.rtmps.streamKey })
+      setWhepUrl(d.whepUrl ?? null)
+      setHlsUrl(d.hlsUrl ?? null)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [gameId, shareToken])
+
+  // Preview the feed once the camera starts pushing.
+  useEffect(() => {
+    const el = previewRef.current
+    if (!whepUrl || !el) {
+      setFeedUp(false)
+      return
+    }
+    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setFeedUp, onStatus: setFeedStatus })
+  }, [whepUrl, hlsUrl])
+
+  const copy = async (field: string, val: string) => {
+    try {
+      await navigator.clipboard.writeText(val)
+      setCopied(field)
+      window.setTimeout(() => setCopied(null), 1600)
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  const Field = ({ label, field, value }: { label: string; field: string; value: string }) => (
+    <div className="mb-3">
+      <p className="mb-1 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">{label}</p>
+      <div className="flex gap-2">
+        <input
+          readOnly
+          value={value}
+          onFocus={(e) => e.currentTarget.select()}
+          className="min-w-0 flex-1 border-2 border-ink bg-white px-2 py-2 font-data text-xs"
+        />
+        <button
+          onClick={() => copy(field, value)}
+          className={`shrink-0 border-2 border-ink px-3 py-2 font-display text-sm ${copied === field ? 'bg-board-green text-cream' : 'text-ink'}`}
+        >
+          {copied === field ? '✓' : 'Copy'}
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <section>
+      {/* live health — driven by the actual feed (frames), like the phone preview */}
+      <div
+        className={`mb-3 flex items-center gap-2 border-2 px-3 py-2 ${
+          feedUp ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
+        }`}
+      >
+        <span className={`h-2.5 w-2.5 rounded-full ${feedUp ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`} />
+        <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
+          {feedUp ? 'Live' : 'Waiting for camera'}
+        </span>
+      </div>
+
+      {/* preview (mounted whenever we have a playback url so it can attach + report frames) */}
+      {whepUrl && (
+        <div className="mb-4 relative border-2 border-ink bg-black" style={feedUp ? undefined : { display: 'none' }}>
+          <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />
+          {!feedUp && (
+            <div className="absolute inset-0 flex items-center justify-center font-data text-sm text-cream/70">
+              Connecting…
+            </div>
+          )}
+        </div>
+      )}
+
+      <h3 className="mb-1 font-display text-lg">Point your camera/encoder here</h3>
+      <p className="mb-3 font-data text-[12px] text-muted-tan">
+        In OBS (Settings → Stream → Custom) or your camera/encoder’s RTMP settings, paste the server URL and
+        stream key below, then start streaming. Viewers watch live and the game auto-records for replay.
+      </p>
+
+      {err ? (
+        <p className="border-2 border-barn-red/40 bg-barn-red/5 p-3 font-data text-sm text-barn-red">{err}</p>
+      ) : rtmp ? (
+        <>
+          <Field label="RTMP server URL" field="url" value={rtmp.url} />
+          <Field label="Stream key" field="key" value={rtmp.key} />
+          <p className="font-data text-[11px] text-muted-tan">
+            Keep the stream key private — anyone with it can broadcast to this game.
+          </p>
+          {feedStatus && !feedUp && <p className="mt-2 font-data text-[11px] text-muted-tan/70">{feedStatus}</p>}
+        </>
+      ) : (
+        <p className="py-4 text-center font-data text-sm text-muted-tan">Preparing camera ingest…</p>
       )}
     </section>
   )

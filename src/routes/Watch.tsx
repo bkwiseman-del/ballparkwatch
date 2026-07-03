@@ -224,7 +224,8 @@ export default function Watch() {
   const hasVideo =
     (info?.video_source === 'youtube' &&
       !!parseYouTubeId(String(info?.video_config?.youtube_url ?? ''))) ||
-    (info?.video_source === 'phone_whip' && phoneStatus.live)
+    (info?.video_source === 'phone_whip' && phoneStatus.live) ||
+    info?.video_source === 'camera_rtmp'
 
   // Commentary is on by default, but the browser won't let audio play until the
   // viewer interacts. Unlock the AudioContext on the first tap anywhere so the
@@ -541,7 +542,7 @@ export default function Watch() {
       <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
       <ScorebugBar state={board} />
     </div>
-  ) : info.video_source === 'phone_whip' ? (
+  ) : info.video_source === 'phone_whip' || info.video_source === 'camera_rtmp' ? (
     <PhoneVideo
       gameId={gameId}
       board={board}

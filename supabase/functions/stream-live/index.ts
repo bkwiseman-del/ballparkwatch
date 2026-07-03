@@ -34,6 +34,8 @@ type LiveInput = {
   uid: string
   webRTC?: { url?: string }
   webRTCPlayback?: { url?: string }
+  rtmps?: { url?: string; streamKey?: string }
+  srt?: { url?: string; streamId?: string; passphrase?: string }
 }
 
 // Build the viewer-safe playback URLs from a live input. WHEP is returned by the API;
@@ -188,7 +190,19 @@ Deno.serve(async (req) => {
     const whipUrl = li.webRTC?.url ?? ''
     const { whep, hls } = playbackUrls(li)
     if (!whipUrl || !whep) return json({ error: 'Cloudflare did not return WebRTC URLs.' }, 502)
-    return json({ liveInputUid: li.uid, whipUrl, whepUrl: whep, hlsUrl: hls }, 200)
+    // rtmps (and srt) are the ingest creds for an EXTERNAL camera/encoder (OBS, hardware
+    // encoder). Same live input as the phone's WHIP — Cloudflare records RTMP ingest natively.
+    return json(
+      {
+        liveInputUid: li.uid,
+        whipUrl,
+        whepUrl: whep,
+        hlsUrl: hls,
+        rtmps: li.rtmps ?? null,
+        srt: li.srt ?? null,
+      },
+      200,
+    )
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'Stream error.' }, 502)
   }
