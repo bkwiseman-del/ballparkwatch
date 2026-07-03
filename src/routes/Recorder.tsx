@@ -1,20 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import Hls from 'hls.js'
 import { supabase } from '@/lib/supabase'
-import { whepPlay, type RtcSession } from '@/lib/whip'
 import { createStreamUploader } from '@/lib/streamUpload'
 
-// Server-side (headless) recorder for the PAID full-quality replay. A headless Chrome
-// opens /record/:gameId?token=<broadcast grant>; this joins the live WHEP feed and records
-// the full-quality stream. The phone is untouched (still WHIPs live).
+// Server-side (headless) recorder for the PAID full-quality replay. A headless Chrome opens
+// /record/:gameId?token=<broadcast grant>; it pulls the live HLS feed and records it. The
+// phone is untouched (still WHIPs live).
 //
-// TWO KEY BEHAVIORS:
-//  1. Recording does NOT start until the GAME goes live (status 'live' / game_start) — so
-//     the replay never contains pre-game camera footage.
-//  2. RECONNECT-PROOF: the feed is drawn onto a stable canvas and its audio routed through
-//     a stable Web-Audio sink, so ONE continuous MediaRecorder survives broadcaster blips;
-//     WHEP reconnects under it. It finishes only when the game goes final (or media is gone
-//     for a long stretch, or a safety cap).
+// Why HLS, not WHEP: the recorder used to subscribe via WHEP (WebRTC), but that session went
+// "connected but silent" on Railway's network and froze recordings to a few seconds — even
+// while the broadcast/live viewers were perfect. HLS is a continuous CDN pull (plain segment
+// fetches, no WebRTC session to go silent), so the capture is reliable end-to-end.
+//
+// KEY BEHAVIORS:
+//  1. Recording starts only once the GAME goes live (never before → no pre-game footage).
+//  2. Sync anchor = the HLS content clock (PROGRAM-DATE-TIME via hls.playingDate) so the
+//     replay's scorebug/commentary line up with the delayed video; falls back to now().
+//  3. Finishes when the feed ends (HLS playhead stalls) or the game goes final, plus a cap.
 //
 // Status is mirrored to window.__recorder / document.title so the manager can poll it.
 type Status = 'starting' | 'connecting' | 'waiting-for-start' | 'recording' | 'saving' | 'done' | 'error'
@@ -42,70 +45,52 @@ export default function Recorder() {
     let cancelled = false
     let done = false
     let started = false
-    let session: RtcSession | null = null
     let recorder: MediaRecorder | null = null
     let uploader: ReturnType<typeof createStreamUploader> | null = null
     let audioCtx: AudioContext | null = null
-    let audioDest: MediaStreamAudioDestinationNode | null = null
-    let audioSrc: MediaStreamAudioSourceNode | null = null
-    let currentStream: MediaStream | null = null
+    let hls: Hls | null = null
     let mediaReceived = false
     let drawTimer: ReturnType<typeof setInterval> | undefined
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined
-    let silentTimer: ReturnType<typeof setTimeout> | undefined
     let maxTimer: ReturnType<typeof setTimeout> | undefined
+    let finalTimer: ReturnType<typeof setTimeout> | undefined
     let statusPoll: ReturnType<typeof setInterval> | undefined
     let gapPoll: ReturnType<typeof setInterval> | undefined
     let lastMediaAt = Date.now()
     let lastVideoTime = -1
-    let forceReconnect: (() => void) | undefined // set once the WHEP connect loop is live
 
-    // Stable capture surfaces (never torn down until finish → one continuous recording).
+    // Stable capture surface (never torn down until finish → one continuous recording).
     const video = document.createElement('video')
-    video.muted = true
     video.playsInline = true
     video.autoplay = true
+    video.crossOrigin = 'anonymous'
+    // NOT muted: the recorder-manager launches Chrome with
+    // --autoplay-policy=no-user-gesture-required, so unmuted autoplay works, and we need the
+    // element's audio to decode so createMediaElementSource can capture it into the recording.
     const canvas = document.createElement('canvas')
     canvas.width = 1280
     canvas.height = 720
     const ctx = canvas.getContext('2d')
 
-    // Drive the canvas on a timer, NOT requestAnimationFrame — headless Chrome throttles/
-    // stops rAF for the offscreen recorder page, which froze the canvas (and thus
-    // canvas.captureStream) and truncated recordings to a few seconds. setInterval keeps
-    // ticking. lastMediaAt only advances when the video's playhead actually moves, so a
-    // frozen WHEP feed (last frame stuck) is detectable instead of looking "alive".
+    // Drive the canvas on a timer, NOT requestAnimationFrame — headless Chrome throttles rAF
+    // on the offscreen page. lastMediaAt advances only when the playhead actually moves, so a
+    // stalled feed (broadcast ended) is detectable.
     const draw = () => {
       if (ctx && video.videoWidth) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         if (video.currentTime !== lastVideoTime) {
           lastMediaAt = Date.now()
           lastVideoTime = video.currentTime
+          mediaReceived = true
         }
       }
     }
     drawTimer = setInterval(draw, 33) // ~30fps
 
-    const routeAudio = () => {
-      if (!audioCtx || !audioDest || !currentStream) return
-      try {
-        audioSrc?.disconnect()
-      } catch {
-        /* ignore */
-      }
-      const at = currentStream.getAudioTracks()
-      if (at.length) {
-        audioSrc = audioCtx.createMediaStreamSource(new MediaStream([at[0]]))
-        audioSrc.connect(audioDest)
-      }
-    }
-
     const finish = async () => {
       if (done) return
       done = true
-      clearTimeout(reconnectTimer)
-      clearTimeout(silentTimer)
       clearTimeout(maxTimer)
+      clearTimeout(finalTimer)
       clearInterval(statusPoll)
       clearInterval(gapPoll)
       clearInterval(drawTimer)
@@ -122,7 +107,7 @@ export default function Recorder() {
       }
       await new Promise((r) => setTimeout(r, 500)) // let the final chunk land
       try {
-        session?.close()
+        hls?.destroy()
       } catch {
         /* ignore */
       }
@@ -136,14 +121,19 @@ export default function Recorder() {
       if (!ok) setDetail('save failed')
     }
 
-    // Start the ONE continuous recorder — called only once the game is live AND media is
-    // flowing, so pre-game footage is never captured.
+    // Start the ONE continuous recorder — only once the game is live AND media is flowing.
     const startRecorder = () => {
       if (started || cancelled || done) return
       started = true
       audioCtx = new AudioContext()
-      audioDest = audioCtx.createMediaStreamDestination()
-      routeAudio()
+      void audioCtx.resume().catch(() => {})
+      const audioDest = audioCtx.createMediaStreamDestination()
+      try {
+        // Tap the video element's decoded audio into the recording graph.
+        audioCtx.createMediaElementSource(video).connect(audioDest)
+      } catch {
+        /* no audio track — record video only */
+      }
       const videoTrack = (canvas as HTMLCanvasElement & { captureStream(fps?: number): MediaStream })
         .captureStream(30)
         .getVideoTracks()[0]
@@ -156,7 +146,9 @@ export default function Recorder() {
             return false
           }
         }) ?? ''
-      uploader = createStreamUploader({ gameId, token, startedAt: Date.now(), mime: mime || 'video/webm' })
+      // Anchor to the HLS content wall-clock so the replay lines up with the delayed video.
+      const anchor = hls?.playingDate?.getTime() ?? Date.now()
+      uploader = createStreamUploader({ gameId, token, startedAt: anchor, mime: mime || 'video/webm' })
       recorder = mime
         ? new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: 2_000_000, audioBitsPerSecond: 128_000 })
         : new MediaRecorder(mixed)
@@ -169,113 +161,58 @@ export default function Recorder() {
       recorder.start(4000)
       setStatus('recording')
       maxTimer = setTimeout(() => void finish(), maxMinutes * 60_000)
-      // Watch the feed. A frozen playhead (WHEP connected but no new frames — the silent
-      // case that truncated recordings) forces a reconnect to resume real media; a long
-      // outage wraps up (broadcast ended without a final).
+      // The broadcast ended if the HLS playhead stops advancing for a sustained stretch
+      // (no new segments) — that's the reliable "we're done" signal for a pull-based feed.
       gapPoll = setInterval(() => {
-        const gap = Date.now() - lastMediaAt
-        if (gap > 120_000) return void finish()
-        if (gap > 6_000) forceReconnect?.()
+        if (Date.now() - lastMediaAt > 25_000) void finish()
       }, 5_000)
-    }
-
-    const wireStream = (stream: MediaStream) => {
-      currentStream = stream
-      mediaReceived = true
-      video.srcObject = stream
-      video.play().catch(() => {})
-      lastMediaAt = Date.now()
-      routeAudio() // no-op until the recorder (and its audio graph) has started
     }
 
     ;(async () => {
       const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
-      const whep = (data as { cf_whep_url?: string | null } | null)?.cf_whep_url
+      const hlsUrl = (data as { cf_hls_url?: string | null } | null)?.cf_hls_url
       if (cancelled) return
-      if (!whep) {
+      if (!hlsUrl) {
         setStatus('error')
         setDetail('no live stream for this game')
         return
       }
       setStatus('connecting')
-      const startupDeadline = Date.now() + 120_000
 
-      // Poll the game status: START recording when it goes live (never before → no pregame),
-      // FINISH when it goes final.
+      // Pull the live HLS. lowLatencyMode keeps us close to live (less delay to sync-correct);
+      // it's the LIVE feed so low-latency is correct here (unlike VOD replay).
+      if (Hls.isSupported()) {
+        hls = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 30 })
+        hls.loadSource(hlsUrl)
+        hls.attachMedia(video)
+      } else {
+        video.src = hlsUrl // native HLS (Safari) — unlikely in the headless recorder
+      }
+      video.play().catch(() => {})
+
+      // Poll the game status: START recording when it goes live (never before → no pregame);
+      // on FINAL, drain the delayed tail then wrap up (the stall watchdog usually gets there
+      // first once the broadcaster's WHIP stops and HLS stops advancing).
       statusPoll = setInterval(async () => {
         if (done) return
         const { data: g } = await supabase.rpc('get_public_game', { p_game_id: gameId })
         const s = (g as { status?: string } | null)?.status
-        if (s === 'final') return void finish()
-        if (s === 'live' && !started && mediaReceived) {
-          startRecorder()
-        } else if (s === 'live' && !started) {
-          setStatus('connecting') // live but no media yet
-        } else if (!started) {
-          setStatus('waiting-for-start')
+        if (s === 'final') {
+          if (started && !finalTimer) finalTimer = setTimeout(() => void finish(), 30_000)
+          else if (!started) return void finish()
+          return
         }
+        if (s === 'live' && !started && mediaReceived) startRecorder()
+        else if (s === 'live' && !started) setStatus('connecting')
+        else if (!started) setStatus('waiting-for-start')
       }, 2000)
-
-      const connect = async () => {
-        if (cancelled || done) return
-        let attempt: RtcSession | null = null
-        const drop = () => {
-          try {
-            attempt?.close()
-          } catch {
-            /* ignore */
-          }
-          if (done || cancelled) return
-          if (!started && Date.now() > startupDeadline) return // give the status poll the last word
-          clearTimeout(reconnectTimer)
-          reconnectTimer = setTimeout(connect, 2000) // survive blips: reconnect under the recorder
-        }
-        clearTimeout(silentTimer)
-        silentTimer = setTimeout(() => {
-          if (!mediaReceived) drop()
-        }, 8000)
-        try {
-          attempt = await whepPlay(
-            whep,
-            (stream) => {
-              clearTimeout(silentTimer)
-              session = attempt
-              wireStream(stream)
-            },
-            (state) => {
-              if (state === 'failed' || state === 'disconnected') {
-                clearTimeout(silentTimer)
-                drop()
-              }
-            },
-          )
-          if (cancelled) attempt.close()
-        } catch {
-          clearTimeout(silentTimer)
-          drop()
-        }
-      }
-      void connect()
-      // Let the gap watchdog force a fresh WHEP subscription when the feed freezes.
-      forceReconnect = () => {
-        if (done || cancelled) return
-        try {
-          session?.close()
-        } catch {
-          /* ignore */
-        }
-        session = null
-        clearTimeout(reconnectTimer)
-        void connect()
-      }
     })()
 
     return () => {
       cancelled = true
       done = true
-      clearTimeout(reconnectTimer)
-      clearTimeout(silentTimer)
       clearTimeout(maxTimer)
+      clearTimeout(finalTimer)
       clearInterval(statusPoll)
       clearInterval(gapPoll)
       clearInterval(drawTimer)
@@ -284,7 +221,11 @@ export default function Recorder() {
       } catch {
         /* ignore */
       }
-      session?.close()
+      try {
+        hls?.destroy()
+      } catch {
+        /* ignore */
+      }
       audioCtx?.close().catch(() => {})
     }
   }, [gameId, token, maxMinutes])
