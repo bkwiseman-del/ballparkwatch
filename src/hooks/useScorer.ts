@@ -135,8 +135,11 @@ export function useScorer(gameId: string | undefined) {
             batter_id: p.batter_id ?? null,
           }
         })
+        // Trust the local backup for the projection — the (final) screen must show the right
+        // score even if re-persisting is rejected (inserts into a final game are blocked).
+        rows = intended
         const { error: replayErr } = await supabase.from('game_events').insert(inserts)
-        if (!replayErr) rows = intended // recovered; otherwise keep WAL and retry next load
+        if (replayErr) console.warn('[scorer] replay re-persist failed, using local backup:', replayErr.message)
       }
 
       if (cancelled) return
