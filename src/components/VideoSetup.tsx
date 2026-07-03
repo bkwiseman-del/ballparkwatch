@@ -113,7 +113,23 @@ export function VideoSetup({
       {isPhone ? (
         <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
       ) : isRtmp ? (
-        <CameraRtmpSection gameId={game.id} shareToken={game.share_token} />
+        <>
+          <CameraRtmpSection gameId={game.id} shareToken={game.share_token} />
+          {/* External cameras play back via HLS (Cloudflare doesn't do sub-second WebRTC for
+              RTMP ingest), so the video runs seconds behind the live scorebug — calibrate the
+              delay so the viewer holds the scorebug back to match. */}
+          <LatencySection
+            armedAt={armedAt}
+            tap={tap}
+            samples={samples}
+            clear={() => setSamples([])}
+            avg={avg}
+            useMeasured={() => avg !== null && setDelayMs(avg)}
+            delayMs={delayMs}
+            setDelayMs={setDelayMs}
+            nudge={nudge}
+          />
+        </>
       ) : isYouTube ? (
         <>
           <section className="mb-6">
@@ -160,7 +176,7 @@ export function VideoSetup({
     </>
   )
 
-  const saveBar = isYouTube ? (
+  const saveBar = isYouTube || isRtmp ? (
     <div className={embed ? 'mt-4 flex items-center gap-3' : 'flex items-center gap-3 border-t-2 border-ink bg-cream-off p-4'}>
       <button onClick={save} disabled={saving} className="flex-1 bg-gold py-3 font-display text-ink disabled:opacity-60">
         {saving ? 'Saving…' : 'Save'}
