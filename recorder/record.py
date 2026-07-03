@@ -72,19 +72,14 @@ def main(whep_url: str, out_path: str) -> int:
         media = caps.get_structure(0).get_string("media")  # robust: 'video' / 'audio'
         if media == "video":
             linked.add(pad)
-            log("link video", caps.to_string()[:80])
-            # Force avc stream-format so h264parse puts SPS/PPS in the mp4 codec box (avcC).
-            # Without this the mp4 has a video track but no config → player can't decode → spins.
-            capsf = Gst.ElementFactory.make("capsfilter")
-            capsf.set_property("caps", Gst.Caps.from_string("video/x-h264,stream-format=avc,alignment=au"))
+            log("link video caps:", caps.to_string()[:300])  # full caps → is sprop-parameter-sets there?
+            depay = Gst.ElementFactory.make("rtph264depay")
+            # Cloudflare doesn't send SPS/PPS in-band; request a keyframe so an IDR + parameter
+            # sets arrive, letting h264parse build the mp4 codec box (avcC) → decodable video.
+            depay.set_property("request-keyframe", True)
             link_chain(
                 pad,
-                [
-                    Gst.ElementFactory.make("queue"),
-                    Gst.ElementFactory.make("rtph264depay"),
-                    Gst.ElementFactory.make("h264parse"),
-                    capsf,
-                ],
+                [Gst.ElementFactory.make("queue"), depay, Gst.ElementFactory.make("h264parse")],
             )
             log("linked video (H.264 copy)")
         elif media == "audio":
