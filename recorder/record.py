@@ -1,110 +1,122 @@
 #!/usr/bin/env python3
-# aiortc WHEP recorder: connect to a Cloudflare WHEP endpoint, receive the audio+video
-# tracks, and record them to a file. Runs until SIGINT/SIGTERM (the Node manager stops it
-# when the game goes final / the feed ends), then finalizes the file.
+# GStreamer WHEP recorder (COPY). Pulls the Cloudflare WHEP feed with whepsrc and writes an
+# mp4: the H.264 video is COPIED (no decode/encode → no black frames, full quality, plays in
+# Safari), and only the audio is transcoded opus→AAC (mp4-friendly). whepsrc exposes dynamic
+# pads after negotiation, so we link them in a pad-added handler (what plain gst-launch could
+# not do reliably). SIGINT/SIGTERM → EOS so the mp4 is finalized.
 #
-# aiortc is a full Python WebRTC stack — it handles ICE (STUN/TURN), SDP, RTP and recording
-# directly, avoiding the gst-launch dynamic-pad / webrtcbin-FEC issues that left the file empty.
-#
-#   python3 record.py <whep_url> <out_path.mp4>
-import argparse
-import asyncio
+#   python3 record.py <whep_url> <out.mp4>
 import signal
 import sys
 
-import aiohttp
-from aiortc import (
-    RTCConfiguration,
-    RTCIceServer,
-    RTCPeerConnection,
-    RTCRtpReceiver,
-    RTCSessionDescription,
-)
-from aiortc.contrib.media import MediaRecorder
+import gi
+
+gi.require_version("Gst", "1.0")
+from gi.repository import GLib, Gst  # noqa: E402
 
 
 def log(*a):
     print("[py]", *a, flush=True)
 
 
-async def run(whep_url: str, out_path: str) -> int:
-    config = RTCConfiguration(
-        iceServers=[
-            RTCIceServer(urls=["stun:stun.l.google.com:19302"]),
-            # TURN over TCP:443 carries the media even where the host blocks WebRTC UDP.
-            RTCIceServer(
-                urls=["turn:openrelay.metered.ca:443?transport=tcp"],
-                username="openrelayproject",
-                credential="openrelayproject",
-            ),
-        ]
+VIDEO_CAPS = (
+    "application/x-rtp,media=video,encoding-name=H264,clock-rate=90000,payload=103,"
+    "packetization-mode=(string)1,profile-level-id=(string)42e01f"
+)
+
+
+def main(whep_url: str, out_path: str) -> int:
+    Gst.init(None)
+    pipeline = Gst.Pipeline.new("rec")
+
+    src = Gst.ElementFactory.make("whepsrc", "w")
+    src.set_property("whep-endpoint", whep_url)
+    src.set_property("stun-server", "stun://stun.l.google.com:19302")
+    src.set_property(
+        "turn-server",
+        "turn://openrelayproject:openrelayproject@openrelay.metered.ca:443?transport=tcp",
     )
-    pc = RTCPeerConnection(configuration=config)
-    recorder = MediaRecorder(out_path)
-    stop = asyncio.Event()
+    src.set_property("video-caps", Gst.Caps.from_string(VIDEO_CAPS))
 
-    @pc.on("track")
-    def on_track(track):
-        log("track", track.kind)
-        recorder.addTrack(track)
+    mux = Gst.ElementFactory.make("mp4mux", "mux")
+    mux.set_property("faststart", True)  # moov at front → progressive playback
+    sink = Gst.ElementFactory.make("filesink", "sink")
+    sink.set_property("location", out_path)
 
-    @pc.on("connectionstatechange")
-    async def on_conn():
-        log("connection", pc.connectionState)
-        # Feed genuinely dropped → stop (the manager then finalizes + uploads).
-        if pc.connectionState in ("failed", "closed"):
-            stop.set()
+    for e in (src, mux, sink):
+        pipeline.add(e)
+    mux.link(sink)
 
-    # We RECEIVE both media. Force H.264 on the video transceiver: Cloudflare only sends the
-    # published video track if the subscriber offers a matching H.264 profile — otherwise it
-    # matches audio (opus) but sends NO video, which is why the recording was audio-only/black.
-    video_tr = pc.addTransceiver("video", direction="recvonly")
-    pc.addTransceiver("audio", direction="recvonly")
-    caps = RTCRtpReceiver.getCapabilities("video")
-    h264 = [c for c in caps.codecs if "H264" in c.mimeType]
-    if h264:
-        video_tr.setCodecPreferences(h264)
-        log("video codecs offered:", [f"{c.mimeType} {c.parameters}" for c in h264])
+    def link_chain(pad, elements):
+        prev = None
+        for e in elements:
+            pipeline.add(e)
+        pad.link(elements[0].get_static_pad("sink"))
+        for e in elements:
+            if prev is not None:
+                prev.link(e)
+            prev = e
+        prev.link(mux)  # request a mux sink pad
+        for e in elements:
+            e.sync_state_with_parent()
 
-    offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)  # aiortc gathers ICE before this resolves
+    def on_pad(_src, pad):
+        caps = pad.get_current_caps() or pad.query_caps(None)
+        s = caps.to_string() if caps else ""
+        log("pad-added", s[:90])
+        if "media=(string)video" in s:
+            # COPY H.264 (config-interval=-1 keeps SPS/PPS in-band for mp4).
+            depay = Gst.ElementFactory.make("rtph264depay")
+            parse = Gst.ElementFactory.make("h264parse")
+            parse.set_property("config-interval", -1)
+            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse])
+            log("linked video (H.264 copy)")
+        elif "media=(string)audio" in s:
+            # Transcode opus → AAC (small, mp4/Safari-friendly).
+            link_chain(
+                pad,
+                [
+                    Gst.ElementFactory.make("queue"),
+                    Gst.ElementFactory.make("rtpopusdepay"),
+                    Gst.ElementFactory.make("opusdec"),
+                    Gst.ElementFactory.make("audioconvert"),
+                    Gst.ElementFactory.make("audioresample"),
+                    Gst.ElementFactory.make("avenc_aac"),
+                ],
+            )
+            log("linked audio (AAC)")
 
-    async with aiohttp.ClientSession() as sess:
-        async with sess.post(
-            whep_url, data=pc.localDescription.sdp, headers={"Content-Type": "application/sdp"}
-        ) as resp:
-            if resp.status not in (200, 201):
-                log("WHEP POST failed", resp.status, (await resp.text())[:300])
-                return 2
-            answer_sdp = await resp.text()
-    await pc.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
-    # Confirm Cloudflare accepted a video track (a sendonly m=video with a payload).
-    for line in answer_sdp.splitlines():
-        if line.startswith("m=video") or line.startswith("a=sendonly") or "H264" in line:
-            log("answer:", line.strip())
+    src.connect("pad-added", on_pad)
 
-    await recorder.start()
+    loop = GLib.MainLoop()
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+
+    def on_msg(_bus, msg):
+        if msg.type == Gst.MessageType.EOS:
+            log("EOS")
+            loop.quit()
+        elif msg.type == Gst.MessageType.ERROR:
+            err, dbg = msg.parse_error()
+            log("ERROR", err.message, "|", (dbg or "")[:200])
+            loop.quit()
+
+    bus.connect("message", on_msg)
+
+    def stop(_sig, _frame):
+        log("stopping -> EOS")
+        pipeline.send_event(Gst.Event.new_eos())
+
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+
+    pipeline.set_state(Gst.State.PLAYING)
     log("recording ->", out_path)
-
-    loop = asyncio.get_event_loop()
-    for s in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(s, stop.set)
-    await stop.wait()
-
-    log("stopping")
-    await recorder.stop()
-    await pc.close()
+    loop.run()
+    pipeline.set_state(Gst.State.NULL)
     log("done")
     return 0
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("whep")
-    ap.add_argument("out")
-    args = ap.parse_args()
-    try:
-        sys.exit(asyncio.run(run(args.whep, args.out)))
-    except Exception as e:  # noqa
-        log("fatal", repr(e))
-        sys.exit(1)
+    sys.exit(main(sys.argv[1], sys.argv[2]))
