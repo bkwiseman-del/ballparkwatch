@@ -77,7 +77,27 @@ def main(whep_url: str, out_path: str) -> int:
 
     linked = set()
     frame_counter = [None]  # holds the video-frame counter list once the video branch links
+    rtp_counter = [None]  # holds the raw-video-RTP-in counter (arrives before keyframe filtering)
     wb = [None]  # the nested webrtcbin, so we can send PLIs on its real src pad (not the ghost)
+
+    def find_webrtcbin():
+        # whepsrc creates its webrtcbin at construction — BEFORE we can connect
+        # deep-element-added — so that signal never fires. Walk the whepsrc bin to find it.
+        if wb[0] is not None:
+            return wb[0]
+        if not isinstance(src, Gst.Bin):
+            return None
+        it = src.iterate_recurse()
+        while True:
+            res, el = it.next()
+            if res != Gst.IteratorResult.OK:
+                break
+            f = el.get_factory()
+            if f and f.get_name() == "webrtcbin":
+                wb[0] = el
+                log("found webrtcbin via bin-walk")
+                return el
+        return None
 
     def try_link(pad):
         if pad in linked:
@@ -92,6 +112,18 @@ def main(whep_url: str, out_path: str) -> int:
             depay = Gst.ElementFactory.make("rtph264depay")
             depay.set_property("request-keyframe", True)  # ask for a new IDR on packet loss
             depay.set_property("wait-for-keyframe", True)  # don't emit partial pre-IDR garbage
+            # Count RAW video RTP packets arriving at the depay (before wait-for-keyframe drops
+            # pre-IDR data). Disambiguates "no video received at all" from "video received but
+            # no keyframe": if this stays 0, the feed isn't sending us video; if it climbs but
+            # frames stay 0, it's purely a missing-keyframe problem.
+            rtp_in = [0]
+
+            def count_rtp(_pad, _info):
+                rtp_in[0] += 1
+                return Gst.PadProbeReturn.OK
+
+            depay.get_static_pad("sink").add_probe(Gst.PadProbeType.BUFFER, count_rtp)
+            rtp_counter[0] = rtp_in
             parse_in = Gst.ElementFactory.make("h264parse")
             dec = Gst.ElementFactory.make("avdec_h264")
             conv = Gst.ElementFactory.make("videoconvert")
@@ -132,14 +164,17 @@ def main(whep_url: str, out_path: str) -> int:
                 # whepsrc's ghost pad, which accepts the event but doesn't forward it into
                 # webrtcbin → no PLI on the wire). Fresh event per pad (send_event consumes it).
                 sent = 0
-                w = wb[0]
+                w = find_webrtcbin()
                 if w is not None:
-                    for p in w.pads:
-                        if p.get_direction() == Gst.PadDirection.SRC:
-                            ev = GstVideo.video_event_new_upstream_force_key_unit(
-                                Gst.CLOCK_TIME_NONE, True, 0)
-                            if p.send_event(ev):
-                                sent += 1
+                    it = w.iterate_src_pads()
+                    while True:
+                        res, p = it.next()
+                        if res != Gst.IteratorResult.OK:
+                            break
+                        ev = GstVideo.video_event_new_upstream_force_key_unit(
+                            Gst.CLOCK_TIME_NONE, True, 0)
+                        if p.send_event(ev):
+                            sent += 1
                 # Belt-and-suspenders: the whepsrc ghost pad too.
                 pad.send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
                 return sent
@@ -213,11 +248,13 @@ def main(whep_url: str, out_path: str) -> int:
     def on_msg(_bus, msg):
         if msg.type == Gst.MessageType.EOS:
             n = frame_counter[0][0] if frame_counter[0] else 0
+            rtp = rtp_counter[0][0] if rtp_counter[0] else 0
             if n == 0:
-                log("WARNING: EOS with ZERO encoded video frames — feed never delivered a "
-                    "decodable keyframe (mp4 will have no usable video)")
+                log(f"WARNING: EOS with ZERO encoded video frames (raw video RTP in={rtp}). "
+                    + ("Video IS arriving but no keyframe → PLI/keyframe problem."
+                       if rtp > 0 else "NO video RTP arriving at all → feed/receive problem."))
             else:
-                log(f"EOS — {n} video frames encoded")
+                log(f"EOS — {n} video frames encoded (raw video RTP in={rtp})")
             loop.quit()
         elif msg.type == Gst.MessageType.ERROR:
             err, dbg = msg.parse_error()
