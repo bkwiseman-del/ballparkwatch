@@ -187,18 +187,14 @@ async function recordGame(gameId, token) {
       } catch {
         /* not created yet */
       }
-      if (size > lastSize) {
-        lastSize = size
-        lastGrow = Date.now()
-      }
+      if (size > lastSize) lastSize = size
       remember(gameId, { status: 'recording', bytes: size })
-      if (Date.now() - lastGrow > 30_000) {
-        console.log(`[gst ${gameId}] file stalled — feed ended`)
-        break
-      }
+      // Do NOT stop on file-size stall — aiortc buffers the webm and flushes in bursts, so
+      // the on-disk size doesn't grow smoothly (that false-stopped mid-game). Finish only on
+      // the game going final, the recorder process exiting (feed truly dropped), or the cap.
       const g = await getGame(gameId).catch(() => null)
       if (g?.status === 'final') {
-        console.log(`[gst ${gameId}] game final`)
+        console.log(`[rec ${gameId}] game final`)
         break
       }
     }

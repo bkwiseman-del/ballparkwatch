@@ -41,17 +41,19 @@ async def run(whep_url: str, out_path: str) -> int:
     )
     pc = RTCPeerConnection(configuration=config)
     recorder = MediaRecorder(out_path)
-    got_track = asyncio.Event()
+    stop = asyncio.Event()
 
     @pc.on("track")
     def on_track(track):
         log("track", track.kind)
         recorder.addTrack(track)
-        got_track.set()
 
     @pc.on("connectionstatechange")
     async def on_conn():
         log("connection", pc.connectionState)
+        # Feed genuinely dropped → stop (the manager then finalizes + uploads).
+        if pc.connectionState in ("failed", "closed"):
+            stop.set()
 
     # We RECEIVE both media. Force H.264 on the video transceiver: Cloudflare only sends the
     # published video track if the subscriber offers a matching H.264 profile — otherwise it
@@ -84,7 +86,6 @@ async def run(whep_url: str, out_path: str) -> int:
     await recorder.start()
     log("recording ->", out_path)
 
-    stop = asyncio.Event()
     loop = asyncio.get_event_loop()
     for s in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(s, stop.set)
