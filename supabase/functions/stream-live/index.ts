@@ -127,6 +127,32 @@ Deno.serve(async (req) => {
       return json({ uploadUrl, uid }, 200)
     }
 
+    if (action === 'video-status') {
+      // Diagnostic: why did Cloudflare reject/accept the uploaded VOD?
+      const uid = String(body.recordingUid ?? '')
+      if (!uid) return json({ error: 'Missing recordingUid.' }, 400)
+      const v = (await cf(`/${uid}`)) as {
+        readyToStream?: boolean
+        status?: { state?: string; errorReasonText?: string; errorReasonCode?: string; pctComplete?: string }
+        input?: { width?: number; height?: number }
+        duration?: number
+        size?: number
+      }
+      return json(
+        {
+          readyToStream: v.readyToStream,
+          state: v.status?.state,
+          errorReasonCode: v.status?.errorReasonCode,
+          errorReasonText: v.status?.errorReasonText,
+          pctComplete: v.status?.pctComplete,
+          input: v.input,
+          duration: v.duration,
+          size: v.size,
+        },
+        200,
+      )
+    }
+
     if (action === 'set-recording') {
       if (!body.recordingUid) return json({ error: 'Missing recordingUid.' }, 400)
       await db.rpc('stream_set_recording', { p_token: token, p_recording_uid: String(body.recordingUid) })

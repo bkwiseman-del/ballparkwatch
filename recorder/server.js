@@ -66,6 +66,33 @@ async function streamLive(body) {
 }
 
 
+async function uploadToSupabase(token, gameId, startedAt, file, size) {
+  const path = `recordings/${gameId}/${startedAt}/full.mp4`
+  const signRes = await fetch(`${SUPABASE_URL}/functions/v1/sign-upload`, {
+    method: 'POST',
+    headers: sbHeaders(false),
+    body: JSON.stringify({ token, path }),
+  })
+  const sign = await signRes.json().catch(() => ({}))
+  if (!signRes.ok || !sign.token) throw new Error(`sign-upload ${signRes.status}: ${sign.error || ''}`)
+  const { createReadStream } = await import('node:fs')
+  const putUrl = `${SUPABASE_URL}/storage/v1/object/upload/sign/bpw-video/${sign.path || path}?token=${sign.token}`
+  const put = await fetch(putUrl, {
+    method: 'PUT',
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${ANON}`,
+      'Content-Type': 'video/mp4',
+      'Content-Length': String(size),
+      'x-upsert': 'true',
+    },
+    body: createReadStream(file),
+    duplex: 'half',
+  })
+  if (!put.ok) throw new Error(`storage PUT ${put.status}: ${(await put.text().catch(() => '')).slice(0, 200)}`)
+  return path
+}
+
 async function uploadToCloudflare(token, file, size) {
   const { uploadUrl, uid } = await streamLive({ token, action: 'upload-init', uploadLength: size })
   if (!uploadUrl || !uid) throw new Error('upload-init returned no url')
@@ -187,26 +214,26 @@ async function recordGame(gameId, token) {
       for (let i = 0; i < 24 && !procExited; i++) await sleep(500)
     }
 
-    // 5. Upload to Cloudflare Stream + point the replay at it.
-    const size = (await stat(file)).size.valueOf()
+    // 5. Upload the recording to Supabase and serve the mp4 DIRECTLY (the browser plays it,
+    //    no Cloudflare transcode — CF currently rejects the aiortc file as ERR_NON_VIDEO).
+    //    Cloudflare CDN can be re-added once the container is CF-compatible.
+    const size = (await stat(file)).size
     if (!size) {
       remember(gameId, { status: 'error', detail: 'empty recording' })
       return
     }
     console.log('[rec] uploading', gameId, size, 'bytes')
-    const uid = await uploadToCloudflare(token, file, size)
-    // Anchor the replay clock to when capture started (WHEP is sub-second).
+    const spath = await uploadToSupabase(token, gameId, startedAt, file, size)
     await rpc('save_recording', {
       p_token: token,
-      p_path: null,
+      p_path: spath,
       p_started_at: new Date(startedAt).toISOString(),
       p_duration_ms: Date.now() - startedAt,
       p_mime: 'video/mp4',
       p_segments: null,
-    }).catch((e) => console.error('[rec] save_recording', e?.message))
-    await streamLive({ token, action: 'set-recording', recordingUid: uid })
-    console.log('[rec] done', gameId, uid)
-    remember(gameId, { status: 'done', bytes: size, detail: uid })
+    })
+    console.log('[rec] done', gameId, spath)
+    remember(gameId, { status: 'done', bytes: size, detail: spath })
   } catch (e) {
     console.error('[rec] error', gameId, e?.message || e)
     remember(gameId, { status: 'error', detail: String(e?.message || e) })
