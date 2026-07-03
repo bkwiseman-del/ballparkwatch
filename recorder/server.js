@@ -83,33 +83,29 @@ function pipelineArgs(whep, file) {
     // exact params. Phones publish H.264; offer H.264 with the standard fmtp (packetization-
     // mode + constrained-baseline profile) so the SDP matches instead of the generic default.
     'video-caps=application/x-rtp,media=video,encoding-name=H264,clock-rate=90000,payload=103,packetization-mode=(string)1,profile-level-id=(string)42e01f',
+    // ISOLATION STEP: video-only into the file, audio to a fakesink. Connection is confirmed
+    // working; this proves the depay→mux→file path before adding audio back.
     'w.',
     '!',
     'application/x-rtp,media=video',
+    '!',
+    'queue',
     '!',
     'rtph264depay',
     '!',
     'h264parse',
     '!',
-    'queue',
+    'matroskamux',
     '!',
-    'mux.',
+    'filesink',
+    `location=${file}`,
     'w.',
     '!',
     'application/x-rtp,media=audio',
     '!',
-    'rtpopusdepay',
-    '!',
-    'opusparse',
-    '!',
-    'queue',
-    '!',
-    'mux.',
-    'matroskamux',
-    'name=mux',
-    '!',
-    'filesink',
-    `location=${file}`,
+    'fakesink',
+    'sync=false',
+    'async=false',
   ]
 }
 
