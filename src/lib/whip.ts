@@ -72,13 +72,18 @@ export async function whipPublish(
   pc.getTransceivers().forEach((t) => (t.direction = 'sendonly'))
   if (onState) pc.onconnectionstatechange = () => onState(pc.connectionState)
 
-  // Cap the outbound video bitrate/framerate so the phone's encoder doesn't run flat-out
-  // (heat) and so weak-signal fields don't choke. Cloudflare builds the ABR ladder
-  // server-side, so we only need to send one clean 720p30 encoding.
+  // One clean 720p30 encoding (Cloudflare builds the ABR ladder server-side). 2.5 Mbps
+  // ceiling: enough for crisp 720p, and affordable now that recording is server-side so the
+  // phone encodes only ONCE (no more double-encode heat). It's a ceiling, not a floor —
+  // WebRTC adapts DOWN on weak fields. degradationPreference 'maintain-framerate' makes it
+  // soften resolution rather than drop frames under strain, so motion stays smooth (fixes
+  // the choppy look) instead of stuttering.
   const vsender = pc.getSenders().find((s) => s.track?.kind === 'video')
   if (vsender) {
     const params = vsender.getParameters()
-    params.encodings = [{ maxBitrate: 1_800_000, maxFramerate: 30 }]
+    params.encodings = [{ maxBitrate: 2_500_000, maxFramerate: 30 }]
+    ;(params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference =
+      'maintain-framerate'
     await vsender.setParameters(params).catch(() => {})
   }
 
