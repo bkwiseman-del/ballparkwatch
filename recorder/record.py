@@ -13,7 +13,13 @@ import signal
 import sys
 
 import aiohttp
-from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
+from aiortc import (
+    RTCConfiguration,
+    RTCIceServer,
+    RTCPeerConnection,
+    RTCRtpReceiver,
+    RTCSessionDescription,
+)
 from aiortc.contrib.media import MediaRecorder
 
 
@@ -47,9 +53,16 @@ async def run(whep_url: str, out_path: str) -> int:
     async def on_conn():
         log("connection", pc.connectionState)
 
-    # We RECEIVE both media.
-    pc.addTransceiver("video", direction="recvonly")
+    # We RECEIVE both media. Force H.264 on the video transceiver: Cloudflare only sends the
+    # published video track if the subscriber offers a matching H.264 profile — otherwise it
+    # matches audio (opus) but sends NO video, which is why the recording was audio-only/black.
+    video_tr = pc.addTransceiver("video", direction="recvonly")
     pc.addTransceiver("audio", direction="recvonly")
+    caps = RTCRtpReceiver.getCapabilities("video")
+    h264 = [c for c in caps.codecs if "H264" in c.mimeType]
+    if h264:
+        video_tr.setCodecPreferences(h264)
+        log("video codecs offered:", [c.mimeType + " " + (c.sdpFmtpLine or "") for c in h264])
 
     offer = await pc.createOffer()
     await pc.setLocalDescription(offer)  # aiortc gathers ICE before this resolves
@@ -63,6 +76,10 @@ async def run(whep_url: str, out_path: str) -> int:
                 return 2
             answer_sdp = await resp.text()
     await pc.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
+    # Confirm Cloudflare accepted a video track (a sendonly m=video with a payload).
+    for line in answer_sdp.splitlines():
+        if line.startswith("m=video") or line.startswith("a=sendonly") or "H264" in line:
+            log("answer:", line.strip())
 
     await recorder.start()
     log("recording ->", out_path)
