@@ -1,10 +1,10 @@
-// Bandbox recorder-manager (Railway service) — GStreamer WHEP capture.
+// Bandbox recorder-manager (Railway service) — aiortc WHEP capture.
 //
-// Records the PAID full-quality replay by pulling the game's Cloudflare WHEP feed with a
-// native GStreamer pipeline (whepsrc) and copying it to a file — no headless browser, no
-// re-encode. On the broadcast's go-live the edge function POSTs { gameId, token } here; we
-// wait for the game to go live, run the capture until it goes final (or the feed stops),
-// then upload the file into Cloudflare Stream and point the game's replay at it.
+// Records the PAID full-quality replay by pulling the game's Cloudflare WHEP feed with
+// record.py (aiortc) and writing it to a file — no headless browser. On the broadcast's
+// go-live the edge function POSTs { gameId, token } here; we wait for the game to go live,
+// run record.py until it goes final (or the feed stops), then upload the file into
+// Cloudflare Stream and point the game's replay at it.
 //
 // Env: RECORDER_SECRET (bearer auth), SUPABASE_URL, SUPABASE_ANON_KEY, MAX_MINUTES, PORT.
 
@@ -65,49 +65,6 @@ async function streamLive(body) {
   return j
 }
 
-// GStreamer pipeline: pull WHEP, copy H.264 video + Opus audio into Matroska (no re-encode).
-// Cloudflare transcodes on upload, so the container just needs intact elementary streams.
-function pipelineArgs(whep, file) {
-  return [
-    '-e',
-    'whepsrc',
-    'name=w',
-    `whep-endpoint=${whep}`,
-    // ICE for a containerized server: the container only sees a private IP, so we need STUN
-    // (to discover a public candidate) AND a TURN relay to actually carry the media. The TURN
-    // relay over TCP:443 works even where the host blocks WebRTC UDP — which is why direct
-    // host candidates alone failed with "Internal data stream error".
-    'stun-server=stun://stun.l.google.com:19302',
-    'turn-server=turn://openrelayproject:openrelayproject@openrelay.metered.ca:443?transport=tcp',
-    // Cloudflare Realtime rejects a WHEP offer whose codec doesn't match the PUBLISHED track's
-    // exact params. Phones publish H.264; offer H.264 with the standard fmtp (packetization-
-    // mode + constrained-baseline profile) so the SDP matches instead of the generic default.
-    'video-caps=application/x-rtp,media=video,encoding-name=H264,clock-rate=90000,payload=103,packetization-mode=(string)1,profile-level-id=(string)42e01f',
-    // ISOLATION STEP: video-only into the file, audio to a fakesink. Connection is confirmed
-    // working; this proves the depay→mux→file path before adding audio back.
-    'w.',
-    '!',
-    'application/x-rtp,media=video',
-    '!',
-    'queue',
-    '!',
-    'rtph264depay',
-    '!',
-    'h264parse',
-    '!',
-    'matroskamux',
-    '!',
-    'filesink',
-    `location=${file}`,
-    'w.',
-    '!',
-    'application/x-rtp,media=audio',
-    '!',
-    'fakesink',
-    'sync=false',
-    'async=false',
-  ]
-}
 
 async function uploadToCloudflare(token, file, size) {
   const { uploadUrl, uid } = await streamLive({ token, action: 'upload-init', uploadLength: size })
@@ -175,20 +132,17 @@ async function recordGame(gameId, token) {
       return
     }
 
-    // 2. Start the capture.
-    file = `/tmp/rec-${gameId}-${Date.now()}.mkv`
+    // 2. Start the capture (aiortc receives the WHEP track and records it to file).
+    file = `/tmp/rec-${gameId}-${Date.now()}.mp4`
     startedAt = Date.now()
     console.log('[rec] start capture', gameId, whep)
-    proc = spawn('gst-launch-1.0', pipelineArgs(whep, file), {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, GST_DEBUG: '2,whepsrc:6,webrtcbin:4,webrtcice:5,nicesrc:4' },
-    })
+    proc = spawn('python3', ['record.py', whep, file], { stdio: ['ignore', 'pipe', 'pipe'] })
     active.set(gameId, { proc })
-    proc.stdout.on('data', (d) => console.log(`[gst ${gameId}]`, String(d).trim()))
-    proc.stderr.on('data', (d) => console.log(`[gst ${gameId} err]`, String(d).trim()))
+    proc.stdout.on('data', (d) => console.log(`[py ${gameId}]`, String(d).trim()))
+    proc.stderr.on('data', (d) => console.log(`[py ${gameId} err]`, String(d).trim()))
     proc.on('exit', (code) => {
       procExited = true
-      console.log(`[gst ${gameId}] exited`, code)
+      console.log(`[py ${gameId}] exited`, code)
     })
     remember(gameId, { status: 'recording', bytes: 0 })
 
