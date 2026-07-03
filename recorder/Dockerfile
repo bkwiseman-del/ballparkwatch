@@ -1,10 +1,13 @@
-# Bandbox WHEP recorder — GStreamer COPY pipeline (Python/GI), no re-encode of video.
+# Bandbox WHEP recorder — GStreamer RE-ENCODE pipeline (Python/GI).
 #
-# aiortc re-encoded the video and it came out black (broken H.264 decode) + VP8/webm doesn't
-# play on Safari. This copies the original H.264 straight to mp4 (no decode → no black, full
-# quality, Safari-friendly) and only transcodes audio opus→AAC. whepsrc (gst-plugins-rs
-# webrtchttp) isn't prepackaged with webrtcbin anywhere, so build it from source on Ubuntu
-# (which provides webrtcbin via gstreamer1.0-plugins-bad + nice).
+# Records the Cloudflare WHEP feed to mp4 by DECODING and re-encoding the H.264 with x264enc
+# (video) + transcoding audio opus→AAC. Re-encode (not raw copy) is deliberate: in WebRTC the
+# H.264 SPS/PPS parameter sets only arrive in-band with IDR keyframes, so a raw copy produces
+# an mp4 with no `avcC` box (undecodable/spinner) whenever a keyframe fails to reassemble.
+# x264enc emits its own parameter sets, so the output is always valid — same reason LiveKit
+# Egress / Jibri re-encode. whepsrc (gst-plugins-rs webrtchttp) isn't prepackaged with
+# webrtcbin anywhere, so build it from source on Ubuntu (webrtcbin via plugins-bad + nice;
+# x264enc via plugins-ugly; avdec_h264 via libav — all apt-installed below).
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -30,6 +33,7 @@ RUN git clone --depth 1 --branch 0.13 https://gitlab.freedesktop.org/gstreamer/g
 # Fail the build unless the elements we need actually load.
 RUN gst-inspect-1.0 webrtcbin >/dev/null && gst-inspect-1.0 whepsrc >/dev/null \
  && gst-inspect-1.0 rtph264depay >/dev/null && gst-inspect-1.0 avenc_aac >/dev/null \
+ && gst-inspect-1.0 avdec_h264 >/dev/null && gst-inspect-1.0 x264enc >/dev/null \
  && echo "gst elements OK"
 
 # Node 20 for the recorder-manager.

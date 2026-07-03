@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
-# GStreamer WHEP recorder (COPY). Pulls the Cloudflare WHEP feed with whepsrc and writes an
-# mp4: the H.264 video is COPIED (no decode/encode → no black frames, full quality, plays in
-# Safari), and only the audio is transcoded opus→AAC (mp4-friendly). whepsrc exposes dynamic
-# pads after negotiation, so we link them in a pad-added handler (what plain gst-launch could
-# not do reliably). SIGINT/SIGTERM → EOS so the mp4 is finalized.
+# GStreamer WHEP recorder (RE-ENCODE). Pulls the Cloudflare WHEP feed with whepsrc and writes
+# an mp4. The video is DECODED and RE-ENCODED with x264enc (not copied), and the audio is
+# transcoded opus→AAC. whepsrc exposes dynamic pads after negotiation, so we link them in a
+# pad-added handler. SIGINT/SIGTERM → EOS so the mp4 is finalized.
+#
+# WHY RE-ENCODE INSTEAD OF COPY (this was the whole replay-spinner saga):
+#   In WebRTC, H.264 SPS/PPS parameter sets are delivered IN-BAND, prepended to each IDR
+#   keyframe — never in the receive caps (webrtcbin's receive caps carry no
+#   sprop-parameter-sets). A raw copy (rtph264depay ! h264parse ! mp4mux) therefore depends on
+#   a complete IDR surviving into the file to build the mp4 `avcC` box. It kept failing: with
+#   NACK disabled, large IDRs (spread across many FU-A RTP packets) lost a packet over the
+#   TURN-over-TCP relay, could never be reassembled or retransmitted, and h264parse never got
+#   codec_data → no avcC → undecodable video → spinner.
+#   Production WebRTC recorders (LiveKit Egress, Jibri) all RE-ENCODE for exactly this reason;
+#   nobody ships raw-copy WebRTC→mp4. x264enc emits self-contained SPS/PPS on its own cadence,
+#   so the output ALWAYS has a valid avcC regardless of Cloudflare's parameter-set behavior.
+#   We also keep NACK ON (only FEC was the crash source) so the first IDR reassembles and
+#   decoding can start at all.
 #
 #   python3 record.py <whep_url> <out.mp4>
 import signal
@@ -63,6 +76,7 @@ def main(whep_url: str, out_path: str) -> int:
             e.sync_state_with_parent()
 
     linked = set()
+    frame_counter = [None]  # holds the video-frame counter list once the video branch links
 
     def try_link(pad):
         if pad in linked:
@@ -73,23 +87,38 @@ def main(whep_url: str, out_path: str) -> int:
         media = caps.get_structure(0).get_string("media")  # robust: 'video' / 'audio'
         if media == "video":
             linked.add(pad)
-            log("VIDEO IN CAPS:", caps.to_string())  # full — does it carry sprop-parameter-sets?
+            log("VIDEO IN CAPS:", caps.to_string())
             depay = Gst.ElementFactory.make("rtph264depay")
-            depay.set_property("request-keyframe", True)
-            parse = Gst.ElementFactory.make("h264parse")
-            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse])
-            # Log what h264parse produces — codec_data present == avcC == playable video.
-            def on_parse_caps(p, _ps):
-                c = p.get_current_caps()
-                if c:
-                    log("H264PARSE OUT CAPS:", c.to_string()[:260])
+            depay.set_property("request-keyframe", True)  # ask for a new IDR on packet loss
+            depay.set_property("wait-for-keyframe", True)  # don't emit partial pre-IDR garbage
+            parse_in = Gst.ElementFactory.make("h264parse")
+            dec = Gst.ElementFactory.make("avdec_h264")
+            conv = Gst.ElementFactory.make("videoconvert")
+            enc = Gst.ElementFactory.make("x264enc")
+            # zerolatency + veryfast keeps CPU sane on the Railway box; 2-second GOP
+            # (key-int-max=60 @30fps) makes replay seeking snappy. x264enc emits its own
+            # SPS/PPS, so the mp4 avcC is always valid.
+            enc.set_property("tune", "zerolatency")
+            enc.set_property("speed-preset", "veryfast")
+            enc.set_property("bitrate", 2500)  # kbps
+            enc.set_property("key-int-max", 60)
+            parse_out = Gst.ElementFactory.make("h264parse")
+            parse_out.set_property("config-interval", -1)  # SPS/PPS before every IDR (robust seek)
+            # Count encoded video frames so we can tell (loudly) if video never flowed.
+            vframes = [0]
 
-            parse.get_static_pad("src").connect("notify::caps", on_parse_caps)
-            log("linked video (H.264 copy)")
-            # Cloudflare doesn't send SPS/PPS in-band, so h264parse can't build the mp4 codec
-            # box (avcC) and the video is undecodable (spinner). PROACTIVELY force keyframes
-            # (upstream ForceKeyUnit → webrtcbin sends PLI) so Cloudflare sends IDRs WITH the
-            # parameter sets. Repeat a few times at the start until frames are flowing.
+            def count_frame(_pad, _info):
+                vframes[0] += 1
+                if vframes[0] == 1:
+                    log("FIRST ENCODED VIDEO FRAME — avcC will be valid")
+                return Gst.PadProbeReturn.OK
+
+            enc.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, count_frame)
+            frame_counter[0] = vframes  # expose to EOS handler for the fail-loud check
+            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse_in, dec, conv, enc, parse_out])
+            log("linked video (H.264 re-encode)")
+            # Nudge Cloudflare for an early IDR so decoding starts fast (upstream ForceKeyUnit
+            # → webrtcbin PLI). With NACK on, the IDR reassembles; a few early requests suffice.
             sinkpad = depay.get_static_pad("sink")
             kf_count = [0]
 
@@ -99,7 +128,7 @@ def main(whep_url: str, out_path: str) -> int:
                 kf_count[0] += 1
                 if kf_count[0] == 1:
                     log("requested keyframe (PLI)")
-                return kf_count[0] < 8  # ~first 24s, then stop
+                return kf_count[0] < 4  # ~first 9s, then stop
 
             request_keyframe()
             GLib.timeout_add_seconds(3, request_keyframe)
@@ -134,9 +163,9 @@ def main(whep_url: str, out_path: str) -> int:
     # nested webrtcbin and turn FEC + NACK off on each transceiver as it's created.
     def on_new_transceiver(_webrtc, trans):
         try:
-            trans.set_property("fec-type", 0)  # GST_WEBRTC_FEC_TYPE_NONE
-            trans.set_property("do-nack", False)
-            log("transceiver: fec/nack off")
+            trans.set_property("fec-type", 0)  # GST_WEBRTC_FEC_TYPE_NONE — FEC was the crash source
+            trans.set_property("do-nack", True)  # KEEP NACK: retransmits lost IDR packets so
+            log("transceiver: fec off, nack on")  # keyframes reassemble (else no SPS/PPS ever)
         except Exception as e:  # noqa
             log("transceiver cfg failed:", repr(e))
 
@@ -154,7 +183,12 @@ def main(whep_url: str, out_path: str) -> int:
 
     def on_msg(_bus, msg):
         if msg.type == Gst.MessageType.EOS:
-            log("EOS")
+            n = frame_counter[0][0] if frame_counter[0] else 0
+            if n == 0:
+                log("WARNING: EOS with ZERO encoded video frames — feed never delivered a "
+                    "decodable keyframe (mp4 will have no usable video)")
+            else:
+                log(f"EOS — {n} video frames encoded")
             loop.quit()
         elif msg.type == Gst.MessageType.ERROR:
             err, dbg = msg.parse_error()

@@ -1,7 +1,8 @@
-// Bandbox recorder-manager (Railway service) — aiortc WHEP capture.
+// Bandbox recorder-manager (Railway service) — GStreamer WHEP capture (re-encode).
 //
 // Records the PAID full-quality replay by pulling the game's Cloudflare WHEP feed with
-// record.py (aiortc) and writing it to a file — no headless browser. On the broadcast's
+// record.py (GStreamer whepsrc → x264enc mp4) and writing it to a file — no headless
+// browser. On the broadcast's
 // go-live the edge function POSTs { gameId, token } here; we wait for the game to go live,
 // run record.py until it goes final (or the feed stops), then upload the file into
 // Cloudflare Stream and point the game's replay at it.
@@ -216,8 +217,8 @@ async function recordGame(gameId, token) {
     }
 
     // 5. Upload the recording to Supabase and serve the mp4 DIRECTLY (the browser plays it,
-    //    no Cloudflare transcode — CF currently rejects the aiortc file as ERR_NON_VIDEO).
-    //    Cloudflare CDN can be re-added once the container is CF-compatible.
+    //    no Cloudflare transcode). The re-encoded H.264/AAC mp4 is a standard file that plays
+    //    in Safari and would also be CF-ingestable if we later want the CDN/HLS path.
     const size = (await stat(file)).size
     if (!size) {
       remember(gameId, { status: 'error', detail: 'empty recording' })
