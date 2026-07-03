@@ -73,10 +73,19 @@ def main(whep_url: str, out_path: str) -> int:
         if media == "video":
             linked.add(pad)
             log("link video", caps.to_string()[:80])
-            depay = Gst.ElementFactory.make("rtph264depay")
-            parse = Gst.ElementFactory.make("h264parse")
-            parse.set_property("config-interval", -1)
-            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse])
+            # Force avc stream-format so h264parse puts SPS/PPS in the mp4 codec box (avcC).
+            # Without this the mp4 has a video track but no config → player can't decode → spins.
+            capsf = Gst.ElementFactory.make("capsfilter")
+            capsf.set_property("caps", Gst.Caps.from_string("video/x-h264,stream-format=avc,alignment=au"))
+            link_chain(
+                pad,
+                [
+                    Gst.ElementFactory.make("queue"),
+                    Gst.ElementFactory.make("rtph264depay"),
+                    Gst.ElementFactory.make("h264parse"),
+                    capsf,
+                ],
+            )
             log("linked video (H.264 copy)")
         elif media == "audio":
             linked.add(pad)

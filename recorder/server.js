@@ -165,7 +165,7 @@ async function recordGame(gameId, token) {
     console.log('[rec] start capture', gameId, whep)
     proc = spawn('python3', ['record.py', whep, file], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, GST_DEBUG: '2,webrtcbin:4,rtpbin:3,mp4mux:4,h264parse:3,rtph264depay:3' },
+      env: { ...process.env, GST_DEBUG: '2,mp4mux:5,h264parse:4,rtph264depay:5' },
     })
     active.set(gameId, { proc })
     proc.stdout.on('data', (d) => console.log(`[py ${gameId}]`, String(d).trim()))
