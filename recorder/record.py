@@ -60,19 +60,26 @@ def main(whep_url: str, out_path: str) -> int:
         for e in elements:
             e.sync_state_with_parent()
 
-    def on_pad(_src, pad):
-        caps = pad.get_current_caps() or pad.query_caps(None)
-        s = caps.to_string() if caps else ""
-        log("pad-added", s[:90])
+    linked = set()
+
+    def try_link(pad):
+        if pad in linked:
+            return
+        caps = pad.get_current_caps()
+        if not caps:
+            return  # caps not negotiated yet
+        s = caps.to_string()
         if "media=(string)video" in s:
-            # COPY H.264 (config-interval=-1 keeps SPS/PPS in-band for mp4).
+            linked.add(pad)
+            log("link video", s[:80])
             depay = Gst.ElementFactory.make("rtph264depay")
             parse = Gst.ElementFactory.make("h264parse")
             parse.set_property("config-interval", -1)
             link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse])
             log("linked video (H.264 copy)")
         elif "media=(string)audio" in s:
-            # Transcode opus → AAC (small, mp4/Safari-friendly).
+            linked.add(pad)
+            log("link audio", s[:80])
             link_chain(
                 pad,
                 [
@@ -85,6 +92,13 @@ def main(whep_url: str, out_path: str) -> int:
                 ],
             )
             log("linked audio (AAC)")
+
+    def on_pad(_src, pad):
+        log("pad-added", pad.get_name())
+        # Caps are just 'application/x-rtp' at pad-added — the media type appears once
+        # negotiated, so link when the pad's caps are actually set.
+        pad.connect("notify::caps", lambda p, _ps: try_link(p))
+        try_link(pad)
 
     src.connect("pad-added", on_pad)
 
