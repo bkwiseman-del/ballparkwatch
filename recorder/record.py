@@ -12,7 +12,8 @@ import sys
 import gi
 
 gi.require_version("Gst", "1.0")
-from gi.repository import GLib, Gst  # noqa: E402
+gi.require_version("GstVideo", "1.0")
+from gi.repository import GLib, Gst, GstVideo  # noqa: E402
 
 
 def log(*a):
@@ -74,14 +75,29 @@ def main(whep_url: str, out_path: str) -> int:
             linked.add(pad)
             log("link video caps:", caps.to_string()[:300])  # full caps → is sprop-parameter-sets there?
             depay = Gst.ElementFactory.make("rtph264depay")
-            # Cloudflare doesn't send SPS/PPS in-band; request a keyframe so an IDR + parameter
-            # sets arrive, letting h264parse build the mp4 codec box (avcC) → decodable video.
             depay.set_property("request-keyframe", True)
             link_chain(
                 pad,
                 [Gst.ElementFactory.make("queue"), depay, Gst.ElementFactory.make("h264parse")],
             )
             log("linked video (H.264 copy)")
+            # Cloudflare doesn't send SPS/PPS in-band, so h264parse can't build the mp4 codec
+            # box (avcC) and the video is undecodable (spinner). PROACTIVELY force keyframes
+            # (upstream ForceKeyUnit → webrtcbin sends PLI) so Cloudflare sends IDRs WITH the
+            # parameter sets. Repeat a few times at the start until frames are flowing.
+            sinkpad = depay.get_static_pad("sink")
+            kf_count = [0]
+
+            def request_keyframe():
+                ev = GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 1)
+                sinkpad.send_event(ev)
+                kf_count[0] += 1
+                if kf_count[0] == 1:
+                    log("requested keyframe (PLI)")
+                return kf_count[0] < 8  # ~first 24s, then stop
+
+            request_keyframe()
+            GLib.timeout_add_seconds(3, request_keyframe)
         elif media == "audio":
             linked.add(pad)
             log("link audio", caps.to_string()[:80])

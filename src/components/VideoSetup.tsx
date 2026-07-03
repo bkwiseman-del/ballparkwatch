@@ -67,7 +67,7 @@ export function VideoSetup({
   }
 
   function nudge(deltaMs: number) {
-    setDelayMs((d) => Math.max(0, Math.min(30000, d + deltaMs)))
+    setDelayMs((d) => Math.max(0, Math.min(60000, d + deltaMs)))
   }
 
   async function save() {
@@ -615,7 +615,7 @@ function LatencySection({
         <input
           type="range"
           min={0}
-          max={30000}
+          max={60000}
           step={250}
           value={delayMs}
           onChange={(e) => setDelayMs(Number(e.target.value))}
