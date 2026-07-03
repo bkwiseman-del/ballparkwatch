@@ -77,6 +77,10 @@ function pipelineArgs(whep, file) {
     // without this whepsrc has no way to reach CF's media and errors with a resource error.
     'use-link-headers=true',
     'stun-server=stun://stun.cloudflare.com:3478',
+    // Cloudflare Realtime rejects a WHEP offer whose codec doesn't match the PUBLISHED track's
+    // exact params. Phones publish H.264; offer H.264 with the standard fmtp (packetization-
+    // mode + constrained-baseline profile) so the SDP matches instead of the generic default.
+    'video-caps=application/x-rtp,media=video,encoding-name=H264,clock-rate=90000,payload=103,packetization-mode=(string)1,profile-level-id=(string)42e01f',
     'w.',
     '!',
     'application/x-rtp,media=video',
