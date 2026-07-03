@@ -66,6 +66,11 @@ async function announcerText(text: string, kind?: string): Promise<string> {
     // input never mentioned, discard it and use the exact play text.
     const invents = /scor|crosses the plate|reaches home|touch.?em all|across the plate/i
     if (invents.test(speak) && !/scor/i.test(text)) return text
+    // Deterministic guard: if the rewrite invents WHERE the ball went and the input has no
+    // location, discard it (the model keeps adding "to the outfield" on infield hits).
+    const loc =
+      /\b(outfield|infield|left field|center field|right field|deep|shallow|up the middle|the gap|down the line|to (?:left|center|right|short|second|third|first|the (?:outfield|infield)))\b/i
+    if (loc.test(speak) && !loc.test(text)) return text
     return speak
   } catch {
     return text
@@ -98,7 +103,9 @@ Deno.serve(async (req) => {
   // skips BOTH the Claude rewrite and the ElevenLabs call. Keyed on the raw input
   // (pre-rewrite), so repeats of the same play reuse the first generation.
   const raw = text.trim()
-  const key = await sha256(`${VOICE_ID}|${kind ?? ''}|${raw}`)
+  // v2: bump to invalidate audio cached before the "don't invent ball location" fix, so old
+  // "to the outfield" lines regenerate under the new prompt + guard.
+  const key = await sha256(`v2|${VOICE_ID}|${kind ?? ''}|${raw}`)
   const path = `commentary/p/${key}.mp3`
   const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`
 

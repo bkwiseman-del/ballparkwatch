@@ -39,7 +39,8 @@ def main(whep_url: str, out_path: str) -> int:
     src.set_property("video-caps", Gst.Caps.from_string(VIDEO_CAPS))
 
     mux = Gst.ElementFactory.make("mp4mux", "mux")
-    mux.set_property("faststart", True)  # moov at front → progressive playback
+    # moov at end (default). faststart=true can fail depending on sink seekability; the file
+    # still plays, and we can optimize progressive playback later.
     sink = Gst.ElementFactory.make("filesink", "sink")
     sink.set_property("location", out_path)
 
@@ -66,20 +67,20 @@ def main(whep_url: str, out_path: str) -> int:
         if pad in linked:
             return
         caps = pad.get_current_caps()
-        if not caps:
+        if not caps or caps.get_size() == 0:
             return  # caps not negotiated yet
-        s = caps.to_string()
-        if "media=(string)video" in s:
+        media = caps.get_structure(0).get_string("media")  # robust: 'video' / 'audio'
+        if media == "video":
             linked.add(pad)
-            log("link video", s[:80])
+            log("link video", caps.to_string()[:80])
             depay = Gst.ElementFactory.make("rtph264depay")
             parse = Gst.ElementFactory.make("h264parse")
             parse.set_property("config-interval", -1)
             link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse])
             log("linked video (H.264 copy)")
-        elif "media=(string)audio" in s:
+        elif media == "audio":
             linked.add(pad)
-            log("link audio", s[:80])
+            log("link audio", caps.to_string()[:80])
             link_chain(
                 pad,
                 [
@@ -89,6 +90,7 @@ def main(whep_url: str, out_path: str) -> int:
                     Gst.ElementFactory.make("audioconvert"),
                     Gst.ElementFactory.make("audioresample"),
                     Gst.ElementFactory.make("avenc_aac"),
+                    Gst.ElementFactory.make("aacparse"),
                 ],
             )
             log("linked audio (AAC)")
@@ -117,12 +119,16 @@ def main(whep_url: str, out_path: str) -> int:
 
     bus.connect("message", on_msg)
 
-    def stop(_sig, _frame):
+    # Use GLib's signal source, NOT signal.signal — a Python signal handler does not fire
+    # while GLib.MainLoop.run() is blocking in C, so SIGINT/SIGTERM (sent on game-final)
+    # would never send EOS and the mp4 would never be finalized (then get SIGKILL'd).
+    def stop():
         log("stopping -> EOS")
         pipeline.send_event(Gst.Event.new_eos())
+        return GLib.SOURCE_REMOVE
 
-    signal.signal(signal.SIGINT, stop)
-    signal.signal(signal.SIGTERM, stop)
+    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, stop)
+    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, stop)
 
     pipeline.set_state(Gst.State.PLAYING)
     log("recording ->", out_path)

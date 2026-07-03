@@ -207,7 +207,9 @@ async function recordGame(gameId, token) {
       } catch {
         /* ignore */
       }
-      for (let i = 0; i < 24 && !procExited; i++) await sleep(500)
+      // Wait for the recorder to finish EOS + write the mp4 moov before uploading (don't
+      // upload a half-finalized file). Longer window for larger recordings.
+      for (let i = 0; i < 120 && !procExited; i++) await sleep(500)
     }
 
     // 5. Upload the recording to Supabase and serve the mp4 DIRECTLY (the browser plays it,
