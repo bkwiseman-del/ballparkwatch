@@ -111,11 +111,16 @@ export function useScorer(gameId: string | undefined) {
       const dbRows = (evs ?? []) as GameEventRow[]
       let rows = dbRows
       const maxDbSeq = dbRows.at(-1)?.seq ?? 0
-      const pending =
-        g.status === 'live'
-          ? readWal(gameId).filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
-          : []
-      if (g.status !== 'live') writeWal(gameId, dbRows) // keep the local backup in sync with the reset
+      // Replay the unpersisted local tail for LIVE and FINAL games — both hold legitimately
+      // scored plays that may not have reached the server (dropped write / force-quit). Only
+      // a scheduled/reset game ignores its old local backup (replaying it would un-reset the
+      // game). Critically, a FINAL game must NOT be lumped with reset here, or its final
+      // screen shows 0 when its run-scoring events never persisted.
+      const keepLocal = g.status === 'live' || g.status === 'final'
+      const pending = keepLocal
+        ? readWal(gameId).filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
+        : []
+      if (!keepLocal) writeWal(gameId, dbRows) // scheduled/reset: sync the local backup to the reset
       if (pending.length) {
         const intended = [...dbRows, ...pending]
         const inserts = pending.map((p) => {
