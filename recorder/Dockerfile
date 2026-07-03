@@ -9,14 +9,19 @@
 # repo (no Rust build needed).
 FROM alpine:edge
 
+# whepsrc (gst-plugins-rs-webrtchttp) wraps the core C webrtcbin element, which lives in
+# gst-plugins-bad and needs libnice (ICE) to load — without it, whepsrc panics with
+# "Failed to find element factory 'webrtcbin'". Pull libnice + its GStreamer plugin, then
+# fail the build if whepsrc or webrtcbin can't actually be inspected.
 RUN apk add --no-cache \
       nodejs npm ca-certificates \
       gstreamer gstreamer-tools \
       gst-plugins-base gst-plugins-good gst-plugins-bad \
-      gst-plugins-rs \
-  && gst-inspect-1.0 whepsrc >/dev/null 2>&1 \
-     && echo "whepsrc OK" \
-     || (echo "whepsrc NOT FOUND — trying webrtchttp subpackage"; apk add --no-cache gst-plugins-rs-webrtchttp && gst-inspect-1.0 whepsrc)
+      gst-plugins-rs-webrtchttp \
+      libnice libnice-gstreamer \
+  && gst-inspect-1.0 webrtcbin >/dev/null \
+  && gst-inspect-1.0 whepsrc >/dev/null \
+  && echo "whepsrc + webrtcbin OK"
 
 ENV NODE_ENV=production
 WORKDIR /app
