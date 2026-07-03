@@ -172,9 +172,14 @@ Deno.serve(async (req) => {
         .slice()
         .sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]
       if (!newest) return json({ ready: false }, 200)
+      // Only set the replay once the recording is FINALIZED. An external camera keeps
+      // ingesting after the game ends, so the newest video is still live-in-progress — using
+      // it as the "replay" just keeps the live stream playing on the final page. Wait for the
+      // camera to stop and Cloudflare to finish the VOD (readyToStream) before pointing at it.
+      if (!newest.readyToStream) return json({ ready: false }, 200)
       if (token) await db.rpc('stream_set_recording', { p_token: token, p_recording_uid: newest.uid })
       else await db.rpc('stream_set_recording_by_game', { p_game_id: resolvedGameId, p_recording_uid: newest.uid })
-      return json({ ready: !!newest.readyToStream, recordingUid: newest.uid }, 200)
+      return json({ ready: true, recordingUid: newest.uid }, 200)
     }
 
     // action === 'start' — create or reuse the live input (token path only).
