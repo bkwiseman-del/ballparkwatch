@@ -73,6 +73,10 @@ function pipelineArgs(whep, file) {
     'whepsrc',
     'name=w',
     `whep-endpoint=${whep}`,
+    // Cloudflare returns its STUN/TURN (ICE) servers in the WHEP response Link headers —
+    // without this whepsrc has no way to reach CF's media and errors with a resource error.
+    'use-link-headers=true',
+    'stun-server=stun://stun.cloudflare.com:3478',
     'w.',
     '!',
     'application/x-rtp,media=video',
@@ -173,7 +177,10 @@ async function recordGame(gameId, token) {
     file = `/tmp/rec-${gameId}-${Date.now()}.mkv`
     startedAt = Date.now()
     console.log('[rec] start capture', gameId, whep)
-    proc = spawn('gst-launch-1.0', pipelineArgs(whep, file), { stdio: ['ignore', 'pipe', 'pipe'] })
+    proc = spawn('gst-launch-1.0', pipelineArgs(whep, file), {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, GST_DEBUG: '2,whepsrc:6,webrtcbin:4,webrtcice:5,nicesrc:4' },
+    })
     active.set(gameId, { proc })
     proc.stdout.on('data', (d) => console.log(`[gst ${gameId}]`, String(d).trim()))
     proc.stderr.on('data', (d) => console.log(`[gst ${gameId} err]`, String(d).trim()))
