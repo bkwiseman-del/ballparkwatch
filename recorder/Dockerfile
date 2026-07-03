@@ -1,27 +1,22 @@
-# GStreamer-based WHEP recorder (replaces the headless-Chrome recorder).
+# GStreamer-based WHEP recorder (replaces headless Chrome).
 #
-# Headless Chrome + MediaRecorder proved unreliable for server-side WebRTC capture (rAF
-# throttling, canvas freezes, WHEP going silent with no recovery). The production way to
-# record a WHEP feed is a native GStreamer pipeline (whepsrc) that COPIES the stream to a
-# file — no browser, no re-encode. Cloudflare Stream's WHEP is GStreamer-compatible.
-#
-# whepsrc lives in gst-plugins-rs (webrtchttp), which Alpine ships prebuilt in the community
-# repo (no Rust build needed).
-FROM alpine:edge
+# Records the WHEP feed with a native GStreamer pipeline (whepsrc) — no browser, no re-encode.
+# whepsrc wraps the core C `webrtcbin` element, which Alpine does NOT package. restreamio's
+# GStreamer image is purpose-built for streaming and includes the full WebRTC stack + the
+# Rust plugins (gst-plugins-rs / webrtchttp), so both `webrtcbin` and `whepsrc` are present.
+FROM restreamio/gstreamer:latest-prod
 
-# whepsrc (gst-plugins-rs-webrtchttp) wraps the core C webrtcbin element, which lives in
-# gst-plugins-bad and needs libnice (ICE) to load — without it, whepsrc panics with
-# "Failed to find element factory 'webrtcbin'". Pull libnice + its GStreamer plugin, then
-# fail the build if whepsrc or webrtcbin can't actually be inspected.
-RUN apk add --no-cache \
-      nodejs npm ca-certificates \
-      gstreamer gstreamer-tools \
-      gst-plugins-base gst-plugins-good gst-plugins-bad \
-      gst-plugins-rs-webrtchttp \
-      libnice libnice-gstreamer \
-  && gst-inspect-1.0 webrtcbin >/dev/null \
-  && gst-inspect-1.0 whepsrc >/dev/null \
-  && echo "whepsrc + webrtcbin OK"
+# Node 20 for the recorder-manager (waits for go-live, runs the pipeline, uploads).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/*
+
+# Fail the build unless the WebRTC + WHEP elements actually load.
+RUN gst-inspect-1.0 webrtcbin >/dev/null \
+ && (gst-inspect-1.0 whepsrc >/dev/null || gst-inspect-1.0 whepclientsrc >/dev/null) \
+ && echo "webrtc + whep OK"
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -29,4 +24,5 @@ COPY package.json ./
 RUN npm install --omit=dev
 COPY server.js ./
 
+ENTRYPOINT []
 CMD ["node", "server.js"]
