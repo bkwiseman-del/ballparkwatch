@@ -62,7 +62,7 @@ async def run(whep_url: str, out_path: str) -> int:
     h264 = [c for c in caps.codecs if "H264" in c.mimeType]
     if h264:
         video_tr.setCodecPreferences(h264)
-        log("video codecs offered:", [c.mimeType + " " + (c.sdpFmtpLine or "") for c in h264])
+        log("video codecs offered:", [f"{c.mimeType} {c.parameters}" for c in h264])
 
     offer = await pc.createOffer()
     await pc.setLocalDescription(offer)  # aiortc gathers ICE before this resolves
