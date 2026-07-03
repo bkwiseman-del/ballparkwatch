@@ -503,18 +503,22 @@ function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken:
 
       <h3 className="mb-1 font-display text-lg">Point your camera/encoder here</h3>
       <p className="mb-3 font-data text-[12px] text-muted-tan">
-        In OBS (Settings → Stream → Custom) or your camera/encoder’s RTMP settings, paste the server URL and
-        stream key below, then start streaming. Viewers watch live and the game auto-records for replay.
+        Two fields (OBS: Settings → Stream → Custom) or one combined URL (most cameras) — this is the
+        game-specific address, so the stream key is what makes it unique. Then start streaming.
+        Requires an encoder that supports <b>RTMPS</b> (secure RTMP). Viewers watch live and it auto-records.
       </p>
 
       {err ? (
         <p className="border-2 border-barn-red/40 bg-barn-red/5 p-3 font-data text-sm text-barn-red">{err}</p>
       ) : rtmp ? (
         <>
+          {/* Cameras with a single URL field: server + key combined (unique per game). */}
+          <Field label="Full RTMP URL (single-field cameras)" field="full" value={`${rtmp.url}${rtmp.key}`} />
+          <p className="mb-3 font-data text-[11px] text-muted-tan">— or, if your encoder has two fields —</p>
           <Field label="RTMP server URL" field="url" value={rtmp.url} />
           <Field label="Stream key" field="key" value={rtmp.key} />
           <p className="font-data text-[11px] text-muted-tan">
-            Keep the stream key private — anyone with it can broadcast to this game.
+            Keep this private — anyone with the key/full URL can broadcast to this game.
           </p>
           {feedStatus && !feedUp && <p className="mt-2 font-data text-[11px] text-muted-tan/70">{feedStatus}</p>}
         </>
