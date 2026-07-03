@@ -73,10 +73,12 @@ function pipelineArgs(whep, file) {
     'whepsrc',
     'name=w',
     `whep-endpoint=${whep}`,
-    // Cloudflare returns its STUN/TURN (ICE) servers in the WHEP response Link headers —
-    // without this whepsrc has no way to reach CF's media and errors with a resource error.
-    'use-link-headers=true',
-    'stun-server=stun://stun.cloudflare.com:3478',
+    // ICE for a containerized server: the container only sees a private IP, so we need STUN
+    // (to discover a public candidate) AND a TURN relay to actually carry the media. The TURN
+    // relay over TCP:443 works even where the host blocks WebRTC UDP — which is why direct
+    // host candidates alone failed with "Internal data stream error".
+    'stun-server=stun://stun.l.google.com:19302',
+    'turn-server=turn://openrelayproject:openrelayproject@openrelay.metered.ca:443?transport=tcp',
     // Cloudflare Realtime rejects a WHEP offer whose codec doesn't match the PUBLISHED track's
     // exact params. Phones publish H.264; offer H.264 with the standard fmtp (packetization-
     // mode + constrained-baseline profile) so the SDP matches instead of the generic default.
