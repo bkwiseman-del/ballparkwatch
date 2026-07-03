@@ -28,6 +28,13 @@ const remember = (gameId, state) => {
   recent.unshift({ gameId, at: new Date().toISOString(), ...state })
   if (recent.length > 12) recent.pop()
 }
+// Ring buffer of the record.py pipeline logs, surfaced via /health so we can read what the
+// GStreamer pipeline actually did (caps, keyframes, encoded-frame count) without Railway access.
+const pylog = []
+const logline = (gameId, line) => {
+  pylog.unshift({ gameId, at: new Date().toISOString(), line })
+  if (pylog.length > 60) pylog.pop()
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // --- Supabase (call as the anon role + the broadcast token, same as the browser did) ---
@@ -169,8 +176,13 @@ async function recordGame(gameId, token) {
       env: { ...process.env, GST_DEBUG: '1' },
     })
     active.set(gameId, { proc })
-    proc.stdout.on('data', (d) => console.log(`[py ${gameId}]`, String(d).trim()))
-    proc.stderr.on('data', (d) => console.log(`[py ${gameId} err]`, String(d).trim()))
+    const capture = (tag) => (d) => {
+      const s = String(d).trim()
+      console.log(`[py ${gameId}${tag}]`, s)
+      for (const ln of s.split('\n')) if (ln.trim()) logline(gameId, tag ? `[err] ${ln.trim()}` : ln.trim())
+    }
+    proc.stdout.on('data', capture(''))
+    proc.stderr.on('data', capture(' err'))
     proc.on('exit', (code) => {
       procExited = true
       console.log(`[py ${gameId}] exited`, code)
@@ -253,7 +265,7 @@ async function recordGame(gameId, token) {
 
 const app = express()
 app.use(express.json())
-app.get('/health', (_req, res) => res.json({ ok: true, active: [...active.keys()], recent }))
+app.get('/health', (_req, res) => res.json({ ok: true, active: [...active.keys()], recent, pylog }))
 app.post('/record', (req, res) => {
   if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return res.status(403).json({ error: 'forbidden' })
   const { gameId, token } = req.body || {}
