@@ -104,6 +104,25 @@ def main(whep_url: str, out_path: str) -> int:
 
     src.connect("pad-added", on_pad)
 
+    # whepsrc's internal webrtcbin errors on Cloudflare's stream ("Internal data stream
+    # error" from nicesrc) — the prime suspect is FEC/NACK receive setup. Reach into the
+    # nested webrtcbin and turn FEC + NACK off on each transceiver as it's created.
+    def on_new_transceiver(_webrtc, trans):
+        try:
+            trans.set_property("fec-type", 0)  # GST_WEBRTC_FEC_TYPE_NONE
+            trans.set_property("do-nack", False)
+            log("transceiver: fec/nack off")
+        except Exception as e:  # noqa
+            log("transceiver cfg failed:", repr(e))
+
+    def on_deep_element(_bin, _sub, element):
+        f = element.get_factory()
+        if f and f.get_name() == "webrtcbin":
+            log("found webrtcbin — disabling fec/nack")
+            element.connect("on-new-transceiver", on_new_transceiver)
+
+    src.connect("deep-element-added", on_deep_element)
+
     loop = GLib.MainLoop()
     bus = pipeline.get_bus()
     bus.add_signal_watch()

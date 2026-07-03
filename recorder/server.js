@@ -163,7 +163,10 @@ async function recordGame(gameId, token) {
     file = `/tmp/rec-${gameId}-${Date.now()}.mp4`
     startedAt = Date.now()
     console.log('[rec] start capture', gameId, whep)
-    proc = spawn('python3', ['record.py', whep, file], { stdio: ['ignore', 'pipe', 'pipe'] })
+    proc = spawn('python3', ['record.py', whep, file], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, GST_DEBUG: '2,webrtcbin:4,rtpbin:3,mp4mux:4,h264parse:3,rtph264depay:3' },
+    })
     active.set(gameId, { proc })
     proc.stdout.on('data', (d) => console.log(`[py ${gameId}]`, String(d).trim()))
     proc.stderr.on('data', (d) => console.log(`[py ${gameId} err]`, String(d).trim()))
