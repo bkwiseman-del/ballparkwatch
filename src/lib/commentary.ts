@@ -127,8 +127,9 @@ export function fxCues(eventType: string): string[][] {
     case 'single':
     case 'double':
     case 'triple':
+      return [['pitch'], ['hit'], ['cheer']] // pitch, crack of the bat, THEN the crowd
     case 'manual_run':
-      return [['cheer']] // scoreboard-mode run
+      return [['cheer']] // scoreboard-mode run (no detailed play → no crack)
     case 'manual_out':
       return [['catch']] // scoreboard-mode out — a glove pop, no play-by-play
     case 'home_run':

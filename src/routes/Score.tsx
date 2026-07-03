@@ -67,7 +67,7 @@ export default function Score() {
   const board = toBoard(live, teams)
   // Scoreboard mode shows a live R-H-E readout so + RUN / + HIT visibly register.
   const box = scoreboard ? computeBoxScore(events) : null
-  const halfOver = live.outs >= 3
+  const halfOver = live.status === 'live' && live.outs >= 3
   const notStarted = live.status === 'scheduled'
   const isFinal = live.status === 'final'
   const playing = !notStarted && !isFinal && !halfOver
