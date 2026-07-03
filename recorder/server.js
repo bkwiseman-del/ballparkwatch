@@ -67,7 +67,7 @@ async function streamLive(body) {
 
 
 async function uploadToSupabase(token, gameId, startedAt, file, size) {
-  const path = `recordings/${gameId}/${startedAt}/full.mp4`
+  const path = `recordings/${gameId}/${startedAt}/full.webm`
   const signRes = await fetch(`${SUPABASE_URL}/functions/v1/sign-upload`, {
     method: 'POST',
     headers: sbHeaders(false),
@@ -82,7 +82,7 @@ async function uploadToSupabase(token, gameId, startedAt, file, size) {
     headers: {
       apikey: ANON,
       Authorization: `Bearer ${ANON}`,
-      'Content-Type': 'video/mp4',
+      'Content-Type': 'video/webm',
       'Content-Length': String(size),
       'x-upsert': 'true',
     },
@@ -160,7 +160,7 @@ async function recordGame(gameId, token) {
     }
 
     // 2. Start the capture (aiortc receives the WHEP track and records it to file).
-    file = `/tmp/rec-${gameId}-${Date.now()}.mp4`
+    file = `/tmp/rec-${gameId}-${Date.now()}.webm`
     startedAt = Date.now()
     console.log('[rec] start capture', gameId, whep)
     proc = spawn('python3', ['record.py', whep, file], { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -229,7 +229,7 @@ async function recordGame(gameId, token) {
       p_path: spath,
       p_started_at: new Date(startedAt).toISOString(),
       p_duration_ms: Date.now() - startedAt,
-      p_mime: 'video/mp4',
+      p_mime: 'video/webm',
       p_segments: null,
     })
     console.log('[rec] done', gameId, spath)
