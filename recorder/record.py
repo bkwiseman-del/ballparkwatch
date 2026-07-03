@@ -77,6 +77,7 @@ def main(whep_url: str, out_path: str) -> int:
 
     linked = set()
     frame_counter = [None]  # holds the video-frame counter list once the video branch links
+    wb = [None]  # the nested webrtcbin, so we can send PLIs on its real src pad (not the ghost)
 
     def try_link(pad):
         if pad in linked:
@@ -126,12 +127,32 @@ def main(whep_url: str, out_path: str) -> int:
             # in wrong direction" — and no PLI ever goes out. THAT was the black-video bug.)
             kf_count = [0]
 
+            def send_pli_everywhere():
+                # Send the upstream force-key-unit on the REAL webrtcbin src pads (bypassing
+                # whepsrc's ghost pad, which accepts the event but doesn't forward it into
+                # webrtcbin → no PLI on the wire). Fresh event per pad (send_event consumes it).
+                sent = 0
+                w = wb[0]
+                if w is not None:
+                    for p in w.pads:
+                        if p.get_direction() == Gst.PadDirection.SRC:
+                            ev = GstVideo.video_event_new_upstream_force_key_unit(
+                                Gst.CLOCK_TIME_NONE, True, 0)
+                            if p.send_event(ev):
+                                sent += 1
+                # Belt-and-suspenders: the whepsrc ghost pad too.
+                pad.send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
+                return sent
+
+            logged_sent = [False]
+
             def request_keyframe():
-                ev = GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0)
-                ok = pad.send_event(ev)  # `pad` = whepsrc/webrtcbin video src pad
+                sent = send_pli_everywhere()
                 kf_count[0] += 1
-                if kf_count[0] == 1:
-                    log("requested keyframe (PLI) accepted=", ok)
+                if kf_count[0] == 1 or (sent > 0 and not logged_sent[0]):
+                    log(f"PLI request #{kf_count[0]} -> {sent} webrtcbin src pad(s)")
+                    if sent > 0:
+                        logged_sent[0] = True
                 if vframes[0] > 0:
                     log("keyframe landed — video decoding, stop asking")
                     return False  # first IDR arrived; decoding started
@@ -179,7 +200,8 @@ def main(whep_url: str, out_path: str) -> int:
     def on_deep_element(_bin, _sub, element):
         f = element.get_factory()
         if f and f.get_name() == "webrtcbin":
-            log("found webrtcbin — disabling fec/nack")
+            log("found webrtcbin — fec off/nack on, PLI target set")
+            wb[0] = element  # so request_keyframe can send PLIs on its real src pad
             element.connect("on-new-transceiver", on_new_transceiver)
 
     src.connect("deep-element-added", on_deep_element)
