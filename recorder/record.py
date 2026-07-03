@@ -117,21 +117,28 @@ def main(whep_url: str, out_path: str) -> int:
             frame_counter[0] = vframes  # expose to EOS handler for the fail-loud check
             link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse_in, dec, conv, enc, parse_out])
             log("linked video (H.264 re-encode)")
-            # Nudge Cloudflare for an early IDR so decoding starts fast (upstream ForceKeyUnit
-            # → webrtcbin PLI). With NACK on, the IDR reassembles; a few early requests suffice.
-            sinkpad = depay.get_static_pad("sink")
+            # Cloudflare only emits an IDR keyframe when it receives an RTCP PLI, and
+            # avdec_h264 decodes NOTHING until it gets that first IDR (→ zero encoded frames →
+            # black replay). To request a keyframe you send an upstream force-key-unit event
+            # on webrtcbin's SRC pad — which here is whepsrc's video src pad (`pad`); webrtcbin
+            # converts it to a PLI/FIR to Cloudflare. (Sending it on the depay SINK pad, as we
+            # did before, is the wrong direction — GStreamer drops it: "custom-upstream event
+            # in wrong direction" — and no PLI ever goes out. THAT was the black-video bug.)
             kf_count = [0]
 
             def request_keyframe():
-                ev = GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 1)
-                sinkpad.send_event(ev)
+                ev = GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0)
+                ok = pad.send_event(ev)  # `pad` = whepsrc/webrtcbin video src pad
                 kf_count[0] += 1
                 if kf_count[0] == 1:
-                    log("requested keyframe (PLI)")
-                return kf_count[0] < 4  # ~first 9s, then stop
+                    log("requested keyframe (PLI) accepted=", ok)
+                if vframes[0] > 0:
+                    log("keyframe landed — video decoding, stop asking")
+                    return False  # first IDR arrived; decoding started
+                return kf_count[0] < 15  # keep asking ~30s until the first IDR lands
 
             request_keyframe()
-            GLib.timeout_add_seconds(3, request_keyframe)
+            GLib.timeout_add_seconds(2, request_keyframe)
         elif media == "audio":
             linked.add(pad)
             log("link audio", caps.to_string()[:80])
