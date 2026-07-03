@@ -10,7 +10,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git pkg-config build-essential libssl-dev \
-      cargo \
       gstreamer1.0-tools \
       gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
       gstreamer1.0-plugins-bad gstreamer1.0-libav \
@@ -18,12 +17,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Build only the webrtchttp plugin (provides whepsrc). Ubuntu 24.04 ships GStreamer 1.24, so
-# use the matching gst-plugins-rs release branch.
-RUN cargo install cargo-c --locked \
- && git clone --depth 1 --branch 0.13 https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git /gst-rs \
+# A modern Rust toolchain (Ubuntu's cargo 1.75 is too old for current crates). Build only the
+# webrtchttp plugin (provides whepsrc) from source against apt's GStreamer 1.24 — plain
+# `cargo build` yields a loadable GStreamer plugin .so, so no cargo-c needed. Branch 0.13
+# targets GStreamer 1.24.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN git clone --depth 1 --branch 0.13 https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs.git /gst-rs \
  && cd /gst-rs \
- && /root/.cargo/bin/cargo cinstall -p gst-plugin-webrtchttp --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu \
+ && cargo build --release -p gst-plugin-webrtchttp \
+ && cp target/release/libgstwebrtchttp.so /usr/lib/x86_64-linux-gnu/gstreamer-1.0/ \
  && rm -rf /gst-rs /root/.cargo/registry /root/.cargo/git
 
 # Fail the build unless both elements actually load.
