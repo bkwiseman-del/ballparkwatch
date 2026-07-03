@@ -73,13 +73,18 @@ def main(whep_url: str, out_path: str) -> int:
         media = caps.get_structure(0).get_string("media")  # robust: 'video' / 'audio'
         if media == "video":
             linked.add(pad)
-            log("link video caps:", caps.to_string()[:300])  # full caps → is sprop-parameter-sets there?
+            log("VIDEO IN CAPS:", caps.to_string())  # full — does it carry sprop-parameter-sets?
             depay = Gst.ElementFactory.make("rtph264depay")
             depay.set_property("request-keyframe", True)
-            link_chain(
-                pad,
-                [Gst.ElementFactory.make("queue"), depay, Gst.ElementFactory.make("h264parse")],
-            )
+            parse = Gst.ElementFactory.make("h264parse")
+            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse])
+            # Log what h264parse produces — codec_data present == avcC == playable video.
+            def on_parse_caps(p, _ps):
+                c = p.get_current_caps()
+                if c:
+                    log("H264PARSE OUT CAPS:", c.to_string()[:260])
+
+            parse.get_static_pad("src").connect("notify::caps", on_parse_caps)
             log("linked video (H.264 copy)")
             # Cloudflare doesn't send SPS/PPS in-band, so h264parse can't build the mp4 codec
             # box (avcC) and the video is undecodable (spinner). PROACTIVELY force keyframes
