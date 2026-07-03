@@ -409,12 +409,14 @@ function describe(ev: GameEventRow, before: LiveGame, after: LiveGame, nameOf: N
       return after.half === 'top'
         ? `End of the ${ordinal(before.inning)}.`
         : `Middle of the ${ordinal(before.inning)}.`
+    // Include where the ball went (the logged fielder) so the play-by-play and the AI
+    // commentary use the REAL location instead of inventing "to the outfield".
     case 'single':
-      return withDetail(`${who} singles`)
+      return withDetail(f && f.length ? `${who} singles to ${POS_LABEL[f[0]]}` : `${who} singles`)
     case 'double':
-      return withDetail(`${who} doubles`)
+      return withDetail(f && f.length ? `${who} doubles to ${POS_LABEL[f[0]]}` : `${who} doubles`)
     case 'triple':
-      return withDetail(`${who} triples`)
+      return withDetail(f && f.length ? `${who} triples to ${POS_LABEL[f[0]]}` : `${who} triples`)
     case 'home_run':
       return withDetail(`${who} homers`)
     case 'walk':
