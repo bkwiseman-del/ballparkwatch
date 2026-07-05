@@ -111,16 +111,27 @@ export function useScorer(gameId: string | undefined) {
       const dbRows = (evs ?? []) as GameEventRow[]
       let rows = dbRows
       const maxDbSeq = dbRows.at(-1)?.seq ?? 0
-      // Replay the unpersisted local tail for LIVE and FINAL games — both hold legitimately
-      // scored plays that may not have reached the server (dropped write / force-quit). Only
-      // a scheduled/reset game ignores its old local backup (replaying it would un-reset the
-      // game). Critically, a FINAL game must NOT be lumped with reset here, or its final
-      // screen shows 0 when its run-scoring events never persisted.
-      const keepLocal = g.status === 'live' || g.status === 'final'
+      const wal = readWal(gameId)
+      // Decide whether to trust the local write-ahead log. The `games.status` COLUMN is written
+      // by a separate async call and can lag or be misread (e.g. read as 'scheduled' while a
+      // game is really live) — trusting it alone silently DROPS unsynced plays and even wipes
+      // the WAL. The authoritative signal that a game is underway is the presence of a
+      // game_start event (in the DB *or* the WAL). Keep the local backup whenever the game has
+      // started or is live/final; only a genuinely un-started (scheduled/reset) game ignores it.
+      const started =
+        g.status === 'live' ||
+        g.status === 'final' ||
+        dbRows.some((e) => e.event_type === 'game_start') ||
+        wal.some((e) => e.event_type === 'game_start')
+      const keepLocal = started
       const pending = keepLocal
-        ? readWal(gameId).filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
+        ? wal.filter((w) => w.seq > maxDbSeq).sort((a, b) => a.seq - b.seq)
         : []
-      if (!keepLocal) writeWal(gameId, dbRows) // scheduled/reset: sync the local backup to the reset
+      // Only sync the WAL down to a reset if the game truly hasn't started AND the WAL isn't
+      // ahead of the server (i.e. there are no unsynced plays to protect). Never shrink away a
+      // WAL that still holds plays the server hasn't confirmed.
+      const walMaxSeq = wal.at(-1)?.seq ?? 0
+      if (!keepLocal && walMaxSeq <= maxDbSeq) writeWal(gameId, dbRows)
       if (pending.length) {
         const intended = [...dbRows, ...pending]
         const inserts = pending.map((p) => {
@@ -143,8 +154,44 @@ export function useScorer(gameId: string | undefined) {
       }
 
       if (cancelled) return
+
+      // Cross-check against game_state — the server projection viewers already see. It's
+      // upserted right after each play's insert, so if its score is AHEAD of what we rebuilt
+      // from game_events, our events read came back stale (raced an in-flight insert, or the OS
+      // evicted the local WAL). That's the "scorer lost a play the viewer still has" bug. When
+      // detected, re-read game_events a couple of times until it catches up, so we never show
+      // a score behind what's already live to viewers.
+      try {
+        const proj0 = project(rows)
+        const { data: gs } = await supabase
+          .from('game_state')
+          .select('home_score,away_score')
+          .eq('game_id', gameId)
+          .maybeSingle()
+        const serverRuns = gs ? (gs.home_score ?? 0) + (gs.away_score ?? 0) : 0
+        if (started && serverRuns > proj0.homeScore + proj0.awayScore) {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            await new Promise((r) => setTimeout(r, 700))
+            if (cancelled) return
+            const { data: evs2 } = await supabase
+              .from('game_events')
+              .select('seq,event_type,payload,created_at')
+              .eq('game_id', gameId)
+              .order('seq')
+            const rows2 = ((evs2 ?? []) as GameEventRow[])
+            const merged = rows2.length >= rows.length ? rows2 : rows
+            rows = merged
+            if (project(rows).homeScore + project(rows).awayScore >= serverRuns) break
+          }
+          console.warn('[scorer] recovered plays that were behind game_state on reload')
+        }
+      } catch {
+        /* reconciliation is best-effort; fall back to the reconstructed rows */
+      }
+
+      if (cancelled) return
       // Game clock anchor: when the game_start event was recorded on the server.
-      const startTs = (dbRows as Array<GameEventRow & { created_at?: string }>).find(
+      const startTs = (rows as Array<GameEventRow & { created_at?: string }>).find(
         (e) => e.event_type === 'game_start',
       )?.created_at
       setFirstPitchAt(startTs ?? null)
