@@ -140,14 +140,18 @@ export default function Watch() {
   // of a manual delay — self-correcting through latency drift, pauses, and seeks. Falls back to
   // the manual stat_delay_ms path when no video clock is available (WHEP / no PDT).
   const pdtRef = useRef(false)
+  const videoClockRef = useRef(0)
   const eventsForClock = useRef<ViewerEvent[]>([])
+  const fireDueRef = useRef<() => void>(() => {})
   const onVideoClock = useCallback((ms: number) => {
     pdtRef.current = true
+    videoClockRef.current = ms
     const upTo = eventsForClock.current.filter(
       (e) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0) <= ms,
     )
     setLive(project(upTo))
     lastApply.current = Date.now() // keep the self-heal from overriding the PDT-synced bug
+    fireDueRef.current() // fire FX + commentary ONLY for plays the video has now reached
   }, [])
 
   // Latest-response-wins, so a slow request can't leave the event list stale.
@@ -311,77 +315,74 @@ export default function Watch() {
     return () => window.clearInterval(id)
   }, [gameId, loadGame, loadEvents])
 
-  // Briefly animate the spray when a *new* located play arrives (not on load).
-  // prevMaxSeq is baselined in loadEvents on first load, so the first real events
-  // after that (incl. game_start from a pre-game viewer) fire here.
-  useEffect(() => {
+  // Fire the spray flash + FX + AI commentary for newly-arrived plays. CRITICAL for external
+  // cams: when the video clock is driving sync (PDT), only fire plays the video has ACTUALLY
+  // REACHED — otherwise the commentary would spoil the play ~10s before the delayed video shows
+  // it. Non-PDT (WHEP / no video): fire as events arrive, as before. Called both when events
+  // change and (in PDT mode) on every video-clock tick.
+  const fireDue = useCallback(() => {
     if (prevMaxSeq.current === null) return // initial load hasn't baselined yet
-    const maxSeq = events.length ? Math.max(...events.map((e) => e.seq)) : 0
-    if (maxSeq > prevMaxSeq.current) {
-      const baseline = prevMaxSeq.current
-      prevMaxSeq.current = maxSeq
-      const freshAll = events.filter((e) => e.seq > baseline).sort((a, b) => a.seq - b.seq)
+    const all = eventsForClock.current
+    const reached = pdtRef.current
+      ? all.filter((e) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0) <= videoClockRef.current)
+      : all
+    const maxSeq = reached.length ? Math.max(...reached.map((e) => e.seq)) : 0
+    if (maxSeq <= prevMaxSeq.current) return
+    const baseline = prevMaxSeq.current
+    prevMaxSeq.current = maxSeq
+    const freshAll = reached.filter((e) => e.seq > baseline).sort((a, b) => a.seq - b.seq)
 
-      // spray animation (located plays only). `hit` is the categorical zone used by the
-      // redesigned in-play flow (clean hits); spray/fielders cover legacy + fielded plays.
-      const located = freshAll.filter((e) => e.payload?.hit || e.payload?.spray || e.payload?.fielders)
-      const last = located[located.length - 1]
-      if (last) {
-        const viz = buildViz(last.payload, last.seq)
-        if (viz) {
-          setFlash(viz)
-          window.clearTimeout(flashTimer.current)
-          flashTimer.current = window.setTimeout(() => setFlash(null), 4500)
-        }
-      }
-
-      // GameChanger-style audio. Sound FX fire immediately, synced to the play
-      // (pitch → crack + cheer); the play-by-play voice — batter up, the count,
-      // the play, the situation, inning recaps — is generated (cached) and
-      // queued so lines don't overlap. Only when commentary is on.
-      const newest = freshAll[freshAll.length - 1]
-      if (audio.isEnabled() && newest) {
-        audio.playFx(fxCues(newest.event_type))
-        if (['single', 'double', 'triple', 'home_run', 'manual_run'].includes(newest.event_type))
-          audio.swellCrowd()
-        // Inning-intro stinger ahead of the commentary: the SHORT organ every half
-        // (the long charge riff is too long to hold up the start of an inning — it
-        // now plays ducked under the between-innings recap instead).
-        if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) {
-          audio.enqueueOrgan()
-        }
-
-        if (gameId) {
-          // Commentary is public too — speak first name + last initial only.
-          // Play descriptions use the last name ("Cook singles"); the batter intro
-          // ("now batting") uses the FULL name + number, so pass full names here.
-          const nameOf = (id: string | null | undefined) =>
-            id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null
-          const lns = {
-            away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-            home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-          }
-          const teamNames = {
-            away: info?.away?.name ?? 'Away',
-            home: info?.home?.name ?? 'Home',
-          }
-          const cues = freshCues(events, baseline, nameOf, lns, teamNames)
-          ;(async () => {
-            for (const c of cues) {
-              try {
-                const { data } = await supabase.functions.invoke('commentary', {
-                  body: { gameId, seq: c.key, text: c.text, kind: c.kind },
-                })
-                if (data?.url) audio.enqueueVoice(data.url, c.kind === 'summary')
-              } catch {
-                /* skip this line */
-              }
-            }
-          })()
-        }
+    // spray animation (located plays only).
+    const located = freshAll.filter((e) => e.payload?.hit || e.payload?.spray || e.payload?.fielders)
+    const last = located[located.length - 1]
+    if (last) {
+      const viz = buildViz(last.payload, last.seq)
+      if (viz) {
+        setFlash(viz)
+        window.clearTimeout(flashTimer.current)
+        flashTimer.current = window.setTimeout(() => setFlash(null), 4500)
       }
     }
-  }, [events, gameId, info])
+
+    const newest = freshAll[freshAll.length - 1]
+    if (audio.isEnabled() && newest) {
+      audio.playFx(fxCues(newest.event_type))
+      if (['single', 'double', 'triple', 'home_run', 'manual_run'].includes(newest.event_type)) audio.swellCrowd()
+      if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) audio.enqueueOrgan()
+      if (gameId) {
+        const nameOf = (id: string | null | undefined) =>
+          id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null
+        const lns = {
+          away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+          home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+        }
+        const teamNames = { away: info?.away?.name ?? 'Away', home: info?.home?.name ?? 'Home' }
+        const cues = freshCues(reached, baseline, nameOf, lns, teamNames)
+        ;(async () => {
+          for (const c of cues) {
+            try {
+              const { data } = await supabase.functions.invoke('commentary', {
+                body: { gameId, seq: c.key, text: c.text, kind: c.kind },
+              })
+              if (data?.url) audio.enqueueVoice(data.url, c.kind === 'summary')
+            } catch {
+              /* skip this line */
+            }
+          }
+        })()
+      }
+    }
+  }, [gameId, info])
+
+  useEffect(() => {
+    fireDueRef.current = fireDue
+  }, [fireDue])
+
+  // Events changed: in non-PDT mode fire immediately; in PDT mode fireDue self-limits to plays
+  // the video clock has reached (and the clock tick fires the rest as the video catches up).
+  useEffect(() => {
+    fireDue()
+  }, [events, fireDue])
 
   // When a half ends (3 outs), show the final play for a beat before the standby.
   const halfEnded = live.status === 'live' && (live.outs ?? 0) >= 3
