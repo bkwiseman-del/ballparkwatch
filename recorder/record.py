@@ -140,10 +140,16 @@ def main(whep_url: str, out_path: str) -> int:
             # Count encoded video frames so we can tell (loudly) if video never flowed.
             vframes = [0]
 
-            def count_frame(_pad, _info):
+            def count_frame(_pad, info):
                 vframes[0] += 1
                 if vframes[0] == 1:
+                    # PTS of the first encoded frame = how long the file's leading audio-only
+                    # (black) gap is. The manager trims this off with ffmpeg so the replay
+                    # starts on real video (and anchors recording_started_at to this instant).
+                    buf = info.get_buffer()
+                    pts_ms = buf.pts // 1_000_000 if buf and buf.pts != Gst.CLOCK_TIME_NONE else 0
                     log("FIRST ENCODED VIDEO FRAME — avcC will be valid")
+                    log(f"VIDEO_START_MS={pts_ms}")
                 return Gst.PadProbeReturn.OK
 
             enc.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, count_frame)

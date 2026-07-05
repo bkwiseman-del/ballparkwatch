@@ -13,6 +13,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git pkg-config build-essential libssl-dev \
+      ffmpeg \
       gstreamer1.0-tools \
       gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
       gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav \
@@ -34,6 +35,7 @@ RUN git clone --depth 1 --branch 0.13 https://gitlab.freedesktop.org/gstreamer/g
 RUN gst-inspect-1.0 webrtcbin >/dev/null && gst-inspect-1.0 whepsrc >/dev/null \
  && gst-inspect-1.0 rtph264depay >/dev/null && gst-inspect-1.0 avenc_aac >/dev/null \
  && gst-inspect-1.0 avdec_h264 >/dev/null && gst-inspect-1.0 x264enc >/dev/null \
+ && ffmpeg -version >/dev/null \
  && echo "gst elements OK"
 
 # Node 20 for the recorder-manager.

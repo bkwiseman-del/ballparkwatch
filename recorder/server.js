@@ -10,8 +10,27 @@
 // Env: RECORDER_SECRET (bearer auth), SUPABASE_URL, SUPABASE_ANON_KEY, MAX_MINUTES, PORT.
 
 import express from 'express'
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
 import { stat, open, unlink } from 'node:fs/promises'
+
+// Normalize the raw recording for universal playback (esp. iOS Safari):
+//  - moov atom to the FRONT (+faststart) so progressive download plays immediately
+//  - trim the leading audio-only gap (before the first video keyframe) so the file starts
+//    on real video with NO empty edit list (Safari mishandles empty edits → black + drift)
+// ssMs = length of that leading gap (the first encoded frame's PTS). Resolves true on success.
+function normalizeMp4(inFile, outFile, ssMs) {
+  const args = ['-y']
+  if (ssMs > 500) args.push('-ss', (ssMs / 1000).toFixed(3))
+  args.push('-i', inFile, '-map', '0', '-c', 'copy', '-avoid_negative_ts', 'make_zero', '-movflags', '+faststart', outFile)
+  return new Promise((resolve) => {
+    execFile('ffmpeg', args, { timeout: 300_000 }, (err, _out, stderr) => {
+      if (err) {
+        console.error('[ffmpeg] failed:', String(stderr || err).slice(-300))
+        resolve(false)
+      } else resolve(true)
+    })
+  })
+}
 
 process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e?.message || e))
 process.on('uncaughtException', (e) => console.error('[uncaughtException]', e?.message || e))
@@ -146,6 +165,7 @@ async function recordGame(gameId, token) {
   let procExited = false
   let file = null
   let startedAt = 0
+  let videoStartMs = 0 // leading audio-only gap before first video keyframe (ffmpeg trims it)
   try {
     // 1. Wait for the game to go live and expose a WHEP url.
     let whep = null
@@ -179,7 +199,12 @@ async function recordGame(gameId, token) {
     const capture = (tag) => (d) => {
       const s = String(d).trim()
       console.log(`[py ${gameId}${tag}]`, s)
-      for (const ln of s.split('\n')) if (ln.trim()) logline(gameId, tag ? `[err] ${ln.trim()}` : ln.trim())
+      for (const ln of s.split('\n')) {
+        if (!ln.trim()) continue
+        logline(gameId, tag ? `[err] ${ln.trim()}` : ln.trim())
+        const m = ln.match(/VIDEO_START_MS=(\d+)/)
+        if (m) videoStartMs = Number(m[1])
+      }
     }
     proc.stdout.on('data', capture(''))
     proc.stderr.on('data', capture(' err'))
@@ -231,21 +256,39 @@ async function recordGame(gameId, token) {
     // 5. Upload the recording to Supabase and serve the mp4 DIRECTLY (the browser plays it,
     //    no Cloudflare transcode). The re-encoded H.264/AAC mp4 is a standard file that plays
     //    in Safari and would also be CF-ingestable if we later want the CDN/HLS path.
-    const size = (await stat(file)).size
-    if (!size) {
+    const rawSize = (await stat(file)).size
+    if (!rawSize) {
       remember(gameId, { status: 'error', detail: 'empty recording' })
       return
     }
-    console.log('[rec] uploading', gameId, size, 'bytes')
-    const spath = await uploadToSupabase(token, gameId, startedAt, file, size)
+
+    // Normalize for iOS/Safari: faststart (moov at front) + trim the leading pre-video gap so
+    // the file opens on real video with no empty edit list. On success the file starts at the
+    // first video frame, so recording_started_at (the replay anchor) shifts forward by
+    // videoStartMs to keep plays aligned. Fall back to the raw file if ffmpeg isn't happy.
+    let uploadFile = file
+    let anchorMs = startedAt
+    const webFile = file.replace(/\.mp4$/, '-web.mp4')
+    console.log('[rec] normalizing', gameId, 'videoStartMs=', videoStartMs)
+    if (await normalizeMp4(file, webFile, videoStartMs)) {
+      const ws = await stat(webFile).catch(() => null)
+      if (ws && ws.size > 0) {
+        uploadFile = webFile
+        if (videoStartMs > 500) anchorMs = startedAt + videoStartMs
+      }
+    }
+    const size = (await stat(uploadFile)).size
+    console.log('[rec] uploading', gameId, size, 'bytes', uploadFile === webFile ? '(web)' : '(raw)')
+    const spath = await uploadToSupabase(token, gameId, startedAt, uploadFile, size)
     await rpc('save_recording', {
       p_token: token,
       p_path: spath,
-      p_started_at: new Date(startedAt).toISOString(),
-      p_duration_ms: Date.now() - startedAt,
+      p_started_at: new Date(anchorMs).toISOString(),
+      p_duration_ms: Math.max(0, Date.now() - anchorMs),
       p_mime: 'video/mp4',
       p_segments: null,
     })
+    unlink(webFile).catch(() => {})
     console.log('[rec] done', gameId, spath)
     remember(gameId, { status: 'done', bytes: size, detail: spath })
   } catch (e) {
