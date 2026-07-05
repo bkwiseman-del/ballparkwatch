@@ -92,9 +92,43 @@ export async function whipPublish(
   const { answer, resource } = await sdpExchange(url, pc.localDescription!.sdp)
   await pc.setRemoteDescription({ type: 'answer', sdp: answer })
 
+  // Media-stall watchdog. A WHIP publish can silently DIE while the peer connection still
+  // reports "connected": ICE stays up but Cloudflare stops receiving media (radio hiccup,
+  // NAT rebind, server drop). The phone keeps showing "broadcasting" and keeps its heartbeat
+  // alive, so the scorer/viewer never learn the feed is gone — they just lose video. Watch the
+  // real bytes leaving the encoder; if video output freezes for ~12s while we still think
+  // we're connected, surface it as a failure so the UI + heartbeat react (scorer gets alerted).
+  let lastBytes = 0
+  let everFlowed = false
+  let stalledTicks = 0
+  const watchdog = window.setInterval(async () => {
+    if (pc.connectionState === 'closed') return
+    try {
+      const stats = await pc.getStats()
+      let bytes = 0
+      stats.forEach((r: { type?: string; kind?: string; bytesSent?: number }) => {
+        if (r.type === 'outbound-rtp' && r.kind === 'video') bytes = r.bytesSent ?? 0
+      })
+      if (bytes > lastBytes) {
+        lastBytes = bytes
+        everFlowed = true
+        stalledTicks = 0
+      } else if (everFlowed) {
+        stalledTicks += 1
+        if (stalledTicks >= 4) {
+          window.clearInterval(watchdog)
+          onState?.('failed') // ~12s with no new video bytes → treat the silent stall as failure
+        }
+      }
+    } catch {
+      /* getStats can throw during teardown — ignore */
+    }
+  }, 3000)
+
   return {
     pc,
     close: () => {
+      window.clearInterval(watchdog)
       try {
         pc.close()
       } catch {
