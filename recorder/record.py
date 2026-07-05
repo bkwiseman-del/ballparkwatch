@@ -19,6 +19,7 @@
 #   decoding can start at all.
 #
 #   python3 record.py <whep_url> <out.mp4>
+import os
 import signal
 import sys
 
@@ -43,13 +44,18 @@ def main(whep_url: str, out_path: str) -> int:
     Gst.init(None)
     pipeline = Gst.Pipeline.new("rec")
 
+    # ICE servers from the environment (the manager mints Cloudflare TURN creds per run).
+    # Fall back to Google STUN + the free openrelay TURN if not provided.
+    stun = os.environ.get("RECORDER_STUN") or "stun://stun.l.google.com:19302"
+    turn = os.environ.get("RECORDER_TURN") or (
+        "turn://openrelayproject:openrelayproject@openrelay.metered.ca:443?transport=tcp"
+    )
+    log("ICE stun:", stun, "| turn host:", turn.split("@")[-1] if "@" in turn else turn)
+
     src = Gst.ElementFactory.make("whepsrc", "w")
     src.set_property("whep-endpoint", whep_url)
-    src.set_property("stun-server", "stun://stun.l.google.com:19302")
-    src.set_property(
-        "turn-server",
-        "turn://openrelayproject:openrelayproject@openrelay.metered.ca:443?transport=tcp",
-    )
+    src.set_property("stun-server", stun)
+    src.set_property("turn-server", turn)
     src.set_property("video-caps", Gst.Caps.from_string(VIDEO_CAPS))
 
     mux = Gst.ElementFactory.make("mp4mux", "mux")

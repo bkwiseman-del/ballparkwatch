@@ -40,6 +40,32 @@ const SECRET = process.env.RECORDER_SECRET || ''
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '')
 const ANON = process.env.SUPABASE_ANON_KEY || ''
 const MAX_MINUTES = Number(process.env.MAX_MINUTES || 240)
+const CF_TURN_KEY_ID = process.env.CF_TURN_KEY_ID || ''
+const CF_TURN_API_TOKEN = process.env.CF_TURN_API_TOKEN || ''
+
+// Mint short-lived Cloudflare TURN credentials for the recorder's WHEP connection. The free
+// openrelay TURN dropped connections mid-recording ("Internal data stream error"); Cloudflare's
+// TURN (same network as Stream) is reliable. Returns { username, credential } or null.
+async function getCfTurn() {
+  if (!CF_TURN_KEY_ID || !CF_TURN_API_TOKEN) return null
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${CF_TURN_KEY_ID}/credentials/generate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${CF_TURN_API_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: 86400 }),
+    })
+    if (!res.ok) {
+      console.error('[turn] cloudflare error', res.status)
+      return null
+    }
+    const ice = (await res.json())?.iceServers || {}
+    if (!ice.username || !ice.credential) return null
+    return { username: ice.username, credential: ice.credential }
+  } catch (e) {
+    console.error('[turn] cloudflare fetch failed', e?.message || e)
+    return null
+  }
+}
 
 const active = new Map() // gameId -> { proc }
 const recent = [] // last outcomes, newest first (diagnostics via /health)
@@ -192,9 +218,18 @@ async function recordGame(gameId, token) {
     file = `/tmp/rec-${gameId}-${Date.now()}.mp4`
     startedAt = Date.now()
     console.log('[rec] start capture', gameId, whep)
+    const spawnEnv = { ...process.env, GST_DEBUG: '1' }
+    const turn = await getCfTurn()
+    if (turn) {
+      spawnEnv.RECORDER_STUN = 'stun://stun.cloudflare.com:3478'
+      spawnEnv.RECORDER_TURN = `turn://${turn.username}:${turn.credential}@turn.cloudflare.com:3478?transport=udp`
+      console.log('[rec] using Cloudflare TURN')
+    } else {
+      console.log('[rec] no Cloudflare TURN configured — falling back to openrelay')
+    }
     proc = spawn('python3', ['record.py', whep, file], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, GST_DEBUG: '1' },
+      env: spawnEnv,
     })
     active.set(gameId, { proc })
     const capture = (tag) => (d) => {
