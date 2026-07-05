@@ -338,19 +338,9 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   useEffect(() => {
     if (!v.local) return
     let cancelled = false
-    let attempts = 0
     recordKickedRef.current = false
-
-    // (Re)publish to the SAME Cloudflare live input. On a failure — ICE failed, or the
-    // media-stall watchdog fired (feed silently died) — we tear down and reconnect FAST to the
-    // same input. Reusing the input (stream-live 'start' reuses it) means viewers/scorer and
-    // the server-side recorder's WHEP session stay pointed at one feed, so a quick reconnect
-    // resumes the SAME broadcast (and, when Cloudflare holds the session across the gap, the
-    // same continuous recording) rather than starting over. We never re-trigger the recorder
-    // (recordKickedRef stays set) so a reconnect can't spawn a second, competing recording.
-    const connect = async () => {
-      if (cancelled) return
-      setStreamState('connecting')
+    setStreamState('connecting')
+    ;(async () => {
       try {
         const { data, error } = await supabase.functions.invoke('stream-live', {
           body: { token, action: 'start' },
@@ -359,44 +349,22 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         if (error || !data?.whipUrl) {
           console.error('[stream] live-input error:', error, data)
           setStreamErr(`live-input: ${error?.message ?? data?.error ?? 'unknown'}`)
-          // transient broker error — retry a few times before giving up
-          if (attempts < 30) {
-            attempts += 1
-            window.setTimeout(connect, Math.min(3000, 800 * attempts))
-          } else setStreamState('error')
+          setStreamState('error')
           return
         }
         console.info('[stream] publishing via WHIP', data.whipUrl)
         setStreamErr('')
         const session = await whipPublish(data.whipUrl, v.local!, (s) => {
           console.info('[stream] WHIP connection state:', s)
-          if (s === 'connected') {
-            attempts = 0
-            setStreamErr('')
-            setStreamState('live')
-            if (!recordKickedRef.current) {
-              recordKickedRef.current = true
-              // Media is flowing → kick off the server-side recorder ONCE. Reconnects reuse
-              // this same recording; they must not start another.
-              void supabase.functions.invoke('start-recording', { body: { token } })
-            }
-          } else if (s === 'failed') {
-            // Silent stall or ICE failure → drop this session and reconnect to the same input.
-            setStreamErr('Feed dropped — reconnecting…')
-            setStreamState('connecting')
-            try {
-              whipRef.current?.close()
-            } catch {
-              /* ignore */
-            }
-            whipRef.current = null
-            if (!cancelled && attempts < 30) {
-              attempts += 1
-              window.setTimeout(connect, Math.min(2500, 500 * attempts))
-            }
-          } else {
-            setStreamState('connecting')
+          if (s === 'failed') setStreamErr('WHIP connection failed (ICE)')
+          if (s === 'connected' && !recordKickedRef.current) {
+            recordKickedRef.current = true
+            // Media is now flowing → kick off the PAID server-side recorder (no-op unless
+            // the game is flagged record_replay). The recorder subscribes to the live feed
+            // and captures the full-quality replay server-side — the phone never records.
+            void supabase.functions.invoke('start-recording', { body: { token } })
           }
+          setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting')
         })
         if (cancelled) {
           session.close()
@@ -407,14 +375,10 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
         console.error('[stream] WHIP publish failed:', e)
         if (!cancelled) {
           setStreamErr(e instanceof Error ? e.message : 'WHIP publish failed')
-          if (attempts < 30) {
-            attempts += 1
-            window.setTimeout(connect, Math.min(3000, 800 * attempts))
-          } else setStreamState('error')
+          setStreamState('error')
         }
       }
-    }
-    void connect()
+    })()
     return () => {
       cancelled = true
       whipRef.current?.close()
