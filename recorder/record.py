@@ -165,11 +165,23 @@ def main(whep_url: str, out_path: str) -> int:
             # in wrong direction" — and no PLI ever goes out. THAT was the black-video bug.)
             kf_count = [0]
 
+            def pad_is_video(p):
+                caps = p.get_current_caps()
+                if not caps or caps.get_size() == 0:
+                    return None  # unknown yet
+                st = caps.get_structure(0)
+                media = st.get_string("media") or ""
+                enc = st.get_string("encoding-name") or ""
+                return media == "video" or "H264" in enc.upper()
+
             def send_pli_everywhere():
-                # Send the upstream force-key-unit on the REAL webrtcbin src pads (bypassing
-                # whepsrc's ghost pad, which accepts the event but doesn't forward it into
-                # webrtcbin → no PLI on the wire). Fresh event per pad (send_event consumes it).
+                # Send the upstream force-key-unit on webrtcbin's REAL src pads (bypassing
+                # whepsrc's ghost pad, which swallows the event). CRITICAL: audio links first,
+                # so the first src pad is usually AUDIO — a PLI there does nothing. Target the
+                # VIDEO pad specifically; only that triggers Cloudflare to send an IDR. Send to
+                # unknown-caps pads too (belt), and count video hits separately.
                 sent = 0
+                vsent = 0
                 w = find_webrtcbin()
                 if w is not None:
                     it = w.iterate_src_pads()
@@ -177,30 +189,40 @@ def main(whep_url: str, out_path: str) -> int:
                         res, p = it.next()
                         if res != Gst.IteratorResult.OK:
                             break
-                        ev = GstVideo.video_event_new_upstream_force_key_unit(
-                            Gst.CLOCK_TIME_NONE, True, 0)
-                        if p.send_event(ev):
+                        isv = pad_is_video(p)
+                        if isv is False:
+                            continue  # skip the audio pad — PLI there is useless
+                        # Send BOTH a PLI (all_headers=False) and a FIR (all_headers=True) —
+                        # Cloudflare advertised rtcp-fb-nack-pli AND rtcp-fb-ccm-fir; cover both.
+                        ok = False
+                        for allh in (False, True):
+                            ev = GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, allh, 0)
+                            if p.send_event(ev):
+                                ok = True
+                        if ok:
                             sent += 1
-                # Belt-and-suspenders: the whepsrc ghost pad too.
-                pad.send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, True, 0))
-                return sent
+                            if isv:
+                                vsent += 1
+                # Belt-and-suspenders: the whepsrc ghost video pad too.
+                pad.send_event(GstVideo.video_event_new_upstream_force_key_unit(Gst.CLOCK_TIME_NONE, False, 0))
+                return sent, vsent
 
-            logged_sent = [False]
+            logged_v = [False]
 
             def request_keyframe():
-                sent = send_pli_everywhere()
+                sent, vsent = send_pli_everywhere()
                 kf_count[0] += 1
-                if kf_count[0] == 1 or (sent > 0 and not logged_sent[0]):
-                    log(f"PLI request #{kf_count[0]} -> {sent} webrtcbin src pad(s)")
-                    if sent > 0:
-                        logged_sent[0] = True
+                if kf_count[0] == 1 or (vsent > 0 and not logged_v[0]):
+                    log(f"PLI #{kf_count[0]}: sent={sent} video-pad-hits={vsent}")
+                    if vsent > 0:
+                        logged_v[0] = True
                 if vframes[0] > 0:
-                    log("keyframe landed — video decoding, stop asking")
+                    log(f"keyframe landed after {kf_count[0]} PLIs — video decoding, stop asking")
                     return False  # first IDR arrived; decoding started
-                return kf_count[0] < 15  # keep asking ~30s until the first IDR lands
+                return kf_count[0] < 60  # keep asking every 1s for ~60s
 
             request_keyframe()
-            GLib.timeout_add_seconds(2, request_keyframe)
+            GLib.timeout_add_seconds(1, request_keyframe)
         elif media == "audio":
             linked.add(pad)
             log("link audio", caps.to_string()[:80])

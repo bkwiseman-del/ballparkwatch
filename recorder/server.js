@@ -166,6 +166,7 @@ async function recordGame(gameId, token) {
   let file = null
   let startedAt = 0
   let videoStartMs = 0 // leading audio-only gap before first video keyframe (ffmpeg trims it)
+  let gotVideo = false // did any video frame encode? (false → don't save an audio-only spinner)
   try {
     // 1. Wait for the game to go live and expose a WHEP url.
     let whep = null
@@ -203,7 +204,10 @@ async function recordGame(gameId, token) {
         if (!ln.trim()) continue
         logline(gameId, tag ? `[err] ${ln.trim()}` : ln.trim())
         const m = ln.match(/VIDEO_START_MS=(\d+)/)
-        if (m) videoStartMs = Number(m[1])
+        if (m) {
+          videoStartMs = Number(m[1])
+          gotVideo = true
+        }
       }
     }
     proc.stdout.on('data', capture(''))
@@ -259,6 +263,13 @@ async function recordGame(gameId, token) {
     const rawSize = (await stat(file)).size
     if (!rawSize) {
       remember(gameId, { status: 'error', detail: 'empty recording' })
+      return
+    }
+    if (!gotVideo) {
+      // Audio-only capture (no keyframe ever arrived). Saving this would give viewers a
+      // spinning, never-loading video. Skip it — better no replay than a broken one.
+      console.log('[rec] no video frames, skipping save', gameId)
+      remember(gameId, { status: 'error', detail: 'no video frames (no keyframe)' })
       return
     }
 
