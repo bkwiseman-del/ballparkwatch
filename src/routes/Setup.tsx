@@ -700,7 +700,7 @@ export function GamesView({
 const VIDEO_SOURCES: { value: VideoSource; label: string; sub: string }[] = [
   { value: 'none', label: 'No video', sub: 'Stats only' },
   { value: 'phone_whip', label: 'Another phone', sub: 'Film from a 2nd device' },
-  { value: 'youtube', label: 'External camera', sub: 'GoPro / DJI' },
+  { value: 'camera_rtmp', label: 'External camera', sub: 'GoPro / DJI / OBS' },
 ]
 
 function CreateGameCard({
@@ -729,7 +729,6 @@ function CreateGameCard({
   const [when, setWhen] = useState('')
   const [location, setLocation] = useState('')
   const [video, setVideo] = useState<VideoSource>('none')
-  const [ytUrl, setYtUrl] = useState('')
   const [busy, setBusy] = useState(false)
 
   // Create a team/opponent inline from a picker; returns its id to auto-select.
@@ -763,7 +762,7 @@ function CreateGameCard({
       scheduled_at: when ? new Date(when).toISOString() : null,
       location: location.trim() || null,
       video_source: video,
-      video_config: video === 'youtube' && ytUrl.trim() ? { youtube_url: ytUrl.trim() } : {},
+      video_config: {},
       slug: makeSlug(aName, hName),
     })
     setBusy(false)
@@ -812,24 +811,8 @@ function CreateGameCard({
         })}
       </div>
 
-      {/* External camera → YouTube link (optional now; can be added at game time) */}
-      {video === 'youtube' && (
-        <label className="mb-5 block">
-          <span className="mb-1 block font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
-            YouTube live link (optional)
-          </span>
-          <input
-            value={ytUrl}
-            onChange={(e) => setYtUrl(e.target.value)}
-            placeholder="https://youtu.be/…"
-            className="w-full border-2 border-ink bg-white px-3 py-2 font-data outline-none focus:border-board-green"
-          />
-          <span className="mt-1 block font-data text-[11px] text-muted-tan">
-            Go live from your GoPro/DJI app to an unlisted YouTube stream and paste the link.
-            You can also add or change it later from the scorer’s Video screen.
-          </span>
-        </label>
-      )}
+      {/* External camera → the RTMP ingest URL is generated on the scorer's Video screen at
+          game time (start the broadcast, then point the camera/encoder at the URL). */}
 
       {/* Field & time */}
       <label className="mb-5 block">
