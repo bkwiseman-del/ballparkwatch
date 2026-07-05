@@ -116,8 +116,15 @@ def main(whep_url: str, out_path: str) -> int:
             linked.add(pad)
             log("VIDEO IN CAPS:", caps.to_string())
             depay = Gst.ElementFactory.make("rtph264depay")
-            depay.set_property("request-keyframe", True)  # ask for a new IDR on packet loss
-            depay.set_property("wait-for-keyframe", True)  # don't emit partial pre-IDR garbage
+            # DO NOT request a keyframe on every packet loss. Cloudflare (an SFU) forwards a
+            # subscriber's PLI to the PUBLISHER (the phone), which then emits a keyframe for
+            # EVERYONE — a bandwidth spike. On any loss this recorder would PLI, the spike causes
+            # more loss, which triggers more PLIs: a feedback loop that escalates over minutes and
+            # collapses the whole broadcast (fine at first, dead a few minutes in). We take the
+            # first keyframe via a bounded startup request, then never storm the publisher again;
+            # real viewers' PLIs (and the natural GOP) keep the picture fresh.
+            depay.set_property("request-keyframe", False)
+            depay.set_property("wait-for-keyframe", True)  # still: don't emit partial pre-IDR garbage
             # Count RAW video RTP packets arriving at the depay (before wait-for-keyframe drops
             # pre-IDR data). Disambiguates "no video received at all" from "video received but
             # no keyframe": if this stays 0, the feed isn't sending us video; if it climbs but
@@ -242,11 +249,11 @@ def main(whep_url: str, out_path: str) -> int:
                         logged_v[0] = True
                 if vframes[0] > 0:
                     log(f"keyframe landed after {kf_count[0]} PLIs — video decoding, stop asking")
-                    return False  # first IDR arrived; decoding started
-                return kf_count[0] < 60  # keep asking every 1s for ~60s
+                    return False  # first IDR arrived; decoding started — never storm again
+                return kf_count[0] < 30  # bounded startup only (~60s @ 2s), then give up quietly
 
             request_keyframe()
-            GLib.timeout_add_seconds(1, request_keyframe)
+            GLib.timeout_add_seconds(2, request_keyframe)
         elif media == "audio":
             linked.add(pad)
             log("link audio", caps.to_string()[:80])
@@ -350,6 +357,22 @@ def main(whep_url: str, out_path: str) -> int:
 
     GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, stop)
     GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, stop)
+
+    # Passive health log every 30s: raw video RTP received vs frames encoded. Read after a real
+    # game to see if the recorder's OWN feed degrades over time (RTP growth stalling / big gap
+    # between received and encoded) — the evidence needed to confirm/deny that the recorder is
+    # what's destabilizing the broadcast, without asking the user to run a diagnostic.
+    health = [0, 0]  # last (rtp, frames)
+
+    def health_tick():
+        rtp = rtp_counter[0][0] if rtp_counter[0] else 0
+        n = frame_counter[0][0] if frame_counter[0] else 0
+        drtp, dn = rtp - health[0], n - health[1]
+        health[0], health[1] = rtp, n
+        log(f"HEALTH: +{drtp} rtp/30s, +{dn} frames/30s (total rtp={rtp}, frames={n})")
+        return True
+
+    GLib.timeout_add_seconds(30, health_tick)
 
     pipeline.set_state(Gst.State.PLAYING)
     log("recording ->", out_path)
