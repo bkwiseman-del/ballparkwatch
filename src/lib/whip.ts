@@ -146,7 +146,12 @@ export async function whepPlay(
 export function attachWhep(
   video: HTMLVideoElement,
   whepUrl: string,
-  opts?: { hlsUrl?: string | null; onPlaying?: (playing: boolean) => void; onStatus?: (s: string) => void },
+  opts?: {
+    hlsUrl?: string | null
+    onPlaying?: (playing: boolean) => void
+    onStatus?: (s: string) => void
+    onVideoClock?: (dateMs: number) => void
+  },
 ): () => void {
   let session: RtcSession | null = null
   let detachHls: (() => void) | null = null
@@ -192,7 +197,7 @@ export function attachWhep(
       if (attempts >= 2 && opts?.hlsUrl) {
         status('WHEP silent → HLS fallback')
         video.srcObject = null
-        detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true })
+        detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true, onVideoClock: opts?.onVideoClock })
         video.play().catch(() => {})
         opts?.onPlaying?.(true)
       } else {
@@ -244,7 +249,7 @@ export function attachWhep(
         if (attempts >= 2 && opts?.hlsUrl) {
           status('WHEP handshake failed → HLS fallback')
           video.srcObject = null
-          detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true })
+          detachHls = attachHls(video, opts.hlsUrl, { lowLatency: true, onVideoClock: opts?.onVideoClock })
           video.play().catch(() => {})
           opts?.onPlaying?.(true)
         } else {

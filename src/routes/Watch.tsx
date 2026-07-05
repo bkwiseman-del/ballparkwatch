@@ -135,6 +135,20 @@ export default function Watch() {
   // viewer is actually seeing on the (delayed) video, instead of spoiling it.
   const delayRef = useRef(0)
   const delayTimers = useRef<number[]>([])
+  // Timestamp-sync (like GameChanger): when the video reports the real wall-clock of the frame
+  // on screen (HLS PROGRAM-DATE-TIME, camera_rtmp), drive the scorebug from THAT moment instead
+  // of a manual delay — self-correcting through latency drift, pauses, and seeks. Falls back to
+  // the manual stat_delay_ms path when no video clock is available (WHEP / no PDT).
+  const pdtRef = useRef(false)
+  const eventsForClock = useRef<ViewerEvent[]>([])
+  const onVideoClock = useCallback((ms: number) => {
+    pdtRef.current = true
+    const upTo = eventsForClock.current.filter(
+      (e) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0) <= ms,
+    )
+    setLive(project(upTo))
+    lastApply.current = Date.now() // keep the self-heal from overriding the PDT-synced bug
+  }, [])
 
   // Latest-response-wins, so a slow request can't leave the event list stale.
   const loadEvents = useCallback(async () => {
@@ -179,13 +193,20 @@ export default function Watch() {
     const ch = supabase.channel(gameChannelName(gameId))
     ch.on('broadcast', { event: 'state' }, ({ payload }) => {
       const apply = () => {
-        setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
-        lastApply.current = Date.now()
+        // When the video clock is driving the scorebug (camera_rtmp w/ PDT), don't also apply
+        // the scorer's broadcast state — the video timestamp is the single source of sync. We
+        // still refresh events/game so the projection has data to work from.
+        if (!pdtRef.current) {
+          setLive({ ...INITIAL_LIVE, ...(payload as LiveGame) })
+          lastApply.current = Date.now()
+        }
         loadEvents()
         loadGame()
       }
       const d = delayRef.current
-      if (d > 0) {
+      if (pdtRef.current) {
+        apply() // PDT syncs the bug; the manual delay is irrelevant
+      } else if (d > 0) {
         const id = window.setTimeout(apply, d)
         delayTimers.current.push(id)
       } else {
@@ -208,7 +229,9 @@ export default function Watch() {
   // (the scorer's own projection) drives instant updates; this covers first load
   // and a scorer whose broadcasts go briefly quiet.
   useEffect(() => {
+    eventsForClock.current = events // keep the PDT-sync handler's event list fresh
     if (!events.length) return
+    if (pdtRef.current) return // the video clock owns the scorebug — don't self-heal over it
     if (lastApply.current === 0 || Date.now() - lastApply.current > 12000) {
       setLive(project(events))
     }
@@ -550,6 +573,7 @@ export default function Watch() {
       attempt={live.status === 'live'}
       whepUrl={info.cf_whep_url}
       hlsUrl={info.cf_hls_url}
+      onVideoClock={onVideoClock}
     />
   ) : (
     <ScorePanel state={board} />

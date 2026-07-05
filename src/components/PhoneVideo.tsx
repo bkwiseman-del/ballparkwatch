@@ -20,6 +20,7 @@ export function PhoneVideo({
   attempt,
   whepUrl,
   hlsUrl,
+  onVideoClock,
 }: {
   gameId?: string
   board: ScoreboardState
@@ -27,6 +28,8 @@ export function PhoneVideo({
   attempt?: boolean // the game is live → worth trying the feed even if the heartbeat lags
   whepUrl?: string | null
   hlsUrl?: string | null
+  // Wall-clock (ms) of the frame on screen when playing via HLS (camera_rtmp), for scorebug sync.
+  onVideoClock?: (dateMs: number) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -40,8 +43,8 @@ export function PhoneVideo({
       return
     }
     // Reconnecting WHEP: survives the stream dropping and resuming on the same url.
-    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setPlaying, onStatus: setStatus })
-  }, [tryConnect, whepUrl, hlsUrl])
+    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setPlaying, onStatus: setStatus, onVideoClock })
+  }, [tryConnect, whepUrl, hlsUrl, onVideoClock])
 
   // Show the player once we actually have a picture, or the heartbeat confirms live.
   const showPlayer = !!whepUrl && (playing || live)
