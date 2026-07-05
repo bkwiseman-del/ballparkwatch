@@ -194,23 +194,27 @@ async function recordGame(gameId, token) {
   let videoStartMs = 0 // leading audio-only gap before first video keyframe (ffmpeg trims it)
   let gotVideo = false // did any video frame encode? (false → don't save an audio-only spinner)
   try {
-    // 1. Wait for the game to go live and expose a WHEP url.
+    // 1. Start capturing as soon as the WHEP feed exists — do NOT wait for the game to go
+    //    'live'. start-recording is triggered when the broadcast connects (often before the
+    //    scorer starts the game), so connecting now warms up the WebRTC path and gets the first
+    //    keyframe during PRE-GAME. That way the opening of the game already has video instead of
+    //    ~11s of keyframe-wait eating the first pitch. Pre-game footage is skipped by the replay.
     let whep = null
     const liveDeadline = Date.now() + 10 * 60_000
     while (Date.now() < liveDeadline) {
       const g = await getGame(gameId).catch(() => null)
       if (g?.status === 'final') {
-        remember(gameId, { status: 'error', detail: 'game final before live' })
+        remember(gameId, { status: 'error', detail: 'game final before capture' })
         return
       }
-      if (g?.status === 'live' && g?.cf_whep_url) {
+      if (g?.cf_whep_url) {
         whep = g.cf_whep_url
         break
       }
       await sleep(2000)
     }
     if (!whep) {
-      remember(gameId, { status: 'error', detail: 'never went live' })
+      remember(gameId, { status: 'error', detail: 'no whep url' })
       return
     }
 
