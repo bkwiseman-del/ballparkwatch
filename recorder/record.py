@@ -133,6 +133,14 @@ def main(whep_url: str, out_path: str) -> int:
             parse_in = Gst.ElementFactory.make("h264parse")
             dec = Gst.ElementFactory.make("avdec_h264")
             conv = Gst.ElementFactory.make("videoconvert")
+            # Force CONSTANT frame rate. The WebRTC feed arrives with jittery/irregular frame
+            # timing (network jitter, packet loss); re-encoding those variable timestamps 1:1
+            # yields a variable-frame-rate mp4 that STALLS/freezes on playback and drifts the
+            # replay's currentTime→wall-clock mapping (breaking play sync). videorate
+            # duplicates/drops to a steady 30fps so the file has smooth, linear timing.
+            rate = Gst.ElementFactory.make("videorate")
+            ratecaps = Gst.ElementFactory.make("capsfilter")
+            ratecaps.set_property("caps", Gst.Caps.from_string("video/x-raw,framerate=30/1"))
             enc = Gst.ElementFactory.make("x264enc")
             # zerolatency + veryfast keeps CPU sane on the Railway box; 2-second GOP
             # (key-int-max=60 @30fps) makes replay seeking snappy. x264enc emits its own
@@ -162,8 +170,8 @@ def main(whep_url: str, out_path: str) -> int:
 
             enc.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, count_frame)
             frame_counter[0] = vframes  # expose to EOS handler for the fail-loud check
-            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse_in, dec, conv, enc, parse_out])
-            log("linked video (H.264 re-encode)")
+            link_chain(pad, [Gst.ElementFactory.make("queue"), depay, parse_in, dec, conv, rate, ratecaps, enc, parse_out])
+            log("linked video (H.264 re-encode, CFR 30fps)")
             # Cloudflare only emits an IDR keyframe when it receives an RTCP PLI, and
             # avdec_h264 decodes NOTHING until it gets that first IDR (→ zero encoded frames →
             # black replay). To request a keyframe you send an upstream force-key-unit event
