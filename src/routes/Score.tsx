@@ -858,7 +858,10 @@ function BetweenInnings({
   const nextLabel = nextTop ? `START TOP ${ordinal(live.inning + 1)} ▸` : `START BOTTOM ${ordinal(live.inning)} ▸`
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 bg-field-green px-6 py-8 text-center">
+    // Scrollable + top-aligned: this screen can be taller than the viewport (score-correct
+    // rows + due-up + four buttons), and the parent is fixed-height/overflow-hidden. Centering
+    // clipped the bottom, hiding the "End game" button. min-h-0 lets the flex child scroll.
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-start gap-4 overflow-y-auto bg-field-green px-6 py-6 text-center">
       <StitchedBall />
       <p className="font-display text-3xl leading-tight text-cream">
         {live.half === 'top' ? 'Middle' : 'End'}
