@@ -156,34 +156,54 @@ export function useScorer(gameId: string | undefined) {
       if (cancelled) return
 
       // Cross-check against game_state — the server projection viewers already see. It's
-      // upserted right after each play's insert, so if its score is AHEAD of what we rebuilt
-      // from game_events, our events read came back stale (raced an in-flight insert, or the OS
-      // evicted the local WAL). That's the "scorer lost a play the viewer still has" bug. When
-      // detected, re-read game_events a couple of times until it catches up, so we never show
-      // a score behind what's already live to viewers.
+      // upserted right after each play's insert, so if it's AHEAD of what we rebuilt from
+      // game_events, our events read came back stale (raced an in-flight insert, or the OS
+      // evicted the local WAL). Compare the FULL game progress, not just the score: the
+      // "reload jumps back to the prior inning" bug is losing the 3rd-out event, which advances
+      // outs/inning but not the score — a score-only check would miss it entirely. Rank game
+      // progress lexicographically (inning, half, outs, runs) so ANY regression re-reads events.
       try {
-        const proj0 = project(rows)
+        const rank = (s: { inning: number; half: string; outs: number; runs: number }) => [
+          s.inning,
+          s.half === 'bottom' ? 1 : 0,
+          s.outs,
+          s.runs,
+        ]
+        const cmp = (a: number[], b: number[]) => {
+          for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]
+          return 0
+        }
+        const projRank = () => {
+          const p = project(rows)
+          return rank({ inning: p.inning, half: p.half, outs: p.outs, runs: p.homeScore + p.awayScore })
+        }
         const { data: gs } = await supabase
           .from('game_state')
-          .select('home_score,away_score')
+          .select('inning,half,outs,home_score,away_score')
           .eq('game_id', gameId)
           .maybeSingle()
-        const serverRuns = gs ? (gs.home_score ?? 0) + (gs.away_score ?? 0) : 0
-        if (started && serverRuns > proj0.homeScore + proj0.awayScore) {
-          for (let attempt = 0; attempt < 3; attempt++) {
-            await new Promise((r) => setTimeout(r, 700))
-            if (cancelled) return
-            const { data: evs2 } = await supabase
-              .from('game_events')
-              .select('seq,event_type,payload,created_at')
-              .eq('game_id', gameId)
-              .order('seq')
-            const rows2 = ((evs2 ?? []) as GameEventRow[])
-            const merged = rows2.length >= rows.length ? rows2 : rows
-            rows = merged
-            if (project(rows).homeScore + project(rows).awayScore >= serverRuns) break
+        if (started && gs) {
+          const serverRank = rank({
+            inning: gs.inning ?? 1,
+            half: gs.half ?? 'top',
+            outs: gs.outs ?? 0,
+            runs: (gs.home_score ?? 0) + (gs.away_score ?? 0),
+          })
+          if (cmp(serverRank, projRank()) > 0) {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              await new Promise((r) => setTimeout(r, 700))
+              if (cancelled) return
+              const { data: evs2 } = await supabase
+                .from('game_events')
+                .select('seq,event_type,payload,created_at')
+                .eq('game_id', gameId)
+                .order('seq')
+              const rows2 = (evs2 ?? []) as GameEventRow[]
+              if (rows2.length >= rows.length) rows = rows2
+              if (cmp(projRank(), serverRank) >= 0) break
+            }
+            console.warn('[scorer] recovered game state that was behind game_state on reload')
           }
-          console.warn('[scorer] recovered plays that were behind game_state on reload')
         }
       } catch {
         /* reconciliation is best-effort; fall back to the reconstructed rows */
