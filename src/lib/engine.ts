@@ -40,6 +40,9 @@ export type EventType =
   | 'manual_out'
   // scorer correction: nudge a team's score by ±N (logged as a "scorer edit")
   | 'score_adjust'
+  // scorer correction: jump the batting order to a specific lineup slot (used when the
+  // opposing lineup was guessed pre-game and the real batting order turns out different)
+  | 'set_batter'
 
 // Destination of a base path: 0 = out, 1/2/3 = base, 4 = scored (home).
 export type Dest = 0 | 1 | 2 | 3 | 4
@@ -172,6 +175,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   manual_hit: 'Hit',
   manual_out: 'Out',
   score_adjust: 'Score edit',
+  set_batter: 'Set batter',
 }
 
 // Event-type groupings used across the app.
@@ -245,6 +249,18 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
       const d = Number(e.payload?.delta ?? 0)
       if (e.payload?.team === 'home') s.homeScore = Math.max(0, s.homeScore + d)
       else s.awayScore = Math.max(0, s.awayScore + d)
+      break
+    }
+    case 'set_batter': {
+      // Scorer correction: set the batting index for a team to an absolute value the UI
+      // computed from the target lineup slot. Resets the count (a different hitter is up).
+      const idx = Number(e.payload?.idx)
+      if (Number.isFinite(idx) && idx >= 0) {
+        if (e.payload?.team === 'home') s.homeBatterIdx = idx
+        else s.awayBatterIdx = idx
+        s.balls = 0
+        s.strikes = 0
+      }
       break
     }
 

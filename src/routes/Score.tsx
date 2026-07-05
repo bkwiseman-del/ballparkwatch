@@ -681,6 +681,17 @@ function QuickPlayerPopup({
     act('substitution', { team: teamKey, moves: [{ out_id: player.id, in_id: benchId, position }] })
     onClose()
   }
+  // Make an EXISTING lineup player the current batter. Used when the opposing batting order
+  // was guessed pre-game and turns out different — jump the order to whoever is really up.
+  // Keeps the same time-through-the-order; just moves to that player's slot and resets count.
+  const setCurrentBatter = (targetId: string) => {
+    const len = lineup.length
+    const targetSlot = lineup.findIndex((p) => p.id === targetId)
+    if (len <= 0 || targetSlot < 0) return
+    const curIdx = teamKey === 'home' ? live.homeBatterIdx : live.awayBatterIdx
+    act('set_batter', { team: teamKey, idx: Math.floor(curIdx / len) * len + targetSlot })
+    onClose()
+  }
   // Move a fielder to the mound: they take P, the old pitcher takes their old spot.
   const swapToPitcher = (fielder: LineupPlayer) => {
     act('substitution', {
@@ -757,6 +768,26 @@ function QuickPlayerPopup({
                       <span className="text-barn-red">{f.jersey_number ?? ''}</span> {surname(f.name)}
                     </button>
                   ))}
+                </div>
+              </>
+            )}
+            {role === 'batter' && lineup.length > 1 && (
+              <>
+                <p className="mb-1 font-athletic text-[10px] font-semibold uppercase tracking-[.12em] text-muted-tan">
+                  Who's actually up? (jump the order)
+                </p>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {lineup
+                    .filter((p) => p.id !== player.id)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => setCurrentBatter(p.id)}
+                        className="border-2 border-ink/40 bg-white px-2 py-1.5 font-data text-sm"
+                      >
+                        <span className="text-barn-red">{p.jersey_number ?? '—'}</span> {surname(p.name)}
+                      </button>
+                    ))}
                 </div>
               </>
             )}
