@@ -140,7 +140,7 @@ def main(whep_url: str, out_path: str) -> int:
             enc.set_property("tune", "zerolatency")
             enc.set_property("speed-preset", "veryfast")
             enc.set_property("bitrate", 2500)  # kbps
-            enc.set_property("key-int-max", 60)
+            enc.set_property("key-int-max", 30)  # 1s GOP → trim-to-game-start lands within ~1s
             parse_out = Gst.ElementFactory.make("h264parse")
             parse_out.set_property("config-interval", -1)  # SPS/PPS before every IDR (robust seek)
             # Count encoded video frames so we can tell (loudly) if video never flowed.

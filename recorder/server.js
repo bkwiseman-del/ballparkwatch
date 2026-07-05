@@ -193,6 +193,8 @@ async function recordGame(gameId, token) {
   let startedAt = 0
   let videoStartMs = 0 // leading audio-only gap before first video keyframe (ffmpeg trims it)
   let gotVideo = false // did any video frame encode? (false → don't save an audio-only spinner)
+  let liveAt = 0 // wall-clock when the game first went 'live' — the replay is trimmed to here
+    //           so NO pre-game footage is ever served to viewers.
   try {
     // 1. Start capturing as soon as the WHEP feed exists — do NOT wait for the game to go
     //    'live'. start-recording is triggered when the broadcast connects (often before the
@@ -277,6 +279,10 @@ async function recordGame(gameId, token) {
       // the on-disk size doesn't grow smoothly (that false-stopped mid-game). Finish only on
       // the game going final, the recorder process exiting (feed truly dropped), or the cap.
       const g = await getGame(gameId).catch(() => null)
+      if (g?.status === 'live' && !liveAt) {
+        liveAt = Date.now()
+        console.log(`[rec ${gameId}] game went live — replay trims to here`)
+      }
       if (g?.status === 'final') {
         console.log(`[rec ${gameId}] game final`)
         break
@@ -318,11 +324,15 @@ async function recordGame(gameId, token) {
     // videoStartMs to keep plays aligned. Fall back to the raw file if ffmpeg isn't happy.
     let uploadFile = file
     let anchorMs = startedAt
-    // Only trim if the leading-gap value is sane (guards against a bad measurement seeking past
-    // the end of the file → empty/broken output). Otherwise just faststart the whole file.
-    const trimMs = videoStartMs > 500 && videoStartMs < 120_000 ? videoStartMs : 0
+    // Trim the served file to GAME-START so viewers never see pre-game footage. Cut point =
+    // max(when the game went live, first-keyframe) — never before video exists. Guard so we
+    // never seek past the end (→ empty file). If we can't compute a sane cut, just faststart.
+    const totalMs = Date.now() - startedAt
+    const gameStartMs = liveAt ? liveAt - startedAt : 0
+    let trimMs = Math.max(videoStartMs > 500 ? videoStartMs : 0, gameStartMs)
+    if (!(trimMs > 500 && trimMs < totalMs - 2000)) trimMs = 0
     const webFile = file.replace(/\.mp4$/, '-web.mp4')
-    console.log('[rec] normalizing', gameId, 'videoStartMs=', videoStartMs, 'trimMs=', trimMs)
+    console.log('[rec] normalizing', gameId, 'videoStartMs=', videoStartMs, 'gameStartMs=', gameStartMs, 'trimMs=', trimMs)
     if (await normalizeMp4(file, webFile, trimMs)) {
       const ws = await stat(webFile).catch(() => null)
       if (ws && ws.size > 1000) {
