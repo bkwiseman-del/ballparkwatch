@@ -140,16 +140,18 @@ def main(whep_url: str, out_path: str) -> int:
             # Count encoded video frames so we can tell (loudly) if video never flowed.
             vframes = [0]
 
-            def count_frame(_pad, info):
+            def count_frame(_pad, _info):
                 vframes[0] += 1
                 if vframes[0] == 1:
-                    # PTS of the first encoded frame = how long the file's leading audio-only
-                    # (black) gap is. The manager trims this off with ffmpeg so the replay
-                    # starts on real video (and anchors recording_started_at to this instant).
-                    buf = info.get_buffer()
-                    pts_ms = buf.pts // 1_000_000 if buf and buf.pts != Gst.CLOCK_TIME_NONE else 0
+                    # Pipeline running-time at the first encoded frame = length of the leading
+                    # audio-only (black) gap. (The encoder buffer PTS was unreliable — gave
+                    # absurd values — so use the clock instead.) The manager trims this with
+                    # ffmpeg so the replay opens on real video.
+                    clk = pipeline.get_clock()
+                    rt = (clk.get_time() - pipeline.get_base_time()) if clk else 0
+                    ms = max(0, rt // 1_000_000)
                     log("FIRST ENCODED VIDEO FRAME — avcC will be valid")
-                    log(f"VIDEO_START_MS={pts_ms}")
+                    log(f"VIDEO_START_MS={ms}")
                 return Gst.PadProbeReturn.OK
 
             enc.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, count_frame)
@@ -273,6 +275,23 @@ def main(whep_url: str, out_path: str) -> int:
     bus = pipeline.get_bus()
     bus.add_signal_watch()
 
+    finalizing = [False]
+
+    def finalize_partial():
+        # The source (webrtcbin transport) died mid-recording. Push EOS straight into the
+        # muxer's sink pads so mp4mux writes its moov and the partial clip is PLAYABLE — going
+        # straight to NULL instead leaves an mp4 with no moov (unplayable, spinner). We still
+        # keep everything captured up to the drop.
+        try:
+            it = mux.iterate_sink_pads()
+            while True:
+                res, p = it.next()
+                if res != Gst.IteratorResult.OK:
+                    break
+                p.send_event(Gst.Event.new_eos())
+        except Exception as e:  # noqa
+            log("finalize_partial err", repr(e))
+
     def on_msg(_bus, msg):
         if msg.type == Gst.MessageType.EOS:
             n = frame_counter[0][0] if frame_counter[0] else 0
@@ -287,7 +306,15 @@ def main(whep_url: str, out_path: str) -> int:
         elif msg.type == Gst.MessageType.ERROR:
             err, dbg = msg.parse_error()
             log("ERROR", err.message, "|", (dbg or "")[:200])
-            loop.quit()
+            n = frame_counter[0][0] if frame_counter[0] else 0
+            if n > 0 and not finalizing[0]:
+                # Salvage: finalize the partial mp4 so what we captured is playable.
+                finalizing[0] = True
+                log(f"error mid-recording with {n} frames — finalizing partial clip")
+                finalize_partial()
+                GLib.timeout_add_seconds(10, lambda: (loop.quit(), False)[1])  # safety net
+            else:
+                loop.quit()
 
     bus.connect("message", on_msg)
 

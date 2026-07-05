@@ -279,13 +279,16 @@ async function recordGame(gameId, token) {
     // videoStartMs to keep plays aligned. Fall back to the raw file if ffmpeg isn't happy.
     let uploadFile = file
     let anchorMs = startedAt
+    // Only trim if the leading-gap value is sane (guards against a bad measurement seeking past
+    // the end of the file → empty/broken output). Otherwise just faststart the whole file.
+    const trimMs = videoStartMs > 500 && videoStartMs < 120_000 ? videoStartMs : 0
     const webFile = file.replace(/\.mp4$/, '-web.mp4')
-    console.log('[rec] normalizing', gameId, 'videoStartMs=', videoStartMs)
-    if (await normalizeMp4(file, webFile, videoStartMs)) {
+    console.log('[rec] normalizing', gameId, 'videoStartMs=', videoStartMs, 'trimMs=', trimMs)
+    if (await normalizeMp4(file, webFile, trimMs)) {
       const ws = await stat(webFile).catch(() => null)
-      if (ws && ws.size > 0) {
+      if (ws && ws.size > 1000) {
         uploadFile = webFile
-        if (videoStartMs > 500) anchorMs = startedAt + videoStartMs
+        if (trimMs) anchorMs = startedAt + trimMs
       }
     }
     const size = (await stat(uploadFile)).size
