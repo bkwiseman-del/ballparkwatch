@@ -102,7 +102,7 @@ function scoreSummary(s: LiveGame, teams: Teams): string {
 function finalSummary(s: LiveGame, teams: Teams): string {
   const a = s.awayScore
   const h = s.homeScore
-  if (a === h) return `It ends in a ${a}–${a} tie.`
+  if (a === h) return `It ends in a ${a} to ${a} tie.`
   return `${h > a ? teams.home : teams.away} wins, ${Math.max(a, h)} to ${Math.min(a, h)}.`
 }
 

@@ -159,26 +159,97 @@ Deno.serve(async (req) => {
       return json({ ok: true }, 200)
     }
 
+    if (action === 'stop-input') {
+      // End an EXTERNAL-camera (RTMP/SRT) broadcast server-side when the game ends. The app
+      // can't stop the camera, and Cloudflare won't finalize the recording into a replay VOD
+      // while the source keeps publishing — so DISABLE the live input, which ends the active
+      // broadcast and rejects new ones. Recording mode stays 'automatic', so the VOD is kept
+      // (it finalizes ~30-60s after the disconnect). Idempotent.
+      if (!inputUid) return json({ ok: true, note: 'no input' }, 200)
+      await cf(`/live_inputs/${inputUid}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          meta: { name: `Bandbox ${resolvedGameId}` },
+          recording: { mode: 'automatic' },
+          enabled: false,
+        }),
+      })
+      return json({ ok: true }, 200)
+    }
+
     if (action === 'finalize') {
-      // Fetch the auto-recording VOD for this live input (ready ~60s after the stream
-      // ends). Store the newest ready video as the replay. Works with the broadcaster's
-      // token OR a viewer's gameId, so the replay never depends on the broadcaster
-      // staying on-screen to poll.
+      // Resolve the replay VOD for this game. Ready ~60s after the stream ends. Works with the
+      // broadcaster's token OR a viewer's gameId, so it never depends on the broadcaster staying
+      // on-screen. For an external camera the raw VOD includes PRE-GAME footage a viewer could
+      // scrub back into, so we CLIP it to game-start and serve the clip instead.
       if (!inputUid) return json({ ready: false }, 200)
+      const setRec = (uid: string) =>
+        token
+          ? db.rpc('stream_set_recording', { p_token: token, p_recording_uid: uid })
+          : db.rpc('stream_set_recording_by_game', { p_game_id: resolvedGameId, p_recording_uid: uid })
+
+      const { data: g0 } = await db
+        .from('games')
+        .select('video_source, cf_recording_uid, video_config')
+        .eq('id', resolvedGameId)
+        .maybeSingle()
+      const cfg = (g0?.video_config as Record<string, unknown> | null) ?? {}
+
+      // Already resolved → idempotent; just report whether it's playable yet.
+      if (g0?.cf_recording_uid) {
+        const v = (await cf(`/${g0.cf_recording_uid}`).catch(() => null)) as { readyToStream?: boolean } | null
+        return json(v?.readyToStream ? { ready: true, recordingUid: g0.cf_recording_uid } : { ready: false }, 200)
+      }
+      // A clip is already being processed → promote it once ready.
+      const pending = cfg.pending_clip_uid as string | undefined
+      if (pending) {
+        const v = (await cf(`/${pending}`).catch(() => null)) as { readyToStream?: boolean } | null
+        if (!v?.readyToStream) return json({ ready: false, clipping: true }, 200)
+        await setRec(pending)
+        return json({ ready: true, recordingUid: pending }, 200)
+      }
+
+      // Find the finalized raw recording.
       const videos = (await cf(`/live_inputs/${inputUid}/videos`)) as
-        | { uid: string; readyToStream?: boolean; created?: string }[]
+        | { uid: string; readyToStream?: boolean; created?: string; duration?: number }[]
         | null
-      const newest = (videos ?? [])
-        .slice()
-        .sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]
-      if (!newest) return json({ ready: false }, 200)
-      // Only set the replay once the recording is FINALIZED. An external camera keeps
-      // ingesting after the game ends, so the newest video is still live-in-progress — using
-      // it as the "replay" just keeps the live stream playing on the final page. Wait for the
-      // camera to stop and Cloudflare to finish the VOD (readyToStream) before pointing at it.
-      if (!newest.readyToStream) return json({ ready: false }, 200)
-      if (token) await db.rpc('stream_set_recording', { p_token: token, p_recording_uid: newest.uid })
-      else await db.rpc('stream_set_recording_by_game', { p_game_id: resolvedGameId, p_recording_uid: newest.uid })
+      const newest = (videos ?? []).slice().sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]
+      if (!newest || !newest.readyToStream) return json({ ready: false }, 200)
+
+      // External camera: clip out pre-game so it can't be scrubbed to. Offset = game-start minus
+      // the recording's start (video.created ≈ when RTMP ingest began).
+      if (g0?.video_source === 'camera_rtmp' && newest.duration && newest.created) {
+        const { data: gs } = await db
+          .from('game_events')
+          .select('created_at')
+          .eq('game_id', resolvedGameId)
+          .eq('event_type', 'game_start')
+          .order('seq')
+          .limit(1)
+          .maybeSingle()
+        const gsMs = gs?.created_at ? new Date(gs.created_at as string).getTime() : NaN
+        const offset = Number.isFinite(gsMs) ? (gsMs - new Date(newest.created).getTime()) / 1000 : 0
+        if (offset > 3 && offset < newest.duration - 2) {
+          const clip = (await cf(`/clip`, {
+            method: 'POST',
+            body: JSON.stringify({
+              clippedFromVideoUID: newest.uid,
+              startTimeSeconds: Math.floor(offset),
+              endTimeSeconds: Math.floor(newest.duration),
+            }),
+          }).catch(() => null)) as { uid?: string } | null
+          if (clip?.uid) {
+            await db
+              .from('games')
+              .update({ video_config: { ...cfg, pending_clip_uid: clip.uid } })
+              .eq('id', resolvedGameId)
+            return json({ ready: false, clipping: true }, 200) // promote it on a later poll when ready
+          }
+        }
+      }
+
+      // No clip needed (phone/whip, or no meaningful pre-game) — serve the raw VOD.
+      await setRec(newest.uid)
       return json({ ready: true, recordingUid: newest.uid }, 200)
     }
 

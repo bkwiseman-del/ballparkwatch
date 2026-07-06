@@ -459,6 +459,14 @@ export default function Score() {
           onConfirm={(reason) => {
             act('game_end', { reason })
             setEndPopup(false)
+            // External camera can't be stopped from the app — end it SERVER-SIDE by disabling the
+            // Cloudflare live input, so the RTMP feed stops and the recording finalizes into a
+            // replay (otherwise the camera keeps publishing and no VOD is ever produced).
+            if (game?.video_source === 'camera_rtmp' && game?.share_token) {
+              void supabase.functions.invoke('stream-live', {
+                body: { token: game.share_token, action: 'stop-input' },
+              })
+            }
           }}
         />
       )}
