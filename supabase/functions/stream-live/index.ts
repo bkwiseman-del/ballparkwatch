@@ -200,12 +200,15 @@ Deno.serve(async (req) => {
         const v = (await cf(`/${g0.cf_recording_uid}`).catch(() => null)) as { readyToStream?: boolean } | null
         return json(v?.readyToStream ? { ready: true, recordingUid: g0.cf_recording_uid } : { ready: false }, 200)
       }
-      // A clip is already being processed → promote it once ready.
+      // A clip is already being processed → promote it once ready, and anchor the replay clock to
+      // the clip's start (= game-start), so the scorebug + commentary sync to the clipped video.
       const pending = cfg.pending_clip_uid as string | undefined
       if (pending) {
         const v = (await cf(`/${pending}`).catch(() => null)) as { readyToStream?: boolean } | null
         if (!v?.readyToStream) return json({ ready: false, clipping: true }, 200)
         await setRec(pending)
+        const anchor = cfg.pending_clip_anchor as string | undefined
+        if (anchor) await db.from('games').update({ recording_started_at: anchor }).eq('id', resolvedGameId)
         return json({ ready: true, recordingUid: pending }, 200)
       }
 
@@ -241,7 +244,9 @@ Deno.serve(async (req) => {
           if (clip?.uid) {
             await db
               .from('games')
-              .update({ video_config: { ...cfg, pending_clip_uid: clip.uid } })
+              .update({
+                video_config: { ...cfg, pending_clip_uid: clip.uid, pending_clip_anchor: gs?.created_at ?? null },
+              })
               .eq('id', resolvedGameId)
             return json({ ready: false, clipping: true }, 200) // promote it on a later poll when ready
           }
