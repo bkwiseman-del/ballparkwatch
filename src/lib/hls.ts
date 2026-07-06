@@ -9,10 +9,12 @@ import Hls from 'hls.js'
 export function attachHls(
   video: HTMLVideoElement,
   url: string,
-  // onVideoClock (live only): reports the REAL-WORLD wall-clock time (ms) the currently-shown
-  // frame was captured, from HLS EXT-X-PROGRAM-DATE-TIME. This is how the scorebug syncs to the
-  // exact video moment (like GameChanger) — no manual delay, self-correcting through drift and
-  // pauses/seeks. Fires on an interval; the caller falls back to a manual delay if it never does.
+  // onVideoClock (live only): reports the REAL-WORLD wall-clock (ms) of the frame on screen, so
+  // the scorebug + commentary sync to the exact video moment (like GameChanger) with no manual
+  // delay. Preferred source is HLS PROGRAM-DATE-TIME; Cloudflare's live HLS DOESN'T carry it, so
+  // we fall back to deriving it from the player's live latency: clock ≈ now − (edge − playhead).
+  // Self-correcting through drift; fires on an interval; caller falls back to a manual delay if
+  // it never fires at all.
   opts?: { onError?: () => void; lowLatency?: boolean; onVideoClock?: (dateMs: number) => void },
 ): () => void {
   const wantClock = !!(opts?.lowLatency && opts?.onVideoClock)
@@ -23,14 +25,19 @@ export function attachHls(
     video.src = url
     const onErr = () => opts?.onError?.()
     video.addEventListener('error', onErr)
-    // Native HLS: getStartDate() is the stream's PROGRAM-DATE-TIME anchor; + currentTime = the
-    // wall-clock of the frame on screen.
     const clkTimer = wantClock
       ? window.setInterval(() => {
+          // Prefer the PROGRAM-DATE-TIME anchor if present…
           const start = (video as HTMLVideoElement & { getStartDate?: () => Date }).getStartDate?.()
-          const base = start ? start.getTime() : NaN
-          const ms = base + video.currentTime * 1000
-          if (sane(ms)) opts!.onVideoClock!(ms)
+          if (start && !Number.isNaN(start.getTime())) {
+            const ms = start.getTime() + video.currentTime * 1000
+            if (sane(ms)) return opts!.onVideoClock!(ms)
+          }
+          // …otherwise derive from live latency (seekable edge − playhead).
+          const s = video.seekable
+          if (!s.length) return
+          const lat = s.end(s.length - 1) - video.currentTime
+          if (lat > 0.2 && lat < 120) opts!.onVideoClock!(Date.now() - lat * 1000)
         }, 1000)
       : undefined
     return () => {
@@ -56,12 +63,14 @@ export function attachHls(
       }
       opts?.onError?.()
     })
-    // hls.js exposes `playingDate` — the Date of the frame at the playhead, from PROGRAM-DATE-TIME.
     const clkTimer = wantClock
       ? window.setInterval(() => {
-          const d = (hls as unknown as { playingDate?: Date | null }).playingDate
-          const ms = d ? d.getTime() : NaN
-          if (sane(ms)) opts!.onVideoClock!(ms)
+          const h = hls as unknown as { playingDate?: Date | null; latency?: number }
+          // Prefer PROGRAM-DATE-TIME…
+          if (h.playingDate && sane(h.playingDate.getTime())) return opts!.onVideoClock!(h.playingDate.getTime())
+          // …otherwise derive from hls.js's measured live latency.
+          const lat = h.latency
+          if (typeof lat === 'number' && lat > 0.2 && lat < 120) opts!.onVideoClock!(Date.now() - lat * 1000)
         }, 1000)
       : undefined
     return () => {

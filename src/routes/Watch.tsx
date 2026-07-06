@@ -145,12 +145,16 @@ export default function Watch() {
   const fireDueRef = useRef<() => void>(() => {})
   const onVideoClock = useCallback((ms: number) => {
     pdtRef.current = true
-    videoClockRef.current = ms
+    // The derived clock (now − live latency) can run a few seconds NEW of the true frame because
+    // Cloudflare's live edge lags real time. stat_delay_ms is now a small manual FINE-TUNE that
+    // pushes the sync point back to kill that residual (nudge it up if commentary is still ahead).
+    const adjusted = ms - delayRef.current
+    videoClockRef.current = adjusted
     const upTo = eventsForClock.current.filter(
-      (e) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0) <= ms,
+      (e) => (e.wall_clock_ts ? new Date(e.wall_clock_ts).getTime() : 0) <= adjusted,
     )
     setLive(project(upTo))
-    lastApply.current = Date.now() // keep the self-heal from overriding the PDT-synced bug
+    lastApply.current = Date.now() // keep the self-heal from overriding the video-synced bug
     fireDueRef.current() // fire FX + commentary ONLY for plays the video has now reached
   }, [])
 
