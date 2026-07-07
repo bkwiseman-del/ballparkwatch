@@ -13,7 +13,6 @@ import Lineup from './routes/Lineup'
 import Score from './routes/Score'
 import Watch from './routes/Watch'
 import Broadcast from './routes/Broadcast'
-import Recorder from './routes/Recorder'
 import Join from './routes/Join'
 import Team from './routes/Team'
 
@@ -80,8 +79,6 @@ export default function App() {
       <Route path="/t/:slug" element={<Team />} />
       {/* Broadcaster — reached only via the scorer's private token link/QR. */}
       <Route path="/broadcast/:token" element={<Broadcast />} />
-      {/* Server-side recorder (paid replay) — opened headless with a broadcast grant token. */}
-      <Route path="/record/:gameId" element={<Recorder />} />
       {/* Accept a team invite — sign-in required, but NOT the beta allowlist
           (accepting the invite is what grants access). */}
       <Route path="/join/:token" element={<Join />} />
