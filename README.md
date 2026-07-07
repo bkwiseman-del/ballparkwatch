@@ -91,8 +91,10 @@ the unified [docs/bandbox-plan.md](docs/bandbox-plan.md), and the IVS video arch
 - **Broadcaster resilience:** the phone auto-reconnects on a network drop; a source-agnostic
   stage-presence check drives the scorer's "video down" alert (phone **and** camera). Camera reconnect
   is the external encoder's job. Still to harden with real drop testing.
-- **Multi-angle:** the foundation is proven (an IVS stage holds many publishers at once), but the
-  per-angle UX (setup for two sources, viewer switcher/grid, mixed-latency sync) is **not built**.
+- **Multi-angle** ✅ (composite mode): a `'multi'` game runs a **phone + external camera** on one
+  stage, composited into a **single low-latency HLS view** (both angles at the same latency → no
+  time jump), recorded together. Phone-only games are untouched (still sub-second). Deferred: the
+  fancier **per-viewer angle switcher** with a sub-second phone angle (mixed-latency sync is hard).
 - **Cost cap:** a 5-concurrent-viewer limit for free accounts is written + applied but **dormant**
   (flip on before real exposure). Sub-second WebRTC viewers bill per-viewer; HLS/replay is cheap CDN.
 - **IAM:** scope `bandbox-edge` down from AdministratorAccess (used during debugging) to the
