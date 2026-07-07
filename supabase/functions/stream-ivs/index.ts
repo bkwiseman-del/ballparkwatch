@@ -130,19 +130,31 @@ Deno.serve(async (req) => {
       if (g!.video_source === 'camera_rtmp' && g!.ivs_channel_arn) {
         destinations.push({ channel: { channelArn: g!.ivs_channel_arn, encoderConfigurationArn: ENCODER_ARN } })
       }
+      type CompDest = { detail?: { s3?: { recordingPrefix?: string } } }
+      type Comp = { composition?: { arn?: string; destinations?: CompDest[] } }
       const comp = (await rt('StartComposition', {
         stageArn,
         idempotencyToken: crypto.randomUUID(), // required by the REST API; our own arn-guard above prevents dupes
         destinations,
-      })) as { composition?: { arn?: string; destinations?: { detail?: { s3?: { recordingPrefix?: string } } }[] } }
+      })) as Comp
       const compArn = comp.composition?.arn ?? null
-      const prefix = comp.composition?.destinations?.[0]?.detail?.s3?.recordingPrefix ?? null
+      // Find the S3 destination by its recordingPrefix — the destinations array order is NOT
+      // guaranteed (the channel can be index 0). Fall back to GetComposition if the prefix isn't
+      // populated in the immediate StartComposition response.
+      const s3Prefix = (c: Comp) =>
+        (c.composition?.destinations ?? []).find((d) => d.detail?.s3?.recordingPrefix)?.detail?.s3
+          ?.recordingPrefix ?? null
+      let prefix = s3Prefix(comp)
+      if (!prefix && compArn) {
+        const g2 = (await rt('GetComposition', { arn: compArn }).catch(() => ({}))) as Comp
+        prefix = s3Prefix(g2)
+      }
       await db.rpc('stream_ivs_set_composition', {
         p_token: token,
         p_composition_arn: compArn,
         p_recording_prefix: prefix,
       })
-      return json({ ok: true, compositionArn: compArn }, 200)
+      return json({ ok: true, compositionArn: compArn, recordingPrefix: prefix }, 200)
     }
 
     // ---- game-end: stop recording + STOP THE CAMERA. ----

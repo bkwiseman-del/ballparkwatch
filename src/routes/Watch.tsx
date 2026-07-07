@@ -148,7 +148,12 @@ export default function Watch() {
   const videoClockRef = useRef(0)
   const eventsForClock = useRef<ViewerEvent[]>([])
   const fireDueRef = useRef<() => void>(() => {})
+  // Once the game is authoritatively over, the delayed video's tail keeps firing cues that would
+  // revert the scorebug to a non-final state — freezing the viewer on the live page. This latch
+  // stops video-clock updates from overriding the Final transition.
+  const finalRef = useRef(false)
   const onVideoClock = useCallback((ms: number) => {
+    if (finalRef.current) return // game's over — don't let the delayed tail pull us back to live
     pdtRef.current = true
     const adjusted = ms - delayRef.current
     videoClockRef.current = adjusted
@@ -264,8 +269,9 @@ export default function Watch() {
   // broadcast is otherwise ignored. Without this, camera viewers never auto-navigate to the Final
   // screen (the game-end cue can't ride the video once the channel stops).
   useEffect(() => {
-    if (info?.status === 'final' && live.status !== 'final' && events.length) {
-      setLive(project(events))
+    if (info?.status === 'final') {
+      finalRef.current = true // latch: stop video-clock cues from reverting us to live
+      if (live.status !== 'final' && events.length) setLive(project(events))
     }
   }, [info?.status, live.status, events])
 
