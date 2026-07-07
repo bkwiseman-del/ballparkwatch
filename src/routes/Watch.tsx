@@ -26,6 +26,7 @@ import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { attachHls, isHlsUrl } from '@/lib/hls'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
+import { IvsChannelVideo, type ScoreCue } from '@/components/IvsChannelVideo'
 import { Bunting } from '@/components/Bunting'
 import { ShareSheet } from '@/components/ShareSheet'
 import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon } from '@/components/Icons'
@@ -57,6 +58,8 @@ type PublicGame = {
   cf_hls_url?: string | null
   cf_recording_uid?: string | null
   cf_customer_code?: string | null
+  ivs_playback_url?: string | null // camera live HLS (IVS low-latency channel)
+  ivs_replay_url?: string | null // camera replay VOD (set at finalize once CloudFront is wired)
   sponsors?: { name: string | null; image: string; url: string | null }[]
 }
 
@@ -154,6 +157,18 @@ export default function Watch() {
     lastApply.current = Date.now() // keep the self-heal from overriding the video-synced bug
     fireDueRef.current() // fire FX + commentary ONLY for plays the video has now reached
   }, [])
+
+  // Camera (IVS) sync: the channel HLS carries the scorer's timed-metadata cues (put-metadata),
+  // which arrive frame-synced to the delayed feed. The cue names the reached event seq; map it to
+  // that event's wall clock and reuse the exact timestamp-sync pipeline above (project + fireDue).
+  const onCue = useCallback(
+    (cue: ScoreCue) => {
+      const ev = eventsForClock.current.find((e) => e.seq === cue.s)
+      const ms = ev?.wall_clock_ts ? new Date(ev.wall_clock_ts).getTime() : null
+      if (ms != null) onVideoClock(ms)
+    },
+    [onVideoClock],
+  )
 
   // Latest-response-wins, so a slow request can't leave the event list stale.
   const loadEvents = useCallback(async () => {
@@ -491,7 +506,9 @@ export default function Watch() {
   // exists — the Stream VOD (preferred) or the local upload. The time anchor comes from
   // recording_started_at; if that's missing (older/early-ended broadcast) we fall back to
   // the game_start timestamp so the replay still plays (sync just approximate).
-  const replayVideoUrl = (!vodBroken ? streamVod : null) ?? replayUrl ?? null
+  // Prefer the IVS replay VOD (camera games) when finalized; else the Cloudflare Stream VOD or
+  // the local upload (older games). IVS replay is served once CloudFront is wired (Build 4).
+  const replayVideoUrl = info.ivs_replay_url ?? (!vodBroken ? streamVod : null) ?? replayUrl ?? null
   const gameStartMs = (() => {
     const gs = events.find((e) => e.event_type === 'game_start')
     return gs?.wall_clock_ts ? new Date(gs.wall_clock_ts).getTime() : 0
@@ -567,7 +584,10 @@ export default function Watch() {
       <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
       <ScorebugBar state={board} />
     </div>
-  ) : info.video_source === 'phone_whip' || info.video_source === 'camera_rtmp' ? (
+  ) : info.video_source === 'camera_rtmp' ? (
+    // External camera on Amazon IVS: low-latency channel HLS + timed-metadata scorebug sync.
+    <IvsChannelVideo playbackUrl={info.ivs_playback_url} board={board} onCue={onCue} />
+  ) : info.video_source === 'phone_whip' ? (
     <PhoneVideo
       gameId={gameId}
       board={board}

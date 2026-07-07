@@ -41,3 +41,7 @@ supabase/.env
 docs/*.mp4
 docs/*.zip
 docs/Screenshot*.png
+
+# AWS credential exports — never commit
+*accessKeys.csv
+.bandbox-secrets/

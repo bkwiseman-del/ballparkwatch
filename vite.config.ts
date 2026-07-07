@@ -18,6 +18,10 @@ export default defineConfig({
       workbox: {
         // Inject our push + notificationclick handlers into the generated Workbox SW.
         importScripts: ['/push-sw.js'],
+        // The Amazon IVS SDKs (player + web-broadcast) push the app bundle past workbox's 2 MiB
+        // default precache cap. Raise it so the shell still precaches. TODO: code-split the IVS
+        // SDKs (dynamic import for camera/phone-video games only) to shrink the critical bundle.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // A new SW takes over and controls open tabs IMMEDIATELY, and old precaches are
         // purged — so a deploy actually reaches users on their next load instead of
         // serving stale code until every tab closes.
