@@ -178,83 +178,66 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'finalize') {
-      // Resolve the replay VOD for this game. Ready ~60s after the stream ends. Works with the
-      // broadcaster's token OR a viewer's gameId, so it never depends on the broadcaster staying
-      // on-screen. For an external camera the raw VOD includes PRE-GAME footage a viewer could
-      // scrub back into, so we CLIP it to game-start and serve the clip instead.
+      // Resolve the replay VOD for this game. Ready ~60s after the stream ends. For an external
+      // camera the raw VOD includes PRE-GAME footage a viewer could scrub back into, so we CLIP
+      // it to game-start and serve the clip. NOTE: this schema denies the service role DIRECT
+      // table access to bpw.games/game_events — everything must go through security-definer RPCs
+      // (get_public_game / game_bounds / stream_set_replay), not db.from(...).
       if (!inputUid) return json({ ready: false }, 200)
-      const setRec = (uid: string) =>
-        token
-          ? db.rpc('stream_set_recording', { p_token: token, p_recording_uid: uid })
-          : db.rpc('stream_set_recording_by_game', { p_game_id: resolvedGameId, p_recording_uid: uid })
+      const setRepl = (uid: string | null, startedAt: string | null, vconf: Record<string, unknown> | null) =>
+        db.rpc('stream_set_replay', {
+          p_game_id: resolvedGameId,
+          p_recording_uid: uid,
+          p_started_at: startedAt,
+          p_video_config: vconf,
+        })
 
-      const { data: g0 } = await db
-        .from('games')
-        .select('video_source, cf_recording_uid, video_config')
-        .eq('id', resolvedGameId)
-        .maybeSingle()
-      const cfg = (g0?.video_config as Record<string, unknown> | null) ?? {}
+      const { data: g0raw } = await db.rpc('get_public_game', { p_game_id: resolvedGameId })
+      const gg = (g0raw ?? {}) as {
+        video_source?: string
+        cf_recording_uid?: string | null
+        video_config?: Record<string, unknown> | null
+      }
+      const cfg = gg.video_config ?? {}
 
       // Already resolved → idempotent; just report whether it's playable yet.
-      if (g0?.cf_recording_uid) {
-        const v = (await cf(`/${g0.cf_recording_uid}`).catch(() => null)) as { readyToStream?: boolean } | null
-        return json(v?.readyToStream ? { ready: true, recordingUid: g0.cf_recording_uid } : { ready: false }, 200)
+      if (gg.cf_recording_uid) {
+        const v = (await cf(`/${gg.cf_recording_uid}`).catch(() => null)) as { readyToStream?: boolean } | null
+        return json(v?.readyToStream ? { ready: true, recordingUid: gg.cf_recording_uid } : { ready: false }, 200)
       }
-      // A clip is already being processed → promote it once ready, and anchor the replay clock to
-      // the clip's start (= game-start), so the scorebug + commentary sync to the clipped video.
+      // A clip is already processing → promote it once ready and anchor the replay to its start.
       const pending = cfg.pending_clip_uid as string | undefined
       if (pending) {
         const v = (await cf(`/${pending}`).catch(() => null)) as { readyToStream?: boolean } | null
         if (!v?.readyToStream) return json({ ready: false, clipping: true }, 200)
-        await setRec(pending)
-        const anchor = cfg.pending_clip_anchor as string | undefined
-        if (anchor) await db.from('games').update({ recording_started_at: anchor }).eq('id', resolvedGameId)
+        await setRepl(pending, (cfg.pending_clip_anchor as string) ?? null, null)
         return json({ ready: true, recordingUid: pending }, 200)
       }
 
-      // Find the finalized raw recording.
+      // Find the finalized raw recording + its duration.
       const videos = (await cf(`/live_inputs/${inputUid}/videos`)) as
-        | { uid: string; readyToStream?: boolean; created?: string; duration?: number }[]
+        | { uid: string; readyToStream?: boolean; created?: string }[]
         | null
       const newest = (videos ?? []).slice().sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]
       if (!newest || !newest.readyToStream) return json({ ready: false }, 200)
+      const details = (await cf(`/${newest.uid}`).catch(() => null)) as { duration?: number } | null
+      const vodDuration = details?.duration ?? 0
 
-      // External camera: clip out pre-game so it can't be scrubbed to. Offset = game-start minus
-      // the recording's start (video.created ≈ when RTMP ingest began).
-      if (g0?.video_source === 'camera_rtmp' && newest.duration && newest.created) {
-        const { data: gs } = await db
-          .from('game_events')
-          .select('created_at')
-          .eq('game_id', resolvedGameId)
-          .eq('event_type', 'game_start')
-          .order('seq')
-          .limit(1)
-          .maybeSingle()
-        const gsMs = gs?.created_at ? new Date(gs.created_at as string).getTime() : NaN
-        const offset = Number.isFinite(gsMs) ? (gsMs - new Date(newest.created).getTime()) / 1000 : 0
-        if (offset > 3 && offset < newest.duration - 2) {
-          const clip = (await cf(`/clip`, {
-            method: 'POST',
-            body: JSON.stringify({
-              clippedFromVideoUID: newest.uid,
-              startTimeSeconds: Math.floor(offset),
-              endTimeSeconds: Math.floor(newest.duration),
-            }),
-          }).catch(() => null)) as { uid?: string } | null
-          if (clip?.uid) {
-            await db
-              .from('games')
-              .update({
-                video_config: { ...cfg, pending_clip_uid: clip.uid, pending_clip_anchor: gs?.created_at ?? null },
-              })
-              .eq('id', resolvedGameId)
-            return json({ ready: false, clipping: true }, 200) // promote it on a later poll when ready
-          }
-        }
+      // External camera: anchor the replay clock to game-start (the replay seeks there and the
+      // scorebug/commentary sync to it). NOTE: we do NOT trim pre-game out of the VOD — Cloudflare
+      // cannot clip a full-length live recording (its /clip API rejects live recordings, and
+      // "instant clipping" is capped at 60s), so there is no server-side way to drop the pre-game
+      // portion of the served video. Preventing pre-game footage requires not RECORDING it (only
+      // enabling the input at game-start) — tracked separately.
+      if (gg.video_source === 'camera_rtmp' && vodDuration > 0) {
+        const { data: bounds } = await db.rpc('game_bounds', { p_game_id: resolvedGameId })
+        const b = (Array.isArray(bounds) ? bounds[0] : bounds) as { gstart?: string; gend?: string } | null
+        await setRepl(newest.uid, b?.gstart ?? null, null)
+        return json({ ready: true, recordingUid: newest.uid }, 200)
       }
 
-      // No clip needed (phone/whip, or no meaningful pre-game) — serve the raw VOD.
-      await setRec(newest.uid)
+      // Phone/WHIP or other — serve the raw VOD as-is.
+      await setRepl(newest.uid, null, null)
       return json({ ready: true, recordingUid: newest.uid }, 200)
     }
 

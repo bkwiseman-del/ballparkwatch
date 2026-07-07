@@ -145,9 +145,6 @@ export default function Watch() {
   const fireDueRef = useRef<() => void>(() => {})
   const onVideoClock = useCallback((ms: number) => {
     pdtRef.current = true
-    // The derived clock (now − live latency) can run a few seconds NEW of the true frame because
-    // Cloudflare's live edge lags real time. stat_delay_ms is now a small manual FINE-TUNE that
-    // pushes the sync point back to kill that residual (nudge it up if commentary is still ahead).
     const adjusted = ms - delayRef.current
     videoClockRef.current = adjusted
     const upTo = eventsForClock.current.filter(
