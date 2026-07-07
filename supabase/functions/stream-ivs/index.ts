@@ -106,6 +106,29 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---- stream-status: is ANYTHING publishing to the game's stage right now? A source-agnostic
+  // health signal (phone OR external camera) for the scorer's "video down" alert. (The phone also
+  // has its own heartbeat; this is the equivalent for the camera, which sends no heartbeat.)
+  if (action === 'stream-status') {
+    if (!gameId) return json({ error: 'Missing gameId.' }, 400)
+    const { data: stageArn } = await db.rpc('stream_ivs_stage_by_game', { p_game_id: gameId })
+    if (!stageArn) return json({ publishing: false }, 200)
+    try {
+      const sess = (await rt('ListStageSessions', { stageArn, maxResults: 1 })) as {
+        stageSessions?: { sessionId?: string }[]
+      }
+      const sid = sess.stageSessions?.[0]?.sessionId
+      if (!sid) return json({ publishing: false }, 200)
+      const parts = (await rt('ListParticipants', { stageArn, sessionId: sid })) as {
+        participants?: { published?: boolean; state?: string }[]
+      }
+      const publishing = (parts.participants ?? []).some((p) => p.published && p.state === 'CONNECTED')
+      return json({ publishing }, 200)
+    } catch {
+      return json({ publishing: false }, 200) // best-effort; never block the scorer on a status hiccup
+    }
+  }
+
   // Resolve game + IVS ids. Broadcaster actions use the token; a viewer may finalize a
   // public final game by gameId.
   type G = {

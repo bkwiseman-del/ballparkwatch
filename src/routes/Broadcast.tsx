@@ -352,14 +352,25 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
           return
         }
         console.info('[stream] publishing to IVS stage')
-        const session = await publishToStage(whipToken, v.local!)
+        // onState reflects the REAL stage connection: 'live' when connected, 'connecting' while
+        // (re)connecting. This drives the heartbeat below (gated on 'live') — so a genuine drop
+        // stops the beat and the scorer's "video down" alert fires — and the auto-reconnect runs.
+        const session = await publishToStage(whipToken, v.local!, (s) => {
+          if (cancelled) return
+          if (s === 'live') {
+            setStreamErr('')
+            setStreamState('live')
+          } else if (s === 'error') {
+            setStreamState('error')
+          } else {
+            setStreamState('connecting') // 'connecting' | 'reconnecting'
+          }
+        })
         if (cancelled) {
           session.close()
           return
         }
         whipRef.current = session
-        setStreamErr('')
-        setStreamState('live')
       } catch (e) {
         console.error('[stream] IVS publish failed:', e)
         if (!cancelled) {

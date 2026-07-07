@@ -28,6 +28,42 @@ import {
 } from '@/lib/engine'
 import type { Player, Recap, Team } from '@/lib/types'
 
+// Source-agnostic "is the video live?" for the scorer, via stream-status (is anything publishing to
+// the game's stage?). Covers the EXTERNAL CAMERA, which sends no heartbeat — the phone keeps using
+// its own heartbeat (useBroadcastStatus). Same shape so the header dot + "feed lost" banner are shared.
+function useIvsStreamStatus(gameId: string | undefined, active: boolean) {
+  const [live, setLive] = useState(false)
+  const wasLive = useRef(false)
+  useEffect(() => {
+    if (!gameId || !active) {
+      setLive(false)
+      wasLive.current = false
+      return
+    }
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const { data } = await supabase.functions.invoke('stream-ivs', {
+          body: { gameId, action: 'stream-status' },
+        })
+        if (cancelled) return
+        const publishing = !!(data as { publishing?: boolean } | null)?.publishing
+        setLive(publishing)
+        if (publishing) wasLive.current = true
+      } catch {
+        /* keep last known state on a transient error */
+      }
+    }
+    void poll()
+    const id = window.setInterval(poll, 8000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [gameId, active])
+  return { live, down: wasLive.current && !live, ended: false, secsSinceBeat: null as number | null }
+}
+
 export default function Score() {
   const { gameId } = useParams()
   const s = useScorer(gameId)
@@ -77,6 +113,10 @@ export default function Score() {
   const [rosterNote, setRosterNote] = useState<string[] | null>(null)
   // Live health of the phone broadcast (for the indicator in the header).
   const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
+  // External camera has no heartbeat → poll stage presence instead. Unified `vstatus` feeds the same
+  // header dot + "feed lost" banner for both sources (phone keeps its heartbeat-based status).
+  const camStatus = useIvsStreamStatus(gameId, game?.video_source === 'camera_rtmp' && live.status === 'live')
+  const vstatus = game?.video_source === 'camera_rtmp' ? camStatus : bstatus
   const [endedDismissed, setEndedDismissed] = useState(false)
   // A newly (re)started broadcast clears the dismissed "ended" notice.
   useEffect(() => {
@@ -151,21 +191,21 @@ export default function Score() {
             <button
               onClick={() => setShowVideo(true)}
               className={`inline-flex items-center gap-1.5 font-athletic text-sm font-semibold uppercase tracking-wide ${
-                bstatus.down ? 'text-barn-red' : 'text-gold'
+                vstatus.down ? 'text-barn-red' : 'text-gold'
               }`}
             >
-              {game.video_source === 'phone_whip' && (
+              {(game.video_source === 'phone_whip' || game.video_source === 'camera_rtmp') && (
                 <span
                   className={`h-2 w-2 rounded-full ${
-                    bstatus.live
+                    vstatus.live
                       ? 'animate-pulse bg-board-green'
-                      : bstatus.down
+                      : vstatus.down
                         ? 'animate-pulse bg-barn-red'
                         : 'bg-gold/40'
                   }`}
                 />
               )}
-              {bstatus.live ? 'Live' : bstatus.down ? 'Feed down' : 'Video'}
+              {vstatus.live ? 'Live' : vstatus.down ? 'Feed down' : 'Video'}
             </button>
           )}
           <button onClick={() => setShowShare(true)} className="inline-flex items-center gap-1 font-athletic text-sm font-semibold uppercase tracking-wide text-gold">
@@ -174,9 +214,9 @@ export default function Score() {
         </div>
       </header>
 
-      {/* Video feed died — make it impossible to miss so the scorer can go fix the
-          broadcasting phone (locked screen / lost signal are the usual culprits). */}
-      {bstatus.down && (
+      {/* Video feed died — make it impossible to miss so the scorer can go fix the source
+          (phone: locked screen / lost signal; camera: encoder disconnected). */}
+      {vstatus.down && (
         <button
           onClick={() => setShowVideo(true)}
           className="flex w-full shrink-0 items-center justify-between gap-2 bg-barn-red px-3 py-2 text-left"
@@ -185,11 +225,11 @@ export default function Score() {
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cream" />
             <span className="font-athletic text-sm font-bold uppercase tracking-wide text-cream">
               Video feed lost
-              {bstatus.secsSinceBeat != null ? ` — no signal for ${bstatus.secsSinceBeat}s` : ''}
+              {vstatus.secsSinceBeat != null ? ` — no signal for ${vstatus.secsSinceBeat}s` : ''}
             </span>
           </span>
           <span className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/90">
-            Check phone ▸
+            {game?.video_source === 'camera_rtmp' ? 'Check camera ▸' : 'Check phone ▸'}
           </span>
         </button>
       )}
