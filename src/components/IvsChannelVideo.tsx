@@ -54,6 +54,7 @@ export function IvsChannelVideo({
     // Guard the whole init — the IVS player spins up a Web Worker + WASM; a failure here must
     // degrade to the scoreboard, never bubble up and blank the page.
     let player: ReturnType<typeof createPlayer> | null = null
+    let retryTimer: number | undefined
     const cueHandler = (cue: TextMetadataCue) => {
       if (!cue?.text) return
       try {
@@ -62,8 +63,28 @@ export function IvsChannelVideo({
         /* not one of our scorebug cues */
       }
     }
-    const onReadyOrPlaying = () => setPlaying(true)
+    const onReadyOrPlaying = () => {
+      setPlaying(true)
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = undefined
+      }
+    }
     const onEnded = () => setPlaying(false)
+    // Right after Start Game the channel takes ~10-15s to go live, so the master playlist 404s.
+    // Keep re-loading until segments exist (the "Connecting…" state shows meanwhile) instead of
+    // letting the player give up — that's why the first test "took a while" to appear.
+    const onError = (err: unknown) => {
+      console.warn('[IvsChannelVideo] player error, retrying load:', err)
+      if (retryTimer) clearTimeout(retryTimer)
+      retryTimer = window.setTimeout(() => {
+        try {
+          player?.load(playbackUrl)
+        } catch {
+          /* torn down */
+        }
+      }, 3000)
+    }
     try {
       player = createPlayer({ wasmBinary, wasmWorker })
       player.attachHTMLVideoElement(el)
@@ -75,18 +96,21 @@ export function IvsChannelVideo({
       player.addEventListener(PlayerState.READY, onReadyOrPlaying)
       player.addEventListener(PlayerState.PLAYING, onReadyOrPlaying)
       player.addEventListener(PlayerState.ENDED, onEnded)
+      player.addEventListener(PlayerEventType.ERROR, onError)
     } catch (e) {
       console.error('[IvsChannelVideo] player init failed:', e)
       setPlaying(false)
     }
 
     return () => {
+      if (retryTimer) clearTimeout(retryTimer)
       if (!player) return
       try {
         player.removeEventListener(PlayerEventType.TEXT_METADATA_CUE, cueHandler)
         player.removeEventListener(PlayerState.READY, onReadyOrPlaying)
         player.removeEventListener(PlayerState.PLAYING, onReadyOrPlaying)
         player.removeEventListener(PlayerState.ENDED, onEnded)
+        player.removeEventListener(PlayerEventType.ERROR, onError)
         player.delete()
       } catch {
         /* already torn down */
