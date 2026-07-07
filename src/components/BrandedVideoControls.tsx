@@ -10,6 +10,8 @@ export function BrandedVideoControls({ videoRef }: { videoRef: RefObject<HTMLVid
   const [dur, setDur] = useState(0)
   const [buffered, setBuffered] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [muted, setMuted] = useState(true) // replay video autoplays muted; viewer unmutes here
+  const [volume, setVolume] = useState(1)
   const trackRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef(false)
 
@@ -29,14 +31,20 @@ export function BrandedVideoControls({ videoRef }: { videoRef: RefObject<HTMLVid
         /* buffered not ready */
       }
     }
+    const onVol = () => {
+      setMuted(v.muted)
+      setVolume(v.volume)
+    }
     v.addEventListener('timeupdate', onTime)
     v.addEventListener('durationchange', onDur)
     v.addEventListener('loadedmetadata', onDur)
     v.addEventListener('play', onPlay)
     v.addEventListener('pause', onPause)
     v.addEventListener('progress', onProgress)
+    v.addEventListener('volumechange', onVol)
     onDur()
     onProgress()
+    onVol()
     setPlaying(!v.paused)
     return () => {
       v.removeEventListener('timeupdate', onTime)
@@ -45,6 +53,7 @@ export function BrandedVideoControls({ videoRef }: { videoRef: RefObject<HTMLVid
       v.removeEventListener('play', onPlay)
       v.removeEventListener('pause', onPause)
       v.removeEventListener('progress', onProgress)
+      v.removeEventListener('volumechange', onVol)
     }
   }, [videoRef])
 
@@ -92,6 +101,19 @@ export function BrandedVideoControls({ videoRef }: { videoRef: RefObject<HTMLVid
     const anyV = v as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
     if (anyV?.requestFullscreen) void anyV.requestFullscreen().catch(() => {})
     else anyV?.webkitEnterFullscreen?.()
+  }
+
+  const toggleMute = () => {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = !v.muted
+    if (!v.muted && v.volume === 0) v.volume = 0.5 // unmuting from zero → audible
+  }
+  const setVol = (val: number) => {
+    const v = videoRef.current
+    if (!v) return
+    v.volume = val
+    v.muted = val === 0
   }
 
   const fmt = (s: number) => {
@@ -147,6 +169,31 @@ export function BrandedVideoControls({ videoRef }: { videoRef: RefObject<HTMLVid
       </div>
 
       <span className="shrink-0 font-data text-xs tabular-nums text-muted-green">{fmt(dur)}</span>
+
+      {/* mute toggle + volume (slider hidden on the narrowest screens to save room) */}
+      <button onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'} className="shrink-0 text-cream/80">
+        {muted || volume === 0 ? (
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+            <path d="M4 9v6h4l5 5V4L8 9H4z" />
+            <path d="M16 8l6 8M22 8l-6 8" stroke="currentColor" strokeWidth="2" fill="none" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+            <path d="M4 9v6h4l5 5V4L8 9H4z" />
+            <path d="M16 8a5 5 0 010 8" stroke="currentColor" strokeWidth="2" fill="none" />
+          </svg>
+        )}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={muted ? 0 : volume}
+        onChange={(e) => setVol(parseFloat(e.target.value))}
+        aria-label="Volume"
+        className="hidden w-16 shrink-0 cursor-pointer accent-gold min-[420px]:block"
+      />
 
       <button onClick={fullscreen} aria-label="Fullscreen" className="shrink-0 text-cream/80">
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
