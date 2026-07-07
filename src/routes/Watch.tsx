@@ -258,6 +258,16 @@ export default function Watch() {
     }
   }, [events])
 
+  // Authoritative game-over: when the scorer marks the game final (get_public_game poll), settle on
+  // the true final state from the full event log — even in cue/PDT mode, where the realtime
+  // broadcast is otherwise ignored. Without this, camera viewers never auto-navigate to the Final
+  // screen (the game-end cue can't ride the video once the channel stops).
+  useEffect(() => {
+    if (info?.status === 'final' && live.status !== 'final' && events.length) {
+      setLive(project(events))
+    }
+  }, [info?.status, live.status, events])
+
   // Keep the live delay in sync with the game's configured stat_delay_ms.
   useEffect(() => {
     delayRef.current = info?.stat_delay_ms ?? 0
@@ -562,6 +572,8 @@ export default function Watch() {
           onVodError: streamVod && !vodBroken && replayUrl ? () => setVodBroken(true) : undefined,
         }
       : null
+  // Camera game finished but its VOD hasn't finalized yet (~30-60s) → show a "processing" note.
+  const replayPending = info.video_source === 'camera_rtmp' && info.status === 'final' && !replayVideoUrl
 
   // Between half-innings: the scorer is at its between-innings screen (3 outs).
   const between = live.status === 'live' && (live.outs ?? 0) >= 3
@@ -747,6 +759,7 @@ export default function Watch() {
           startPos={startPositions}
           nameOf={nameById}
           replay={replay}
+          replayPending={replayPending}
         />
       ) : isScoreboard ? (
         /* Scoreboard game: no field/lineup — the live scoreboard + the line score. */
@@ -934,6 +947,7 @@ function FinalView({
   startPos,
   nameOf,
   replay,
+  replayPending,
 }: {
   board: ScoreboardState
   events: ViewerEvent[]
@@ -942,11 +956,14 @@ function FinalView({
   startPos: StartPositions
   nameOf: (id: string) => string
   replay?: ReplayProps | null
+  replayPending?: boolean // camera game ended but the VOD is still finalizing (~30-60s)
 }) {
-  // Recap is the default landing tab; the replay sits one tap away.
-  const finalTabs = replay
-    ? (['recap', 'replay', 'box', 'stats', 'plays'] as const)
-    : (['recap', 'box', 'stats', 'plays'] as const)
+  // Recap is the default landing tab; the replay sits one tap away. Show the Replay tab as soon as
+  // the game's done for a video game — either the ready replay or a "processing" placeholder.
+  const finalTabs =
+    replay || replayPending
+      ? (['recap', 'replay', 'box', 'stats', 'plays'] as const)
+      : (['recap', 'box', 'stats', 'plays'] as const)
   const [tab, setTab] = useState<'replay' | 'recap' | 'box' | 'stats' | 'plays'>('recap')
   // A play tapped in the Plays tab jumps the replay to that moment. The nonce forces a
   // re-seek even when the same play is tapped twice.
@@ -1004,6 +1021,18 @@ function FinalView({
         {replay && (
           <div className={tab === 'replay' ? '' : 'hidden'}>
             <ReplayView {...replay} active={tab === 'replay'} seekReq={seekReq} />
+          </div>
+        )}
+        {/* Replay not ready yet — the recording finalizes ~30-60s after the game ends. Tell the
+            viewer it's processing rather than showing nothing. Auto-updates when the VOD lands. */}
+        {!replay && replayPending && tab === 'replay' && (
+          <div className="mx-auto flex aspect-video max-w-2xl flex-col items-center justify-center gap-3 border-2 border-gold/40 bg-black/30 p-6 text-center">
+            <span className="h-3 w-3 animate-pulse rounded-full bg-gold" />
+            <p className="font-display text-lg text-cream">Replay is processing</p>
+            <p className="font-data text-sm text-muted-green">
+              The video is uploading — this usually takes under a minute after the game ends. It’ll
+              appear here automatically, or check back shortly.
+            </p>
           </div>
         )}
         {tab === 'recap' && <RecapFinal recap={recap} events={events} board={board} />}
