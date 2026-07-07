@@ -91,19 +91,38 @@ function plateLines(state: LiveGame, lineups: Lineups): { text: string; kind: Vo
   return lines
 }
 
+// Speak scores as WORDS, never bare digits. ElevenLabs mangles a digit that abuts another number —
+// e.g. a team ending in a numeral ("Test Team 1") next to the score ("0") is heard as "one nero".
+// Words remove the adjacency entirely; "nothing" is also idiomatic baseball for zero.
+const SCORE_ONES = [
+  'nothing', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen',
+]
+const SCORE_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+function sayScore(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return String(n)
+  if (n < 20) return SCORE_ONES[n]
+  if (n < 100) {
+    const t = Math.floor(n / 10)
+    const o = n % 10
+    return o ? `${SCORE_TENS[t]}-${SCORE_ONES[o]}` : SCORE_TENS[t]
+  }
+  return String(n)
+}
+
 function scoreSummary(s: LiveGame, teams: Teams): string {
   const a = s.awayScore
   const h = s.homeScore
-  if (a === h) return `We're tied up, ${a} to ${a}.`
-  return `${h > a ? teams.home : teams.away} leads it, ${Math.max(a, h)} to ${Math.min(a, h)}.`
+  if (a === h) return a === 0 ? `We're still scoreless.` : `We're tied up, ${sayScore(a)} to ${sayScore(a)}.`
+  return `${h > a ? teams.home : teams.away} leads it, ${sayScore(Math.max(a, h))} to ${sayScore(Math.min(a, h))}.`
 }
 
 // Game-over phrasing: a winner WINS (not "leads").
 function finalSummary(s: LiveGame, teams: Teams): string {
   const a = s.awayScore
   const h = s.homeScore
-  if (a === h) return `It ends in a ${a} to ${a} tie.`
-  return `${h > a ? teams.home : teams.away} wins, ${Math.max(a, h)} to ${Math.min(a, h)}.`
+  if (a === h) return a === 0 ? `It ends in a scoreless tie.` : `It ends in a ${sayScore(a)} to ${sayScore(a)} tie.`
+  return `${h > a ? teams.home : teams.away} wins, ${sayScore(Math.max(a, h))} to ${sayScore(Math.min(a, h))}.`
 }
 
 function fullCount(s: LiveGame): boolean {
@@ -263,7 +282,7 @@ function inningRecap(state: LiveGame, runsThisHalf: number, lineups: Lineups, te
       ? `${team} were held scoreless`
       : `${team} put up ${runsThisHalf} run${runsThisHalf === 1 ? '' : 's'}`
   const next = nextHalfLeadoff(state, lineups)
-  const score = `The score is now ${teams.away} ${state.awayScore}, ${teams.home} ${state.homeScore}.`
+  const score = `The score is now ${teams.away} ${sayScore(state.awayScore)}, ${teams.home} ${sayScore(state.homeScore)}.`
   return `${marker} ${scored} that half. ${score}${next ? ` Leading off next, ${next}.` : ''}`
 }
 

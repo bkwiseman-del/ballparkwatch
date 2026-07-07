@@ -501,7 +501,8 @@ export default function Watch() {
   // ~30-60s after game end). Polls stream-ivs finalize; once it sets ivs_replay_url, the next
   // get_public_game poll (loadGame) surfaces it and the replay appears.
   useEffect(() => {
-    if (info?.status !== 'final' || info?.video_source !== 'camera_rtmp' || info?.ivs_replay_url) return
+    const ivsSource = info?.video_source === 'camera_rtmp' || info?.video_source === 'phone_whip'
+    if (info?.status !== 'final' || !ivsSource || info?.ivs_replay_url) return
     let cancelled = false
     let tries = 0
     const attempt = async () => {
@@ -579,7 +580,10 @@ export default function Watch() {
         }
       : null
   // Camera game finished but its VOD hasn't finalized yet (~30-60s) → show a "processing" note.
-  const replayPending = info.video_source === 'camera_rtmp' && info.status === 'final' && !replayVideoUrl
+  const replayPending =
+    (info.video_source === 'camera_rtmp' || info.video_source === 'phone_whip') &&
+    info.status === 'final' &&
+    !replayVideoUrl
 
   // Between half-innings: the scorer is at its between-innings screen (3 outs).
   const between = live.status === 'live' && (live.outs ?? 0) >= 3
