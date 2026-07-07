@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { parseYouTubeId } from '@/lib/youtube'
 import { usePhoneVideo, useBroadcastStatus, type PhoneVideo } from '@/lib/phoneVideo'
-import { attachWhep } from '@/lib/whip'
 import { StagePreview } from '@/components/StagePreview'
 import { SafeBoundary } from '@/components/SafeBoundary'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
@@ -224,11 +223,8 @@ function PhoneBroadcastSection({
   const [qr, setQr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [confirmKill, setConfirmKill] = useState(false)
-  const previewRef = useRef<HTMLVideoElement>(null)
-  const [whepUrl, setWhepUrl] = useState<string | null>(null)
-  const [hlsUrl, setHlsUrl] = useState<string | null>(null)
+  const [subToken, setSubToken] = useState<string | null>(null) // stage subscribe token for the preview
   const [feedUp, setFeedUp] = useState(false)
-  const [feedStatus, setFeedStatus] = useState('')
   // The broadcaster's DB heartbeat is a secondary hint. The AUTHORITATIVE signal is the
   // WHEP feed itself: if Cloudflare hands us frames (feedUp), a broadcast is live — full
   // stop, regardless of any heartbeat blip. So "Live" = real frames OR a fresh heartbeat.
@@ -255,40 +251,32 @@ function PhoneBroadcastSection({
       .catch(() => setQr(null))
   }, [link])
 
-  // The scorer watches the same Cloudflare Stream feed as viewers (WHEP). Fetch the
-  // playback URL and RETRY until it exists — cf_whep_url is set the moment ANY WHIP
-  // publish connects (independent of the broadcaster's app version/heartbeat), so polling
-  // for it is the most reliable way to know a broadcast has started.
+  // The scorer previews the broadcaster's feed by SUBSCRIBING to the IVS stage (sub-second). Poll
+  // stream-ivs viewer-token — it 404s until the broadcaster creates the stage, so a successful mint
+  // is the most reliable signal a broadcast has started.
   useEffect(() => {
-    if (whepUrl) return
+    if (subToken) return
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
-    const fetchUrl = async () => {
-      const { data } = await supabase.rpc('get_public_game', { p_game_id: gameId })
-      if (cancelled) return
-      const g = data as { cf_whep_url?: string | null; cf_hls_url?: string | null } | null
-      if (g?.cf_whep_url) {
-        setHlsUrl(g.cf_hls_url ?? null)
-        setWhepUrl(g.cf_whep_url)
-      } else timer = setTimeout(fetchUrl, 3000)
+    const fetchTok = async () => {
+      try {
+        const { data } = await supabase.functions.invoke('stream-ivs', {
+          body: { gameId, action: 'viewer-token' },
+        })
+        const t = (data as { token?: string } | null)?.token ?? null
+        if (cancelled) return
+        if (t) setSubToken(t)
+        else timer = setTimeout(fetchTok, 3000)
+      } catch {
+        if (!cancelled) timer = setTimeout(fetchTok, 3000)
+      }
     }
-    void fetchUrl()
+    void fetchTok()
     return () => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [whepUrl, gameId])
-
-  // Attach WHEP whenever we have a URL — the feed itself tells us if it's live (feedUp).
-  // Kept independent of the heartbeat so a heartbeat blip can't tear down a working preview.
-  useEffect(() => {
-    const el = previewRef.current
-    if (!whepUrl || !el) {
-      setFeedUp(false)
-      return
-    }
-    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setFeedUp, onStatus: setFeedStatus })
-  }, [whepUrl])
+  }, [subToken, gameId])
 
   async function copy() {
     try {
@@ -319,17 +307,17 @@ function PhoneBroadcastSection({
       {/* live preview + remote terminate. The <video> stays mounted whenever a WHEP URL
           exists (so the feed can attach + report frames), but the block is only shown once
           we're actually live — so a heartbeat blip can't hide a working preview. */}
-      {whepUrl && (
+      {subToken && (
         <div className="mb-4" style={isLive ? undefined : { display: 'none' }}>
-          <div className="relative border-2 border-ink bg-black">
-            <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />
-            {!feedUp && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 font-data text-sm text-cream/70">
-                <span>Connecting to the feed…</span>
-                {feedStatus && <span className="text-[11px] text-cream/40">{feedStatus}</span>}
+          <SafeBoundary
+            fallback={
+              <div className="border-2 border-ink bg-black p-6 text-center font-data text-sm text-cream/70">
+                Preview unavailable — the broadcaster’s own screen is the source of truth.
               </div>
-            )}
-          </div>
+            }
+          >
+            <StagePreview token={subToken} onLive={setFeedUp} className="relative border-2 border-ink bg-black" />
+          </SafeBoundary>
           {confirmKill ? (
             <div className="mt-2 flex items-center gap-2">
               <span className="flex-1 font-data text-xs text-barn-red">Stop the broadcaster’s feed?</span>
