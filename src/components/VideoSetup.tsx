@@ -290,14 +290,14 @@ function PhoneBroadcastSection({
 
   return (
     <section>
-      {/* live health */}
+      {/* live health — dot glows green when the feed is live, red when it's down */}
       <div
         className={`mb-3 flex items-center gap-2 border-2 px-3 py-2 ${
-          isLive ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
+          isLive ? 'border-board-green bg-board-green/10' : 'border-barn-red/50 bg-barn-red/5'
         }`}
       >
         <span
-          className={`h-2.5 w-2.5 rounded-full ${isLive ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`}
+          className={`h-2.5 w-2.5 rounded-full ${isLive ? 'animate-pulse bg-board-green' : 'animate-pulse bg-barn-red'}`}
         />
         <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
           {isLive ? 'Live' : 'Not broadcasting'}
@@ -461,10 +461,12 @@ function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken:
       {/* live health — driven by the actual feed (frames), like the phone preview */}
       <div
         className={`mb-3 flex items-center gap-2 border-2 px-3 py-2 ${
-          feedUp ? 'border-board-green bg-board-green/10' : 'border-ink/20 bg-ink/5'
+          feedUp ? 'border-board-green bg-board-green/10' : 'border-barn-red/50 bg-barn-red/5'
         }`}
       >
-        <span className={`h-2.5 w-2.5 rounded-full ${feedUp ? 'animate-pulse bg-board-green' : 'bg-ink/30'}`} />
+        <span
+          className={`h-2.5 w-2.5 rounded-full ${feedUp ? 'animate-pulse bg-board-green' : 'animate-pulse bg-barn-red'}`}
+        />
         <span className="font-athletic text-sm font-semibold uppercase tracking-wide">
           {feedUp ? 'Live' : 'Waiting for camera'}
         </span>
