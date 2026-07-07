@@ -5,6 +5,7 @@ import { parseYouTubeId } from '@/lib/youtube'
 import { usePhoneVideo, useBroadcastStatus, type PhoneVideo } from '@/lib/phoneVideo'
 import { attachWhep } from '@/lib/whip'
 import { StagePreview } from '@/components/StagePreview'
+import { SafeBoundary } from '@/components/SafeBoundary'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import type { Game, VideoSource } from '@/lib/types'
 
@@ -484,7 +485,15 @@ function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken:
       {/* Sub-second preview of the stage feed — works BEFORE first pitch (the camera publishes
           to the stage independent of the recording/channel), so the operator can confirm the
           actual video before starting the game. */}
-      <StagePreview token={subToken} onLive={setFeedUp} className="mb-4 relative border-2 border-ink bg-black" />
+      <SafeBoundary
+        fallback={
+          <div className="mb-4 border-2 border-ink bg-black p-6 text-center font-data text-sm text-cream/70">
+            Preview unavailable — your encoder’s own status is the source of truth.
+          </div>
+        }
+      >
+        <StagePreview token={subToken} onLive={setFeedUp} className="mb-4 relative border-2 border-ink bg-black" />
+      </SafeBoundary>
 
       <h3 className="mb-1 font-display text-lg">Point your camera/encoder here</h3>
       <p className="mb-3 font-data text-[12px] text-muted-tan">

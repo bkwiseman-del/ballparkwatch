@@ -27,6 +27,7 @@ import { attachHls, isHlsUrl } from '@/lib/hls'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { IvsChannelVideo, type ScoreCue } from '@/components/IvsChannelVideo'
+import { SafeBoundary } from '@/components/SafeBoundary'
 import { Bunting } from '@/components/Bunting'
 import { ShareSheet } from '@/components/ShareSheet'
 import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon } from '@/components/Icons'
@@ -586,7 +587,10 @@ export default function Watch() {
     </div>
   ) : info.video_source === 'camera_rtmp' ? (
     // External camera on Amazon IVS: low-latency channel HLS + timed-metadata scorebug sync.
-    <IvsChannelVideo playbackUrl={info.ivs_playback_url} board={board} onCue={onCue} />
+    // Boundary so a video-SDK failure degrades to the scoreboard instead of blanking the page.
+    <SafeBoundary fallback={<ScorePanel state={board} />}>
+      <IvsChannelVideo playbackUrl={info.ivs_playback_url} board={board} onCue={onCue} />
+    </SafeBoundary>
   ) : info.video_source === 'phone_whip' ? (
     <PhoneVideo
       gameId={gameId}

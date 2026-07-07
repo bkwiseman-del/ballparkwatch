@@ -51,11 +51,9 @@ export function IvsChannelVideo({
       setPlaying(false)
       return
     }
-    const player = createPlayer({ wasmBinary, wasmWorker })
-    player.attachHTMLVideoElement(el)
-    player.setAutoplay(true)
-    player.load(playbackUrl)
-
+    // Guard the whole init — the IVS player spins up a Web Worker + WASM; a failure here must
+    // degrade to the scoreboard, never bubble up and blank the page.
+    let player: ReturnType<typeof createPlayer> | null = null
     const cueHandler = (cue: TextMetadataCue) => {
       if (!cue?.text) return
       try {
@@ -64,17 +62,35 @@ export function IvsChannelVideo({
         /* not one of our scorebug cues */
       }
     }
-    const onPlaying = () => setPlaying(true)
+    const onReadyOrPlaying = () => setPlaying(true)
     const onEnded = () => setPlaying(false)
-    player.addEventListener(PlayerEventType.TEXT_METADATA_CUE, cueHandler)
-    player.addEventListener(PlayerState.PLAYING, onPlaying)
-    player.addEventListener(PlayerState.ENDED, onEnded)
+    try {
+      player = createPlayer({ wasmBinary, wasmWorker })
+      player.attachHTMLVideoElement(el)
+      player.setMuted(true) // muted so the browser allows autoplay (viewer can unmute via controls)
+      player.setAutoplay(true)
+      player.load(playbackUrl)
+      player.addEventListener(PlayerEventType.TEXT_METADATA_CUE, cueHandler)
+      // Reveal on READY (not just PLAYING) so a play control is available if autoplay is blocked.
+      player.addEventListener(PlayerState.READY, onReadyOrPlaying)
+      player.addEventListener(PlayerState.PLAYING, onReadyOrPlaying)
+      player.addEventListener(PlayerState.ENDED, onEnded)
+    } catch (e) {
+      console.error('[IvsChannelVideo] player init failed:', e)
+      setPlaying(false)
+    }
 
     return () => {
-      player.removeEventListener(PlayerEventType.TEXT_METADATA_CUE, cueHandler)
-      player.removeEventListener(PlayerState.PLAYING, onPlaying)
-      player.removeEventListener(PlayerState.ENDED, onEnded)
-      player.delete()
+      if (!player) return
+      try {
+        player.removeEventListener(PlayerEventType.TEXT_METADATA_CUE, cueHandler)
+        player.removeEventListener(PlayerState.READY, onReadyOrPlaying)
+        player.removeEventListener(PlayerState.PLAYING, onReadyOrPlaying)
+        player.removeEventListener(PlayerState.ENDED, onEnded)
+        player.delete()
+      } catch {
+        /* already torn down */
+      }
     }
   }, [playbackUrl])
 
@@ -82,7 +98,7 @@ export function IvsChannelVideo({
   return (
     <div>
       <div className={`relative bg-black ${playing ? '' : 'hidden'}`}>
-        <video ref={videoRef} playsInline controls className="aspect-video w-full bg-black object-contain" />
+        <video ref={videoRef} playsInline muted autoPlay controls className="aspect-video w-full bg-black object-contain" />
         {!playing && (
           <p className="absolute inset-0 flex items-center justify-center font-data text-xs text-cream/70">
             Connecting to the live feed…

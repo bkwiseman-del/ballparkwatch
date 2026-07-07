@@ -145,12 +145,35 @@ Deno.serve(async (req) => {
       return json({ ok: true, compositionArn: compArn }, 200)
     }
 
-    // ---- game-end: stop the recording (StopComposition). Recording finalizes to S3. ----
+    // ---- game-end: stop recording + STOP THE CAMERA. ----
     if (action === 'game-end' || action === 'stop-input') {
+      // 1) StopComposition finalizes the S3 recording and takes the live channel offline.
       if (g!.ivs_composition_arn) {
         await rt('StopComposition', { arn: g!.ivs_composition_arn }).catch(() => {})
       }
-      // TODO Build 2: also StopBroadcast / stop the low-latency channel when present.
+      // 2) Disconnect the camera's stage participant so its RTMP feed actually ends — StopComposition
+      // alone leaves the camera publishing to the stage (mirrors the old Cloudflare stop-input).
+      const stageArn = g!.ivs_stage_arn
+      if (stageArn) {
+        const sess = (await rt('ListStageSessions', { stageArn, maxResults: 1 }).catch(() => null)) as {
+          stageSessions?: { sessionId?: string }[]
+        } | null
+        const sid = sess?.stageSessions?.[0]?.sessionId
+        if (sid) {
+          const parts = (await rt('ListParticipants', { stageArn, sessionId: sid }).catch(() => null)) as {
+            participants?: { participantId?: string; published?: boolean }[]
+          } | null
+          for (const p of parts?.participants ?? []) {
+            if (p.published && p.participantId) {
+              await rt('DisconnectParticipant', {
+                stageArn,
+                participantId: p.participantId,
+                reason: 'game ended',
+              }).catch(() => {})
+            }
+          }
+        }
+      }
       return json({ ok: true }, 200)
     }
 
