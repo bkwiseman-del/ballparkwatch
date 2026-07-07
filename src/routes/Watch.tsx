@@ -28,6 +28,7 @@ import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneVideo } from '@/components/PhoneVideo'
 import { IvsChannelVideo, type ScoreCue } from '@/components/IvsChannelVideo'
 import { SafeBoundary } from '@/components/SafeBoundary'
+import { BrandedVideoControls } from '@/components/BrandedVideoControls'
 import { Bunting } from '@/components/Bunting'
 import { ShareSheet } from '@/components/ShareSheet'
 import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon } from '@/components/Icons'
@@ -1269,7 +1270,6 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           <div className="bg-black">
             <video
               ref={videoRef}
-              controls
               playsInline
               onPlay={() => {
                 void audio.enable()
@@ -1293,6 +1293,8 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
               className="aspect-video w-full bg-black object-cover"
             />
           </div>
+          {/* Branded controls (native ones can't be styled) — baseball scrub handle, gold fill. */}
+          <BrandedVideoControls videoRef={videoRef} />
           <ScorebugBar state={board} />
 
           {/* Recording stopped before the game ended — hand off to the big scoreboard with
