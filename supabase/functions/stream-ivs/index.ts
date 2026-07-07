@@ -190,16 +190,13 @@ Deno.serve(async (req) => {
     // ---- finalize: resolve the replay once the composite recording is written to S3 ----
     if (action === 'finalize') {
       const { data: pub } = await db.rpc('get_public_game', { p_game_id: gameIdR })
-      const pg = (pub ?? {}) as { ivs_replay_url?: string | null; ivs_recording_prefix?: string | null }
+      const pg = (pub ?? {}) as { ivs_replay_url?: string | null }
       if (pg.ivs_replay_url) return json({ ready: true, replayUrl: pg.ivs_replay_url }, 200)
 
-      // recording prefix is stored on the game (set at game-start); need token path to read it,
-      // or expose it — for now read via a fresh lookup when we have the token.
-      let prefix: string | null = null
-      if (token) {
-        const { data: l } = await db.rpc('stream_ivs_lookup', { p_token: token })
-        prefix = ((l as { ivs_recording_prefix?: string }) ?? {}).ivs_recording_prefix ?? null
-      }
+      // The recording prefix (S3 key) was stored at game-start. Resolve it by game_id so a viewer
+      // (no broadcast token) can finalize a public final game.
+      const { data: pfx } = await db.rpc('stream_ivs_prefix_by_game', { p_game_id: gameIdR })
+      const prefix = (pfx as string | null) ?? null
       if (!prefix) return json({ ready: false, note: 'no recording prefix yet' }, 200)
 
       // recording-ended.json exists only once the composite is fully written.

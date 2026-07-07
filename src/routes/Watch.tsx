@@ -481,6 +481,30 @@ export default function Watch() {
     }
   }, [info?.status, info?.cf_customer_code, info?.cf_recording_uid, resolvedRecUid, gameId])
 
+  // IVS camera game finalized: resolve the replay VOD from S3 (the composite recording finalizes
+  // ~30-60s after game end). Polls stream-ivs finalize; once it sets ivs_replay_url, the next
+  // get_public_game poll (loadGame) surfaces it and the replay appears.
+  useEffect(() => {
+    if (info?.status !== 'final' || info?.video_source !== 'camera_rtmp' || info?.ivs_replay_url) return
+    let cancelled = false
+    let tries = 0
+    const attempt = async () => {
+      if (cancelled) return
+      tries++
+      try {
+        const { data } = await supabase.functions.invoke('stream-ivs', { body: { gameId, action: 'finalize' } })
+        if (!cancelled && data?.ready) return loadGame() // refresh info → ivs_replay_url now set
+      } catch {
+        /* retry */
+      }
+      if (!cancelled && tries < 20) setTimeout(attempt, 15000)
+    }
+    void attempt()
+    return () => {
+      cancelled = true
+    }
+  }, [info?.status, info?.video_source, info?.ivs_replay_url, gameId, loadGame])
+
   // Prefer Cloudflare Stream's server-side auto-recording (upright, ABR, HLS); the local
   // upload is the backup.
   const recUid = info?.cf_recording_uid ?? resolvedRecUid
