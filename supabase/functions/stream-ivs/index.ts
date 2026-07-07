@@ -86,6 +86,26 @@ Deno.serve(async (req) => {
   }
   const { token, gameId, action = 'start' } = body
 
+  // ---- viewer-token: a public viewer joins a phone game's stage over WebRTC (sub-second). No
+  // broadcast token — resolve the stage by gameId and mint a SUBSCRIBE token. (Cap gate deferred;
+  // the live_viewers infra is in place to enable per-game concurrent-viewer limits later.)
+  if (action === 'viewer-token') {
+    if (!gameId) return json({ error: 'Missing gameId.' }, 400)
+    const { data: stageArn } = await db.rpc('stream_ivs_stage_by_game', { p_game_id: gameId })
+    if (!stageArn) return json({ error: 'No stage for game.' }, 404)
+    try {
+      const tk = (await rt('CreateParticipantToken', {
+        stageArn,
+        capabilities: ['SUBSCRIBE'],
+        userId: 'viewer',
+        duration: 240,
+      })) as { participantToken?: { token?: string } }
+      return json({ token: tk.participantToken?.token ?? null }, 200)
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : 'token error' }, 502)
+    }
+  }
+
   // Resolve game + IVS ids. Broadcaster actions use the token; a viewer may finalize a
   // public final game by gameId.
   type G = {

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { usePhoneVideo } from '@/lib/phoneVideo'
 import { startCanvasRecording, webCodecsSupported, type CanvasRecorder } from '@/lib/canvasRecorder'
-import { whipPublish, type RtcSession } from '@/lib/whip'
+import { publishToStage } from '@/lib/ivsStage'
 import { gameChannelName } from '@/lib/realtime'
 import { HeaderWordmark } from '@/components/Logo'
 
@@ -66,8 +66,7 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
   const recRef = useRef<MediaRecorder | null>(null)
   const webRecRef = useRef<CanvasRecorder | null>(null)
   const uploadedRef = useRef(false)
-  const whipRef = useRef<RtcSession | null>(null)
-  const recordKickedRef = useRef(false)
+  const whipRef = useRef<{ close: () => void } | null>(null)
   const [streamState, setStreamState] = useState<'off' | 'connecting' | 'live' | 'error'>('off')
   const [streamErr, setStreamErr] = useState<string>('') // shown on-screen (phones have no console)
 
@@ -332,49 +331,39 @@ function Broadcaster({ gameId, token, title }: { gameId: string; token: string; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Publish the SAME upright 16:9 canvas (v.local) to Cloudflare Stream via WHIP once
-  // we're broadcasting. Stream fans it out to viewers (WHEP, sub-second) and records it
-  // server-side. The local recording (above) stays on as the drop-proof backup.
+  // Publish the upright 16:9 canvas (v.local) to the IVS stage via the Web Broadcast SDK. IVS fans
+  // it out to viewers sub-second (WebRTC stage subscribe) and records it via composition→S3 (the
+  // scorer starts that at first pitch). No phone-side recording — the phone's only job is publishing.
   useEffect(() => {
     if (!v.local) return
     let cancelled = false
-    recordKickedRef.current = false
     setStreamState('connecting')
     ;(async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('stream-live', {
+        const { data, error } = await supabase.functions.invoke('stream-ivs', {
           body: { token, action: 'start' },
         })
         if (cancelled) return
-        if (error || !data?.whipUrl) {
-          console.error('[stream] live-input error:', error, data)
-          setStreamErr(`live-input: ${error?.message ?? data?.error ?? 'unknown'}`)
+        const whipToken = (data as { whip?: { token?: string } } | null)?.whip?.token
+        if (error || !whipToken) {
+          console.error('[stream] stage start error:', error, data)
+          setStreamErr(`stage: ${error?.message ?? (data as { error?: string } | null)?.error ?? 'unknown'}`)
           setStreamState('error')
           return
         }
-        console.info('[stream] publishing via WHIP', data.whipUrl)
-        setStreamErr('')
-        const session = await whipPublish(data.whipUrl, v.local!, (s) => {
-          console.info('[stream] WHIP connection state:', s)
-          if (s === 'failed') setStreamErr('WHIP connection failed (ICE)')
-          if (s === 'connected' && !recordKickedRef.current) {
-            recordKickedRef.current = true
-            // Media is now flowing → kick off the PAID server-side recorder (no-op unless
-            // the game is flagged record_replay). The recorder subscribes to the live feed
-            // and captures the full-quality replay server-side — the phone never records.
-            void supabase.functions.invoke('start-recording', { body: { token } })
-          }
-          setStreamState(s === 'connected' ? 'live' : s === 'failed' ? 'error' : 'connecting')
-        })
+        console.info('[stream] publishing to IVS stage')
+        const session = await publishToStage(whipToken, v.local!)
         if (cancelled) {
           session.close()
           return
         }
         whipRef.current = session
+        setStreamErr('')
+        setStreamState('live')
       } catch (e) {
-        console.error('[stream] WHIP publish failed:', e)
+        console.error('[stream] IVS publish failed:', e)
         if (!cancelled) {
-          setStreamErr(e instanceof Error ? e.message : 'WHIP publish failed')
+          setStreamErr(e instanceof Error ? e.message : 'IVS publish failed')
           setStreamState('error')
         }
       }

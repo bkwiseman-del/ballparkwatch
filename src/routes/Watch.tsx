@@ -22,10 +22,9 @@ import {
 import { currentPitcherEntrySeq, extractSubs, pitchesSince, projectSlots } from '@/lib/lineup'
 import { gameChannelName } from '@/lib/realtime'
 import { parseYouTubeId } from '@/lib/youtube'
-import { useBroadcastStatus } from '@/lib/phoneVideo'
 import { attachHls, isHlsUrl } from '@/lib/hls'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
-import { PhoneVideo } from '@/components/PhoneVideo'
+import { PhoneStageVideo } from '@/components/PhoneStageVideo'
 import { IvsChannelVideo, type ScoreCue } from '@/components/IvsChannelVideo'
 import { SafeBoundary } from '@/components/SafeBoundary'
 import { BrandedVideoControls } from '@/components/BrandedVideoControls'
@@ -280,12 +279,12 @@ export default function Watch() {
     delayRef.current = info?.stat_delay_ms ?? 0
   }, [info?.stat_delay_ms])
 
-  // Is there live video? (YouTube link set, or a phone broadcast in progress.)
-  const phoneStatus = useBroadcastStatus(gameId, info?.video_source === 'phone_whip')
+  // Is there live video? (YouTube link set, or an IVS phone/camera game.) The IVS video components
+  // fall back to the scoreboard on their own until real frames arrive.
   const hasVideo =
     (info?.video_source === 'youtube' &&
       !!parseYouTubeId(String(info?.video_config?.youtube_url ?? ''))) ||
-    (info?.video_source === 'phone_whip' && phoneStatus.live) ||
+    info?.video_source === 'phone_whip' ||
     info?.video_source === 'camera_rtmp'
 
   // Commentary is on by default, but the browser won't let audio play until the
@@ -635,15 +634,10 @@ export default function Watch() {
       <IvsChannelVideo playbackUrl={info.ivs_playback_url} board={board} onCue={onCue} />
     </SafeBoundary>
   ) : info.video_source === 'phone_whip' ? (
-    <PhoneVideo
-      gameId={gameId}
-      board={board}
-      live={phoneStatus.live}
-      attempt={live.status === 'live'}
-      whepUrl={info.cf_whep_url}
-      hlsUrl={info.cf_hls_url}
-      onVideoClock={onVideoClock}
-    />
+    // Phone on IVS: sub-second stage subscribe (WebRTC). Scorebug via Realtime (naturally synced).
+    <SafeBoundary fallback={<ScorePanel state={board} />}>
+      <PhoneStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} />
+    </SafeBoundary>
   ) : (
     <ScorePanel state={board} />
   )

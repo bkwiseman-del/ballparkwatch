@@ -36,6 +36,9 @@ export default function Score() {
   // into the video as timed metadata so viewers' bug/commentary fire frame-synced to the
   // delayed camera feed (viewer reads TEXT_METADATA_CUE).
   const isIvsCamera = game?.video_source === 'camera_rtmp'
+  // Both IVS video sources record via composition→S3; the scorebug-cue (put-metadata) path stays
+  // camera-only (phone viewers watch sub-second WebRTC + get the bug via Realtime, already in sync).
+  const isIvsVideo = isIvsCamera || game?.video_source === 'phone_whip'
   const lastCueSeq = useRef(-1)
   useEffect(() => {
     const token = game?.share_token
@@ -313,9 +316,9 @@ export default function Score() {
                 if (filled.length) setRosterNote(filled)
               }
               act('game_start')
-              // Camera game: start the IVS recording composition (→ S3 + the live HLS channel)
-              // at first pitch, so the replay contains no pre-game footage.
-              if (isIvsCamera && game?.share_token)
+              // IVS game (camera or phone): start the recording composition at first pitch so the
+              // replay contains no pre-game footage (camera → S3 + channel; phone → S3 only).
+              if (isIvsVideo && game?.share_token)
                 void supabase.functions.invoke('stream-ivs', {
                   body: { token: game.share_token, action: 'game-start' },
                 })
@@ -493,10 +496,10 @@ export default function Score() {
           onConfirm={(reason) => {
             act('game_end', { reason })
             setEndPopup(false)
-            // Camera game: stop the IVS composition SERVER-SIDE at game end. That finalizes the
-            // S3 recording (no post-game footage) and takes the live channel offline. The camera
-            // may keep pushing RTMP to the stage, but nothing is composited/served after this.
-            if (isIvsCamera && game?.share_token) {
+            // IVS game (camera or phone): stop the composition SERVER-SIDE at game end. Finalizes
+            // the S3 recording (no post-game footage), takes any channel offline, and disconnects
+            // the publisher so the feed stops.
+            if (isIvsVideo && game?.share_token) {
               void supabase.functions.invoke('stream-ivs', {
                 body: { token: game.share_token, action: 'game-end' },
               })
