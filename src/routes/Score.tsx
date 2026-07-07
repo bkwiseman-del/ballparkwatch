@@ -32,6 +32,34 @@ export default function Score() {
   const { gameId } = useParams()
   const s = useScorer(gameId)
   const { game, teams, lineups, live, events, firstPitchAt, loading, error, act, undo } = s
+  // Camera games run on Amazon IVS (see docs/ivs-migration-plan.md). The scorebug is pushed
+  // into the video as timed metadata so viewers' bug/commentary fire frame-synced to the
+  // delayed camera feed (viewer reads TEXT_METADATA_CUE).
+  const isIvsCamera = game?.video_source === 'camera_rtmp'
+  const lastCueSeq = useRef(-1)
+  useEffect(() => {
+    const token = game?.share_token
+    if (!isIvsCamera || !token || live.status !== 'live') return
+    const seq = events.length ? events[events.length - 1].seq : 0
+    if (seq === lastCueSeq.current) return
+    lastCueSeq.current = seq
+    // Compact (well under IVS's 1KB limit): the reached seq + the scorebug fields. The viewer
+    // renders the bug directly from this and projects its own event log up to `s` for the
+    // field/commentary.
+    const metadata = {
+      s: seq,
+      a: live.awayScore,
+      h: live.homeScore,
+      i: live.inning,
+      hf: live.half === 'top' ? 0 : 1,
+      b: live.balls,
+      k: live.strikes,
+      o: live.outs,
+      r: [!!live.bases.first, !!live.bases.second, !!live.bases.third],
+      st: live.status,
+    }
+    void supabase.functions.invoke('stream-ivs', { body: { token, action: 'put-metadata', metadata } })
+  }, [events, live, isIvsCamera, game?.share_token])
   const [strikePopup, setStrikePopup] = useState(false)
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
@@ -285,6 +313,12 @@ export default function Score() {
                 if (filled.length) setRosterNote(filled)
               }
               act('game_start')
+              // Camera game: start the IVS recording composition (→ S3 + the live HLS channel)
+              // at first pitch, so the replay contains no pre-game footage.
+              if (isIvsCamera && game?.share_token)
+                void supabase.functions.invoke('stream-ivs', {
+                  body: { token: game.share_token, action: 'game-start' },
+                })
               // Notify followers the game is live (fire-and-forget; ghost opponents
               // have no members so their call is a harmless no-op).
               const title = `${teams?.away.name ?? 'Away'} vs ${teams?.home.name ?? 'Home'} is live`
@@ -459,12 +493,12 @@ export default function Score() {
           onConfirm={(reason) => {
             act('game_end', { reason })
             setEndPopup(false)
-            // External camera can't be stopped from the app — end it SERVER-SIDE by disabling the
-            // Cloudflare live input, so the RTMP feed stops and the recording finalizes into a
-            // replay (otherwise the camera keeps publishing and no VOD is ever produced).
-            if (game?.video_source === 'camera_rtmp' && game?.share_token) {
-              void supabase.functions.invoke('stream-live', {
-                body: { token: game.share_token, action: 'stop-input' },
+            // Camera game: stop the IVS composition SERVER-SIDE at game end. That finalizes the
+            // S3 recording (no post-game footage) and takes the live channel offline. The camera
+            // may keep pushing RTMP to the stage, but nothing is composited/served after this.
+            if (isIvsCamera && game?.share_token) {
+              void supabase.functions.invoke('stream-ivs', {
+                body: { token: game.share_token, action: 'game-end' },
               })
             }
           }}

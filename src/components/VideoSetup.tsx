@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { parseYouTubeId } from '@/lib/youtube'
 import { usePhoneVideo, useBroadcastStatus, type PhoneVideo } from '@/lib/phoneVideo'
 import { attachWhep } from '@/lib/whip'
+import { StagePreview } from '@/components/StagePreview'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import type { Game, VideoSource } from '@/lib/types'
 
@@ -401,49 +402,40 @@ function PhoneBroadcastSection({
 // recorder is needed), and viewers watch the same WHEP/HLS feed as a phone broadcast.
 function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken: string }) {
   const [rtmp, setRtmp] = useState<{ url: string; key: string } | null>(null)
-  const [whepUrl, setWhepUrl] = useState<string | null>(null)
-  const [hlsUrl, setHlsUrl] = useState<string | null>(null)
+  const [subToken, setSubToken] = useState<string | null>(null) // stage subscribe token for the preview
   const [feedUp, setFeedUp] = useState(false)
-  const [feedStatus, setFeedStatus] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
-  const previewRef = useRef<HTMLVideoElement>(null)
 
-  // Mint a broadcast grant, then create/reuse the Cloudflare live input and pull its RTMP
-  // ingest creds + the viewer-safe WHEP/HLS playback urls.
+  // Mint a broadcast grant, then create/reuse the IVS stage + the camera RTMP ingest key and a
+  // stage SUBSCRIBE token — so we can preview the feed sub-second BEFORE first pitch (the camera
+  // publishes to the stage independent of the recording/channel). See docs/ivs-migration-plan.md.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const { data: t } = await supabase.rpc('mint_broadcast_grant', { p_game_id: gameId })
       if (cancelled) return
       const token = (t as string) || shareToken
-      const { data, error } = await supabase.functions.invoke('stream-live', {
+      const { data, error } = await supabase.functions.invoke('stream-ivs', {
         body: { token, action: 'start' },
       })
       if (cancelled) return
-      const d = data as { rtmps?: { url?: string; streamKey?: string }; whepUrl?: string; hlsUrl?: string; error?: string } | null
-      if (error || !d?.rtmps?.url || !d.rtmps.streamKey) {
+      const d = data as {
+        rtmp?: { url?: string; streamKey?: string }
+        subscribeToken?: string
+        error?: string
+      } | null
+      if (error || !d?.rtmp?.url || !d.rtmp.streamKey) {
         setErr(error?.message ?? d?.error ?? 'Could not get camera ingest details.')
         return
       }
-      setRtmp({ url: d.rtmps.url, key: d.rtmps.streamKey })
-      setWhepUrl(d.whepUrl ?? null)
-      setHlsUrl(d.hlsUrl ?? null)
+      setRtmp({ url: d.rtmp.url, key: d.rtmp.streamKey })
+      setSubToken(d.subscribeToken ?? null)
     })()
     return () => {
       cancelled = true
     }
   }, [gameId, shareToken])
-
-  // Preview the feed once the camera starts pushing.
-  useEffect(() => {
-    const el = previewRef.current
-    if (!whepUrl || !el) {
-      setFeedUp(false)
-      return
-    }
-    return attachWhep(el, whepUrl, { hlsUrl, onPlaying: setFeedUp, onStatus: setFeedStatus })
-  }, [whepUrl, hlsUrl])
 
   const copy = async (field: string, val: string) => {
     try {
@@ -489,17 +481,10 @@ function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken:
         </span>
       </div>
 
-      {/* preview (mounted whenever we have a playback url so it can attach + report frames) */}
-      {whepUrl && (
-        <div className="mb-4 relative border-2 border-ink bg-black" style={feedUp ? undefined : { display: 'none' }}>
-          <video ref={previewRef} autoPlay playsInline muted controls className="aspect-video w-full object-contain" />
-          {!feedUp && (
-            <div className="absolute inset-0 flex items-center justify-center font-data text-sm text-cream/70">
-              Connecting…
-            </div>
-          )}
-        </div>
-      )}
+      {/* Sub-second preview of the stage feed — works BEFORE first pitch (the camera publishes
+          to the stage independent of the recording/channel), so the operator can confirm the
+          actual video before starting the game. */}
+      <StagePreview token={subToken} onLive={setFeedUp} className="mb-4 relative border-2 border-ink bg-black" />
 
       <h3 className="mb-1 font-display text-lg">Point your camera/encoder here</h3>
       <p className="mb-3 font-data text-[12px] text-muted-tan">
@@ -520,7 +505,6 @@ function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken:
           <p className="font-data text-[11px] text-muted-tan">
             Keep this private — anyone with the key/full URL can broadcast to this game.
           </p>
-          {feedStatus && !feedUp && <p className="mt-2 font-data text-[11px] text-muted-tan/70">{feedStatus}</p>}
         </>
       ) : (
         <p className="py-4 text-center font-data text-sm text-muted-tan">Preparing camera ingest…</p>
