@@ -285,7 +285,8 @@ export default function Watch() {
     (info?.video_source === 'youtube' &&
       !!parseYouTubeId(String(info?.video_config?.youtube_url ?? ''))) ||
     info?.video_source === 'phone_whip' ||
-    info?.video_source === 'camera_rtmp'
+    info?.video_source === 'camera_rtmp' ||
+    info?.video_source === 'multi'
 
   // Commentary is on by default, but the browser won't let audio play until the
   // viewer interacts. Unlock the AudioContext on the first tap anywhere so the
@@ -501,7 +502,10 @@ export default function Watch() {
   // ~30-60s after game end). Polls stream-ivs finalize; once it sets ivs_replay_url, the next
   // get_public_game poll (loadGame) surfaces it and the replay appears.
   useEffect(() => {
-    const ivsSource = info?.video_source === 'camera_rtmp' || info?.video_source === 'phone_whip'
+    const ivsSource =
+      info?.video_source === 'camera_rtmp' ||
+      info?.video_source === 'phone_whip' ||
+      info?.video_source === 'multi'
     if (info?.status !== 'final' || !ivsSource || info?.ivs_replay_url) return
     let cancelled = false
     let tries = 0
@@ -581,7 +585,9 @@ export default function Watch() {
       : null
   // Camera game finished but its VOD hasn't finalized yet (~30-60s) → show a "processing" note.
   const replayPending =
-    (info.video_source === 'camera_rtmp' || info.video_source === 'phone_whip') &&
+    (info.video_source === 'camera_rtmp' ||
+      info.video_source === 'phone_whip' ||
+      info.video_source === 'multi') &&
     info.status === 'final' &&
     !replayVideoUrl
 
@@ -631,8 +637,9 @@ export default function Watch() {
       <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
       <ScorebugBar state={board} />
     </div>
-  ) : info.video_source === 'camera_rtmp' ? (
-    // External camera on Amazon IVS: low-latency channel HLS + timed-metadata scorebug sync.
+  ) : info.video_source === 'camera_rtmp' || info.video_source === 'multi' ? (
+    // External camera (and multi-angle) on IVS: composited low-latency channel HLS + timed-metadata
+    // scorebug. Multi-angle grids the phone + camera into this one view (same latency, no time jump).
     // Boundary so a video-SDK failure degrades to the scoreboard instead of blanking the page.
     <SafeBoundary fallback={<ScorePanel state={board} />}>
       <IvsChannelVideo playbackUrl={info.ivs_playback_url} board={board} onCue={onCue} />

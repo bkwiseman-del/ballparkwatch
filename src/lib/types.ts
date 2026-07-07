@@ -8,6 +8,7 @@ export type VideoSource =
   | 'none'
   | 'phone_whip'
   | 'camera_rtmp'
+  | 'multi' // phone angle + external camera, composited to one HLS view
   | 'youtube'
   | 'cloudflare_hls'
 

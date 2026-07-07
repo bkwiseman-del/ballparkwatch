@@ -701,6 +701,7 @@ const VIDEO_SOURCES: { value: VideoSource; label: string; sub: string }[] = [
   { value: 'none', label: 'No video', sub: 'Stats only' },
   { value: 'phone_whip', label: 'Another phone', sub: 'Film from a 2nd device' },
   { value: 'camera_rtmp', label: 'External camera', sub: 'GoPro / DJI / OBS' },
+  { value: 'multi', label: 'Multiple angles', sub: 'Phone + external camera' },
 ]
 
 function CreateGameCard({
@@ -1589,7 +1590,7 @@ function whenMs(iso: string | null): number {
 
 function videoLabel(v: VideoSource): string {
   return (
-    { none: 'Stats only', phone_whip: 'Another phone', camera_rtmp: 'External camera', youtube: 'External camera', cloudflare_hls: 'Cloudflare' } as Record<
+    { none: 'Stats only', phone_whip: 'Another phone', camera_rtmp: 'External camera', multi: 'Multiple angles', youtube: 'External camera', cloudflare_hls: 'Cloudflare' } as Record<
       VideoSource,
       string
     >

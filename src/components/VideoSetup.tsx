@@ -33,11 +33,12 @@ export function VideoSetup({
 }) {
   const [source, setSource] = useState<VideoSource>(game.video_source)
   const isYouTube = source === 'youtube' // legacy games only (no longer offered)
+  const isMulti = source === 'multi' // phone angle + external camera
   const isRtmp = source === 'camera_rtmp'
   const isPhone = source === 'phone_whip'
-  // Active viewer connection so the scorer can preview the live feed + remotely
-  // terminate it. (Only runs for phone games.)
-  const phone = usePhoneVideo(isPhone ? game.id : undefined, isPhone)
+  const hasPhoneAngle = isPhone || isMulti
+  // Active viewer connection so the scorer can preview the live feed + remotely terminate it.
+  const phone = usePhoneVideo(hasPhoneAngle ? game.id : undefined, hasPhoneAngle)
 
   async function changeSource(next: VideoSource) {
     if (next === source) return
@@ -111,7 +112,20 @@ export function VideoSetup({
         </div>
       </section>
 
-      {isPhone ? (
+      {isMulti ? (
+        <>
+          {/* Multi-angle: set up BOTH the phone angle and the external camera. They composite into
+              one view for viewers (both at the same ~2-5s latency, so no angle-switch time jump). */}
+          <div className="mb-2 border-2 border-gold/40 bg-gold/5 px-3 py-2 font-data text-[12px] text-muted-tan">
+            <b>Angle 1 — phone.</b> Share this with the person filming from a phone.
+          </div>
+          <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
+          <div className="mb-2 mt-4 border-2 border-gold/40 bg-gold/5 px-3 py-2 font-data text-[12px] text-muted-tan">
+            <b>Angle 2 — external camera.</b> Point a GoPro/DJI/OBS at these ingest details.
+          </div>
+          <CameraRtmpSection gameId={game.id} shareToken={game.share_token} />
+        </>
+      ) : isPhone ? (
         <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
       ) : isRtmp ? (
         <>
@@ -177,7 +191,7 @@ export function VideoSetup({
     </>
   )
 
-  const saveBar = isYouTube || isRtmp ? (
+  const saveBar = isYouTube || isRtmp || isMulti ? (
     <div className={embed ? 'mt-4 flex items-center gap-3' : 'flex items-center gap-3 border-t-2 border-ink bg-cream-off p-4'}>
       <button onClick={save} disabled={saving} className="flex-1 bg-gold py-3 font-display text-ink disabled:opacity-60">
         {saving ? 'Saving…' : 'Save'}

@@ -71,14 +71,15 @@ export default function Score() {
   // Camera games run on Amazon IVS (see docs/ivs-migration-plan.md). The scorebug is pushed
   // into the video as timed metadata so viewers' bug/commentary fire frame-synced to the
   // delayed camera feed (viewer reads TEXT_METADATA_CUE).
-  const isIvsCamera = game?.video_source === 'camera_rtmp'
-  // Both IVS video sources record via composition→S3; the scorebug-cue (put-metadata) path stays
-  // camera-only (phone viewers watch sub-second WebRTC + get the bug via Realtime, already in sync).
-  const isIvsVideo = isIvsCamera || game?.video_source === 'phone_whip'
+  // "Channel" games (external camera + multi-angle) are viewed via HLS with a put-metadata scorebug;
+  // phone-only is viewed sub-second over WebRTC with the bug via Realtime (no cues needed). All IVS
+  // video sources record via composition→S3.
+  const isChannelGame = game?.video_source === 'camera_rtmp' || game?.video_source === 'multi'
+  const isIvsVideo = isChannelGame || game?.video_source === 'phone_whip'
   const lastCueSeq = useRef(-1)
   useEffect(() => {
     const token = game?.share_token
-    if (!isIvsCamera || !token || live.status !== 'live') return
+    if (!isChannelGame || !token || live.status !== 'live') return
     const seq = events.length ? events[events.length - 1].seq : 0
     if (seq === lastCueSeq.current) return
     lastCueSeq.current = seq
@@ -98,7 +99,7 @@ export default function Score() {
       st: live.status,
     }
     void supabase.functions.invoke('stream-ivs', { body: { token, action: 'put-metadata', metadata } })
-  }, [events, live, isIvsCamera, game?.share_token])
+  }, [events, live, isChannelGame, game?.share_token])
   const [strikePopup, setStrikePopup] = useState(false)
   const [inPlay, setInPlay] = useState(false)
   const [endPopup, setEndPopup] = useState(false)
@@ -115,8 +116,8 @@ export default function Score() {
   const bstatus = useBroadcastStatus(gameId, game?.video_source === 'phone_whip')
   // External camera has no heartbeat → poll stage presence instead. Unified `vstatus` feeds the same
   // header dot + "feed lost" banner for both sources (phone keeps its heartbeat-based status).
-  const camStatus = useIvsStreamStatus(gameId, game?.video_source === 'camera_rtmp' && live.status === 'live')
-  const vstatus = game?.video_source === 'camera_rtmp' ? camStatus : bstatus
+  const camStatus = useIvsStreamStatus(gameId, isChannelGame && live.status === 'live')
+  const vstatus = isChannelGame ? camStatus : bstatus
   const [endedDismissed, setEndedDismissed] = useState(false)
   // A newly (re)started broadcast clears the dismissed "ended" notice.
   useEffect(() => {
@@ -194,7 +195,7 @@ export default function Score() {
                 vstatus.down ? 'text-barn-red' : 'text-gold'
               }`}
             >
-              {(game.video_source === 'phone_whip' || game.video_source === 'camera_rtmp') && (
+              {isIvsVideo && (
                 <span
                   className={`h-2 w-2 rounded-full ${
                     vstatus.live
@@ -229,7 +230,7 @@ export default function Score() {
             </span>
           </span>
           <span className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/90">
-            {game?.video_source === 'camera_rtmp' ? 'Check camera ▸' : 'Check phone ▸'}
+            {isChannelGame ? 'Check camera ▸' : 'Check phone ▸'}
           </span>
         </button>
       )}

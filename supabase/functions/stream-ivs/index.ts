@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
       const destinations: Record<string, unknown>[] = [
         { s3: { encoderConfigurationArns: [ENCODER_ARN], storageConfigurationArn: STORAGE_ARN } },
       ]
-      if (g!.video_source === 'camera_rtmp' && g!.ivs_channel_arn) {
+      if ((g!.video_source === 'camera_rtmp' || g!.video_source === 'multi') && g!.ivs_channel_arn) {
         destinations.push({ channel: { channelArn: g!.ivs_channel_arn, encoderConfigurationArn: ENCODER_ARN } })
       }
       type CompDest = { detail?: { s3?: { recordingPrefix?: string } } }
@@ -315,7 +315,9 @@ Deno.serve(async (req) => {
     // low-latency channel for live HLS viewing + put-metadata scorebug sync.
     let rtmp: { url: string; streamKey: string } | null = null
     let playbackUrl: string | null = null
-    if (g!.video_source === 'camera_rtmp') {
+    // 'multi' = phone angle (WHIP, minted above) + external camera on one stage, composited to the
+    // channel. So it needs the camera RTMP ingest + the channel, same as a camera game.
+    if (g!.video_source === 'camera_rtmp' || g!.video_source === 'multi') {
       let ingestKey = g!.ivs_ingest_key ?? null
       if (!ingestKey) {
         const ic = (await rt('CreateIngestConfiguration', {
