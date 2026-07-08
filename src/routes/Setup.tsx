@@ -786,8 +786,8 @@ function CreateGameCard({
       <p className="mb-2 font-athletic text-xs font-semibold uppercase tracking-[.12em] text-muted-tan">
         Video source
       </p>
-      <div className="mb-5 grid grid-cols-3 gap-2">
-        {VIDEO_SOURCES.map((v) => {
+      <div className="mb-2 grid grid-cols-3 gap-2">
+        {VIDEO_SOURCES.filter((v) => v.value !== 'multi').map((v) => {
           const sel = video === v.value
           return (
             <button
@@ -811,6 +811,17 @@ function CreateGameCard({
           )
         })}
       </div>
+
+      {/* Multi-angle is a less-common choice → a subtle text link, not a full grid button. */}
+      <button
+        type="button"
+        onClick={() => setVideo(video === 'multi' ? 'none' : 'multi')}
+        className={`mb-5 font-athletic text-xs font-semibold uppercase tracking-wide underline underline-offset-2 ${
+          video === 'multi' ? 'text-board-green' : 'text-muted-tan'
+        }`}
+      >
+        {video === 'multi' ? '✓ Multiple angles (phone + external camera)' : '+ Multiple angles (phone + camera)'}
+      </button>
 
       {/* External camera → the RTMP ingest URL is generated on the scorer's Video screen at
           game time (start the broadcast, then point the camera/encoder at the URL). */}

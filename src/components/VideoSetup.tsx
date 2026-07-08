@@ -110,6 +110,16 @@ export function VideoSetup({
             </button>
           ))}
         </div>
+        {/* Multi-angle: subtle text link rather than a 4th grid button. */}
+        <button
+          type="button"
+          onClick={() => changeSource(isMulti ? 'none' : 'multi')}
+          className={`mt-2 font-athletic text-xs font-semibold uppercase tracking-wide underline underline-offset-2 ${
+            isMulti ? 'text-board-green' : 'text-muted-tan'
+          }`}
+        >
+          {isMulti ? '✓ Multiple angles (phone + external camera)' : '+ Multiple angles (phone + camera)'}
+        </button>
       </section>
 
       {isMulti ? (
