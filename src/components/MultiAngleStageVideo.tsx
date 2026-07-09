@@ -144,18 +144,25 @@ export function MultiAngleStageVideo({
     }
   }, [token])
 
-  // Keep a valid selection: default to the phone (sub-second, best-synced) when present, else the
-  // first angle; hold the current pick as long as it's still publishing.
+  // Stable display order: the phone angle first (it's the default + best-synced), then cameras in
+  // arrival order. Angles are numbered by this order, so "Angle 1" is the phone whenever present.
+  const ordered = useMemo(
+    () =>
+      [...angles].sort(
+        (a, b) => (a.userId === 'broadcaster' ? 0 : 1) - (b.userId === 'broadcaster' ? 0 : 1),
+      ),
+    [angles],
+  )
+
+  // Keep a valid selection: default to the first ordered angle (phone when present); hold the
+  // current pick as long as it's still publishing.
   useEffect(() => {
-    if (angles.length === 0) {
+    if (ordered.length === 0) {
       setSelPid(null)
       return
     }
-    setSelPid((cur) => {
-      if (cur && angles.some((a) => a.pid === cur)) return cur
-      return (angles.find((a) => a.userId === 'broadcaster') ?? angles[0]).pid
-    })
-  }, [angles])
+    setSelPid((cur) => (cur && ordered.some((a) => a.pid === cur) ? cur : ordered[0].pid))
+  }, [ordered])
 
   const selected = angles.find((a) => a.pid === selPid) ?? null
 
@@ -168,17 +175,16 @@ export function MultiAngleStageVideo({
     if (selected) onKindRef.current?.(selected.userId === 'camera' ? 'camera' : 'phone')
   }, [selected])
 
-  const labels = useMemo(() => labelAngles(angles), [angles])
-  const liveVideo = angles.length > 0 && !!selected
+  const liveVideo = ordered.length > 0 && !!selected
 
   if (!token || !liveVideo) return <ScorePanel state={board} />
   return (
     <div>
       <div className="relative bg-black">
         <video ref={videoRef} autoPlay playsInline muted className="aspect-video w-full bg-black object-contain" />
-        {angles.length > 1 && (
+        {ordered.length > 1 && (
           <div className="absolute left-2 top-2 flex gap-1">
-            {angles.map((a) => (
+            {ordered.map((a, i) => (
               <button
                 key={a.pid}
                 onClick={() => setSelPid(a.pid)}
@@ -188,7 +194,7 @@ export function MultiAngleStageVideo({
                     : 'border-cream/40 bg-ink/70 text-cream/85'
                 }`}
               >
-                {labels[a.pid]}
+                {`Angle ${i + 1}`}
               </button>
             ))}
           </div>
@@ -197,18 +203,4 @@ export function MultiAngleStageVideo({
       <ScorebugBar state={board} />
     </div>
   )
-}
-
-// Friendly angle labels; number a second/third camera so multiple externals stay distinct.
-function labelAngles(angles: Angle[]): Record<string, string> {
-  const out: Record<string, string> = {}
-  let camN = 0
-  for (const a of angles) {
-    if (a.userId === 'broadcaster') out[a.pid] = 'Phone'
-    else if (a.userId === 'camera') {
-      camN++
-      out[a.pid] = camN > 1 ? `Camera ${camN}` : 'Camera'
-    } else out[a.pid] = a.userId || 'Angle'
-  }
-  return out
 }
