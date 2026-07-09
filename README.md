@@ -91,10 +91,15 @@ the unified [docs/bandbox-plan.md](docs/bandbox-plan.md), and the IVS video arch
 - **Broadcaster resilience:** the phone auto-reconnects on a network drop; a source-agnostic
   stage-presence check drives the scorer's "video down" alert (phone **and** camera). Camera reconnect
   is the external encoder's job. Still to harden with real drop testing.
-- **Multi-angle** ✅ (composite mode): a `'multi'` game runs a **phone + external camera** on one
-  stage, composited into a **single low-latency HLS view** (both angles at the same latency → no
-  time jump), recorded together. Phone-only games are untouched (still sub-second). Deferred: the
-  fancier **per-viewer angle switcher** with a sub-second phone angle (mixed-latency sync is hard).
+- **Multi-angle** ✅ (per-angle switcher): a `'multi'` game puts the **phone + external camera** on
+  one stage as separate participants; **viewers switch between them via angle tabs**, each delivered
+  **sub-second over WebRTC** and watched one at a time (nothing to keep in sync with each other).
+  The scorebug delay tracks the selected angle (phone ≈ 0, camera ≈ its RTMP-ingest lag). The
+  **composite composition still records to S3** for the replay — it's just no longer the live view.
+  Phone-only and camera-only games are unchanged. (This replaced the earlier composite/grid live
+  view, which couldn't sync a sub-second WHIP phone against a ~2-3s RTMP camera inside one frame.)
+  Note: multi live viewers are now billed WebRTC participants (the composite was cheap HLS), so the
+  5-viewer cap matters more here. Next: real 2-device validation + add-as-you-go provisioning.
 - **Cost cap:** a 5-concurrent-viewer limit for free accounts is written + applied but **dormant**
   (flip on before real exposure). Sub-second WebRTC viewers bill per-viewer; HLS/replay is cheap CDN.
 - **IAM:** scope `bandbox-edge` down from AdministratorAccess (used during debugging) to the
