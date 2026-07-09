@@ -44,6 +44,11 @@ export function IvsChannelVideo({
   const onCueRef = useRef(onCue)
   onCueRef.current = onCue
   const [playing, setPlaying] = useState(false)
+  // Self-heal: bumping this fully tears down + recreates the player — the in-code equivalent of
+  // the viewer reloading the page. A watchdog bumps it whenever we're stuck not-playing, so a
+  // player that wedged on first load (channel not live yet, WASM/worker race, silent autoplay
+  // stall) recovers on its own instead of needing a manual refresh.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const el = videoRef.current
@@ -55,6 +60,10 @@ export function IvsChannelVideo({
     // degrade to the scoreboard, never bubble up and blank the page.
     let player: ReturnType<typeof createPlayer> | null = null
     let retryTimer: number | undefined
+    let watchdog: number | undefined
+    // If we aren't playing within 9s (from mount or from the last error), recreate the player
+    // outright. load()-retries alone can't rescue a wedged worker; a fresh player can.
+    watchdog = window.setTimeout(() => setAttempt((a) => a + 1), 9000)
     const cueHandler = (cue: TextMetadataCue) => {
       if (!cue?.text) return
       try {
@@ -68,6 +77,10 @@ export function IvsChannelVideo({
       if (retryTimer) {
         clearTimeout(retryTimer)
         retryTimer = undefined
+      }
+      if (watchdog) {
+        clearTimeout(watchdog) // playing → stop trying to recreate
+        watchdog = undefined
       }
     }
     const onEnded = () => setPlaying(false)
@@ -104,6 +117,7 @@ export function IvsChannelVideo({
 
     return () => {
       if (retryTimer) clearTimeout(retryTimer)
+      if (watchdog) clearTimeout(watchdog)
       if (!player) return
       try {
         player.removeEventListener(PlayerEventType.TEXT_METADATA_CUE, cueHandler)
@@ -116,7 +130,7 @@ export function IvsChannelVideo({
         /* already torn down */
       }
     }
-  }, [playbackUrl])
+  }, [playbackUrl, attempt])
 
   if (!playbackUrl) return <ScorePanel state={board} />
   return (

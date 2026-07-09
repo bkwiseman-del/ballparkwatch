@@ -16,10 +16,16 @@ export function StagePreview({
   token,
   className,
   onLive,
+  only,
 }: {
   token: string | null
   className?: string
   onLive?: (live: boolean) => void
+  // Multi-angle: two previews subscribe to the SAME stage, so each must render ONLY its own
+  // publisher (by participant userId: 'camera' for RTMP ingest, 'broadcaster' for the phone) —
+  // otherwise every remote track lands in every preview and the last publisher wins the screen.
+  // Omitted (single-publisher games) = render whatever remote video arrives, as before.
+  only?: string
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const onLiveRef = useRef(onLive)
@@ -51,7 +57,8 @@ export function StagePreview({
         stage = new Stage(token, strategy)
         stage.on(
           StageEvents.STAGE_PARTICIPANT_STREAMS_ADDED,
-          (_p: StageParticipantInfo, streams: StageStream[]) => {
+          (p: StageParticipantInfo, streams: StageStream[]) => {
+            if (only && p.userId !== only) return // this preview renders only its own angle
             for (const s of streams) media.addTrack(s.mediaStreamTrack)
             sync()
           },
@@ -86,7 +93,7 @@ export function StagePreview({
       }
       media.getTracks().forEach((t) => media.removeTrack(t))
     }
-  }, [token])
+  }, [token, only])
 
   return (
     <div className={className}>

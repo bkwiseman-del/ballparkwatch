@@ -129,11 +129,11 @@ export function VideoSetup({
           <div className="mb-2 border-2 border-gold/40 bg-gold/5 px-3 py-2 font-data text-[12px] text-muted-tan">
             <b>Angle 1 — phone.</b> Share this with the person filming from a phone.
           </div>
-          <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
+          <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} only="broadcaster" />
           <div className="mb-2 mt-4 border-2 border-gold/40 bg-gold/5 px-3 py-2 font-data text-[12px] text-muted-tan">
             <b>Angle 2 — external camera.</b> Point a GoPro/DJI/OBS at these ingest details.
           </div>
-          <CameraRtmpSection gameId={game.id} shareToken={game.share_token} />
+          <CameraRtmpSection gameId={game.id} shareToken={game.share_token} only="camera" />
         </>
       ) : isPhone ? (
         <PhoneBroadcastSection gameId={game.id} shareToken={game.share_token} phone={phone} />
@@ -237,10 +237,12 @@ function PhoneBroadcastSection({
   gameId,
   shareToken,
   phone,
+  only,
 }: {
   gameId: string
   shareToken: string
   phone: PhoneVideo
+  only?: string // multi-angle: pin this preview to the phone publisher (see StagePreview)
 }) {
   const [token, setToken] = useState<string | null>(null)
   const link = token ? `${window.location.origin}/broadcast/${token}` : ''
@@ -340,7 +342,7 @@ function PhoneBroadcastSection({
               </div>
             }
           >
-            <StagePreview token={subToken} onLive={setFeedUp} className="relative border-2 border-ink bg-black" />
+            <StagePreview token={subToken} onLive={setFeedUp} only={only} className="relative border-2 border-ink bg-black" />
           </SafeBoundary>
           {confirmKill ? (
             <div className="mt-2 flex items-center gap-2">
@@ -413,7 +415,7 @@ function PhoneBroadcastSection({
 // the game's Cloudflare live input and surface its RTMP ingest URL + stream key; the user
 // pastes those into their software. Cloudflare records RTMP ingest natively (so no headless
 // recorder is needed), and viewers watch the same WHEP/HLS feed as a phone broadcast.
-function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken: string }) {
+function CameraRtmpSection({ gameId, shareToken, only }: { gameId: string; shareToken: string; only?: string }) {
   const [rtmp, setRtmp] = useState<{ url: string; key: string } | null>(null)
   const [subToken, setSubToken] = useState<string | null>(null) // stage subscribe token for the preview
   const [feedUp, setFeedUp] = useState(false)
@@ -506,7 +508,7 @@ function CameraRtmpSection({ gameId, shareToken }: { gameId: string; shareToken:
           </div>
         }
       >
-        <StagePreview token={subToken} onLive={setFeedUp} className="mb-4 relative border-2 border-ink bg-black" />
+        <StagePreview token={subToken} onLive={setFeedUp} only={only} className="mb-4 relative border-2 border-ink bg-black" />
       </SafeBoundary>
 
       <h3 className="mb-1 font-display text-lg">Point your camera/encoder here</h3>
