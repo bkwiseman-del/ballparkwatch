@@ -26,6 +26,7 @@ import { attachHls, isHlsUrl } from '@/lib/hls'
 import { YouTubeEmbed } from '@/components/VideoEmbed'
 import { PhoneStageVideo } from '@/components/PhoneStageVideo'
 import { IvsChannelVideo, type ScoreCue } from '@/components/IvsChannelVideo'
+import { MultiAngleStageVideo } from '@/components/MultiAngleStageVideo'
 import { SafeBoundary } from '@/components/SafeBoundary'
 import { BrandedVideoControls } from '@/components/BrandedVideoControls'
 import { Bunting } from '@/components/Bunting'
@@ -123,6 +124,9 @@ export default function Watch() {
   const [events, setEvents] = useState<ViewerEvent[]>([])
   const [tab, setTab] = useState<Tab>('field')
   const [error, setError] = useState<string | null>(null)
+  // Multi-angle: which angle the viewer is watching, so the scorebug delay can track it (the phone
+  // angle is ~sub-second; the camera angle lags by its RTMP-ingest latency).
+  const [multiKind, setMultiKind] = useState<'phone' | 'camera'>('phone')
   const [flash, setFlash] = useState<SprayViz | null>(null)
   const [showStandby, setShowStandby] = useState(false)
   const [showShare, setShowShare] = useState(false)
@@ -274,10 +278,18 @@ export default function Watch() {
     }
   }, [info?.status, live.status, events])
 
-  // Keep the live delay in sync with the game's configured stat_delay_ms.
+  // Keep the live delay in sync with the game's configured stat_delay_ms. Multi-angle is special:
+  // the delay depends on the SELECTED angle — the phone is ~sub-second (no delay), the camera lags
+  // by its RTMP-ingest time, so hold the scorebug back by the calibrated stat_delay (or a ~2.5s
+  // default) only while the camera angle is showing. WebRTC carries no PDT, so this manual-delay
+  // path (not the cue/pdt path) drives multi sync.
   useEffect(() => {
-    delayRef.current = info?.stat_delay_ms ?? 0
-  }, [info?.stat_delay_ms])
+    if (info?.video_source === 'multi') {
+      delayRef.current = multiKind === 'camera' ? info?.stat_delay_ms || 2500 : 0
+    } else {
+      delayRef.current = info?.stat_delay_ms ?? 0
+    }
+  }, [info?.stat_delay_ms, info?.video_source, multiKind])
 
   // Is there live video? (YouTube link set, or an IVS phone/camera game.) The IVS video components
   // fall back to the scoreboard on their own until real frames arrive.
@@ -637,12 +649,18 @@ export default function Watch() {
       <YouTubeEmbed videoId={ytId} title={`${board.away.code} @ ${board.home.code}`} />
       <ScorebugBar state={board} />
     </div>
-  ) : info.video_source === 'camera_rtmp' || info.video_source === 'multi' ? (
-    // External camera (and multi-angle) on IVS: composited low-latency channel HLS + timed-metadata
-    // scorebug. Multi-angle grids the phone + camera into this one view (same latency, no time jump).
+  ) : info.video_source === 'camera_rtmp' ? (
+    // External camera on IVS: composited low-latency channel HLS + timed-metadata scorebug sync.
     // Boundary so a video-SDK failure degrades to the scoreboard instead of blanking the page.
     <SafeBoundary fallback={<ScorePanel state={board} />}>
       <IvsChannelVideo playbackUrl={info.ivs_playback_url} board={board} onCue={onCue} />
+    </SafeBoundary>
+  ) : info.video_source === 'multi' ? (
+    // Multi-angle on IVS: each angle (phone + camera) is a separate stage participant the viewer
+    // switches between, delivered sub-second over WebRTC — no composite, so nothing to keep in sync
+    // with each other. Scorebug rides Realtime, held back per selected angle's latency (see below).
+    <SafeBoundary fallback={<ScorePanel state={board} />}>
+      <MultiAngleStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} onKind={setMultiKind} />
     </SafeBoundary>
   ) : info.video_source === 'phone_whip' ? (
     // Phone on IVS: sub-second stage subscribe (WebRTC). Scorebug via Realtime (naturally synced).
