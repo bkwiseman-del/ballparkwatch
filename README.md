@@ -97,8 +97,11 @@ the unified [docs/bandbox-plan.md](docs/bandbox-plan.md), and the IVS video arch
   *delivery* leg), but glass-to-glass they differ: the **phone is sub-second end-to-end** (WHIP
   ingest), while the **camera is ~2–3s behind** because RTMP ingest adds latency (still better than
   the old composite's ~5s HLS). The scorebug delay tracks the selected angle (phone ≈ 0, camera ≈
-  its RTMP-ingest lag, ~2.5s default). The
-  **composite composition still records to S3** for the replay — it's just no longer the live view.
+  its RTMP-ingest lag, ~2.5s default).
+  **Replay is switchable too:** multi games record **each angle to its own VOD** (IVS *individual
+  participant recording*), and the Final-screen replay gets the same **Angle 1 / Angle 2 tabs**, each
+  re-synced to its own recording timeline; switching resumes at the same game moment. If the per-angle
+  recordings aren't available, replay **falls back to the composite VOD** (so it never regresses).
   Phone-only and camera-only games are unchanged. (This replaced the earlier composite/grid live
   view, which couldn't sync a sub-second WHIP phone against a ~2-3s RTMP camera inside one frame.)
   Note: multi live viewers are now billed WebRTC participants (the composite was cheap HLS), so the
