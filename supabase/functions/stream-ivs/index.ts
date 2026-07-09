@@ -67,6 +67,72 @@ async function s3GetJson(key: string): Promise<Record<string, unknown> | null> {
   return (await res.json().catch(() => null)) as Record<string, unknown> | null
 }
 
+// List every S3 object key under a prefix (paginated). Used to locate an individual participant
+// recording's manifest + events under its recordingS3Prefix (which is the PARENT — the actual
+// files live in a `<timestamp>/` subfolder, so we can't construct the path, we have to list it).
+async function s3ListKeys(prefix: string): Promise<string[]> {
+  const keys: string[] = []
+  let cont: string | undefined
+  do {
+    const u = new URL(`https://${S3_BUCKET}.s3.${REGION}.amazonaws.com/`)
+    u.searchParams.set('list-type', '2')
+    u.searchParams.set('prefix', prefix)
+    if (cont) u.searchParams.set('continuation-token', cont)
+    const res = await aws.fetch(u.toString(), { method: 'GET', aws: { service: 's3' } })
+    if (!res.ok) throw new Error(`S3 list ${prefix} -> ${res.status}`)
+    const xml = await res.text()
+    for (const m of xml.matchAll(/<Key>([^<]+)<\/Key>/g)) keys.push(m[1].replace(/&amp;/g, '&'))
+    cont = /<IsTruncated>true<\/IsTruncated>/.test(xml)
+      ? xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/)?.[1]
+      : undefined
+  } while (cont)
+  return keys
+}
+
+type ReplayAngle = { kind: 'phone' | 'camera'; label: string; url: string; started_at: string | null }
+
+// Resolve one switchable replay VOD per angle from a multi game's INDIVIDUAL participant recordings
+// (each publisher recorded separately to S3 — see docs/ivs-migration-plan.md). Returns null when
+// recording isn't enabled or hasn't finalized yet, so the caller falls back to the composite VOD.
+async function resolveAngleReplays(gameId: string): Promise<ReplayAngle[] | null> {
+  if (!REPLAY_BASE) return null
+  const { data: stageArn } = await db.rpc('stream_ivs_stage_by_game', { p_game_id: gameId })
+  if (!stageArn) return null
+  const sess = (await rt('ListStageSessions', { stageArn, maxResults: 1 }).catch(() => null)) as
+    | { stageSessions?: { sessionId?: string }[] }
+    | null
+  const sid = sess?.stageSessions?.[0]?.sessionId
+  if (!sid) return null
+  const parts = (await rt('ListParticipants', { stageArn, sessionId: sid, filterByPublished: true }).catch(
+    () => null,
+  )) as { participants?: { participantId?: string; userId?: string }[] } | null
+  const published = parts?.participants ?? []
+  if (!published.length) return null
+
+  const raw: { kind: 'phone' | 'camera'; url: string; started_at: string | null }[] = []
+  for (const p of published) {
+    if (!p.participantId) continue
+    const gp = (await rt('GetParticipant', { stageArn, sessionId: sid, participantId: p.participantId }).catch(
+      () => null,
+    )) as { participant?: { recordingS3Prefix?: string; userId?: string; ingestConfigurationArn?: string } } | null
+    const part = gp?.participant
+    const prefix = part?.recordingS3Prefix
+    if (!prefix) return null // recording not enabled / prefix not populated → composite fallback
+    const keys = await s3ListKeys(prefix.endsWith('/') ? prefix : prefix + '/')
+    const manifest = keys.find((k) => k.endsWith('/media/hls/multivariant.m3u8'))
+    const endedKey = keys.find((k) => k.endsWith('/events/recording-ended.json'))
+    if (!manifest || !endedKey) return null // not finalized yet → retry later (composite meanwhile)
+    const ended = await s3GetJson(endedKey)
+    const startedAt = (ended?.recording_started_at as string) ?? null
+    // Camera = RTMP ingest participant (userId 'camera', or has an ingestConfigurationArn); else phone.
+    const kind: 'phone' | 'camera' = part!.userId === 'camera' || part!.ingestConfigurationArn ? 'camera' : 'phone'
+    raw.push({ kind, url: `${REPLAY_BASE}/${manifest}`, started_at: startedAt })
+  }
+  if (!raw.length) return null
+  raw.sort((a, b) => (a.kind === 'phone' ? 0 : 1) - (b.kind === 'phone' ? 0 : 1)) // phone-first, matches live
+  return raw.map((a, i) => ({ ...a, label: `Angle ${i + 1}` }))
+}
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -242,12 +308,39 @@ Deno.serve(async (req) => {
       return json({ ok: true }, 200)
     }
 
-    // ---- finalize: resolve the replay once the composite recording is written to S3 ----
+    // ---- finalize: resolve the replay once recording is written to S3 ----
+    // Multi games prefer SWITCHABLE per-angle VODs (individual participant recordings); everything
+    // else (and multi as a fallback) uses the single composite VOD.
     if (action === 'finalize') {
       const { data: pub } = await db.rpc('get_public_game', { p_game_id: gameIdR })
-      const pg = (pub ?? {}) as { ivs_replay_url?: string | null }
-      if (pg.ivs_replay_url) return json({ ready: true, replayUrl: pg.ivs_replay_url }, 200)
+      const pg = (pub ?? {}) as {
+        ivs_replay_url?: string | null
+        ivs_replay_angles?: unknown[] | null
+        video_source?: string
+      }
+      const isMulti = pg.video_source === 'multi'
 
+      // Already resolved?
+      if (Array.isArray(pg.ivs_replay_angles) && pg.ivs_replay_angles.length)
+        return json({ ready: true, angles: pg.ivs_replay_angles }, 200)
+      if (pg.ivs_replay_url && !isMulti) return json({ ready: true, replayUrl: pg.ivs_replay_url }, 200)
+
+      // Multi: try the per-angle individual recordings first. If they aren't ready (recording not
+      // enabled, or not finalized yet), fall through to the composite so replay never regresses.
+      if (isMulti) {
+        const angles = await resolveAngleReplays(gameIdR).catch(() => null)
+        if (angles && angles.length) {
+          const earliest = angles.map((a) => a.started_at).filter(Boolean).sort()[0] ?? null
+          await db.rpc('stream_ivs_set_replay_angles', {
+            p_game_id: gameIdR,
+            p_angles: angles,
+            p_started_at: earliest,
+          })
+          return json({ ready: true, angles }, 200)
+        }
+      }
+
+      // ---- composite fallback ----
       // The recording prefix (S3 key) was stored at game-start. Resolve it by game_id so a viewer
       // (no broadcast token) can finalize a public final game.
       const { data: pfx } = await db.rpc('stream_ivs_prefix_by_game', { p_game_id: gameIdR })
@@ -276,7 +369,19 @@ Deno.serve(async (req) => {
       const s = (await rt('GetStage', { arn: stageArn })) as { stage?: { endpoints?: typeof endpoints } }
       endpoints = s.stage?.endpoints ?? {}
     } else {
-      const s = (await rt('CreateStage', { name: `bandbox-${gameIdR}` })) as {
+      // Multi-angle: enable INDIVIDUAL participant recording so each angle (phone + camera) is
+      // recorded to its own S3 VOD → switchable replay. Same storage config as the composite, so it
+      // reuses the storage config's managed bucket-policy write grant. The composite composition
+      // still runs too (single-file fallback). Phone-only / camera-only games don't set this.
+      const createBody: Record<string, unknown> = { name: `bandbox-${gameIdR}` }
+      if (g!.video_source === 'multi') {
+        createBody.autoParticipantRecordingConfiguration = {
+          storageConfigurationArn: STORAGE_ARN,
+          mediaTypes: ['AUDIO_VIDEO'],
+          thumbnailConfiguration: { recordingMode: 'DISABLED' },
+        }
+      }
+      const s = (await rt('CreateStage', createBody)) as {
         stage?: { arn?: string; endpoints?: typeof endpoints }
       }
       stageArn = s.stage?.arn ?? null

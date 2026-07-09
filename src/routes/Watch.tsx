@@ -62,6 +62,9 @@ type PublicGame = {
   cf_customer_code?: string | null
   ivs_playback_url?: string | null // camera live HLS (IVS low-latency channel)
   ivs_replay_url?: string | null // camera replay VOD (set at finalize once CloudFront is wired)
+  // Multi-angle: switchable per-angle replay VODs (individual participant recordings). Preferred
+  // over the single composite ivs_replay_url when present; each angle its own recording start.
+  ivs_replay_angles?: { kind?: string; label?: string; url?: string; started_at?: string | null }[] | null
   sponsors?: { name: string | null; image: string; url: string | null }[]
 }
 
@@ -518,7 +521,13 @@ export default function Watch() {
       info?.video_source === 'camera_rtmp' ||
       info?.video_source === 'phone_whip' ||
       info?.video_source === 'multi'
-    if (info?.status !== 'final' || !ivsSource || info?.ivs_replay_url) return
+    // Multi resolves to per-angle VODs — keep polling until those land (they can finalize a beat
+    // after the composite, and we prefer them). Everything else is done once ivs_replay_url is set.
+    const resolved =
+      info?.video_source === 'multi'
+        ? Array.isArray(info?.ivs_replay_angles) && info.ivs_replay_angles.length > 0
+        : !!info?.ivs_replay_url
+    if (info?.status !== 'final' || !ivsSource || resolved) return
     let cancelled = false
     let tries = 0
     const attempt = async () => {
@@ -566,16 +575,33 @@ export default function Watch() {
   // the game_start timestamp so the replay still plays (sync just approximate).
   // Prefer the IVS replay VOD (camera games) when finalized; else the Cloudflare Stream VOD or
   // the local upload (older games). IVS replay is served once CloudFront is wired (Build 4).
-  const replayVideoUrl = info.ivs_replay_url ?? (!vodBroken ? streamVod : null) ?? replayUrl ?? null
   const gameStartMs = (() => {
     const gs = events.find((e) => e.event_type === 'game_start')
     return gs?.wall_clock_ts ? new Date(gs.wall_clock_ts).getTime() : 0
   })()
+  // Multi-angle: switchable per-angle replay VODs (phone-first). Each angle carries its OWN
+  // recording start (its VOD's PROGRAM-DATE-TIME anchor) so the scorebug re-syncs on switch.
+  const replayAngles = (info.ivs_replay_angles ?? [])
+    .filter((a): a is { label?: string; url: string; started_at?: string | null } => !!a?.url)
+    .map((a, i) => ({
+      label: a.label || `Angle ${i + 1}`,
+      url: a.url,
+      startedAtMs: a.started_at
+        ? new Date(a.started_at).getTime()
+        : info.recording_started_at
+          ? new Date(info.recording_started_at).getTime()
+          : gameStartMs,
+    }))
+  // A base URL so `replay` renders: prefer the composite VOD, else the first angle (multi where the
+  // composite was never set), else the Stream/local fallbacks.
+  const replayVideoUrl =
+    info.ivs_replay_url ?? replayAngles[0]?.url ?? (!vodBroken ? streamVod : null) ?? replayUrl ?? null
   const replay: ReplayProps | null =
     replayVideoUrl
       ? {
           url: replayVideoUrl,
           startedAtMs: info.recording_started_at ? new Date(info.recording_started_at).getTime() : gameStartMs,
+          angles: replayAngles.length ? replayAngles : undefined,
           gameId: info.id,
           events,
           lineups: {
@@ -1005,6 +1031,19 @@ function FinalView({
     setSeekReq({ sec, nonce: seekNonce.current })
     setTab('replay')
   }
+  // Multi-angle replay: the selected angle. Switching remounts ReplayView (key=angleIdx) and resumes
+  // at the reported position on the new angle's own timeline; stale play-seeks are cleared.
+  const angles = replay?.angles ?? []
+  const [angleIdx, setAngleIdx] = useState(0)
+  const replayPosRef = useRef(0)
+  const switchedRef = useRef(false)
+  const sel = angles[angleIdx]
+  const pickAngle = (i: number) => {
+    if (i === angleIdx) return
+    switchedRef.current = true
+    setSeekReq(null) // don't apply an old-angle play-seek to the new angle's timeline
+    setAngleIdx(i)
+  }
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col bg-ink lg:max-w-5xl">
       {/* stars-and-stripes bunting (design spec: top of the Final screen) */}
@@ -1051,7 +1090,34 @@ function FinalView({
             tab switches — leaving pauses it, returning resumes from where it left off. */}
         {replay && (
           <div className={tab === 'replay' ? '' : 'hidden'}>
-            <ReplayView {...replay} active={tab === 'replay'} seekReq={seekReq} />
+            {/* Angle switcher (multi only): pick a per-angle VOD; resumes at the same moment. */}
+            {angles.length > 1 && (
+              <div className="mx-auto mb-2 flex max-w-2xl gap-1 lg:max-w-none">
+                {angles.map((a, i) => (
+                  <button
+                    key={a.url}
+                    onClick={() => pickAngle(i)}
+                    className={`border-2 px-3 py-1.5 font-athletic text-[11px] font-semibold uppercase tracking-wide ${
+                      i === angleIdx ? 'border-gold bg-board-green text-cream' : 'border-cream/30 bg-ink text-cream/70'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <ReplayView
+              {...replay}
+              key={sel ? angleIdx : 'single'}
+              url={sel ? sel.url : replay.url}
+              startedAtMs={sel ? sel.startedAtMs : replay.startedAtMs}
+              resumeWallMs={sel && switchedRef.current ? replayPosRef.current : undefined}
+              onPos={(w) => {
+                replayPosRef.current = w
+              }}
+              active={tab === 'replay'}
+              seekReq={seekReq}
+            />
           </div>
         )}
         {/* Replay not ready yet — the recording finalizes ~30-60s after the game ends. Tell the
@@ -1073,7 +1139,7 @@ function FinalView({
           <PlaysTab
             events={events}
             onSeek={replay ? seekToPlay : undefined}
-            startedAtMs={replay?.startedAtMs}
+            startedAtMs={sel ? sel.startedAtMs : replay?.startedAtMs}
           />
         )}
       </div>
@@ -1094,18 +1160,25 @@ type ReplayProps = {
   onVodError?: () => void // Stream VOD failed to load (e.g. still processing) → fall back
   active?: boolean // is the replay tab showing? (kept mounted so position persists)
   seekReq?: { sec: number; nonce: number } | null // jump to this video time (from a play tap)
+  // Multi-angle replay: switchable per-angle VODs (each its own recording start). FinalScreen owns
+  // the selection + tab bar and remounts ReplayView per angle; these carry position across a switch.
+  angles?: { label: string; url: string; startedAtMs: number }[]
+  resumeWallMs?: number // on mount, seek to this game wall-clock instead of the pre-game offset
+  onPos?: (wallMs: number) => void // report the current playback position (game wall-clock)
 }
 
 // Replay the recorded broadcast with the scorebug + AI commentary re-synced to the
 // video clock: as the video plays, each event fires at wall_clock_ts − started_at into
 // it (FX immediately; the spoken lines through the same cached-TTS queue as live), and
 // the scorebug is projected from the events reached so far. Scrubbing re-syncs both.
-function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players, onVodError, active, seekReq }: ReplayProps) {
+function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameOf, lineupsRaw, players, onVodError, active, seekReq, resumeWallMs, onPos }: ReplayProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const sorted = useMemo(() => [...events].sort((a, b) => a.seq - b.seq), [events])
   const firedSeq = useRef(0)
   const lastTime = useRef(0)
   const didSeek = useRef(false)
+  const onPosRef = useRef(onPos)
+  onPosRef.current = onPos
 
   // Keep onVodError in a ref so the attach effect depends ONLY on [url]. onVodError is a
   // fresh function on every parent render (and the parent re-renders ~1×/sec), so depending
@@ -1219,6 +1292,7 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
     setLive(project(upTo))
     setVisible(upTo)
     setPosMs(virtualMs)
+    onPosRef.current?.(virtualMs) // report position so an angle switch can resume here
     const newMax = upTo.length ? upTo[upTo.length - 1].seq : 0
     const seeked = Math.abs(cur - lastTime.current) > 1.5 || cur < lastTime.current
     if (seeked) {
@@ -1315,6 +1389,12 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
                 const v = videoRef.current
                 if (!v || didSeek.current) return
                 didSeek.current = true
+                // Angle switch: resume at the same game moment on this angle's own timeline.
+                if (resumeWallMs != null) {
+                  const t = (resumeWallMs - startedAtMs) / 1000
+                  if (t > 0 && t < (v.duration || Infinity) - 0.5) v.currentTime = t
+                  return
+                }
                 if (startOffsetSec > 1 && startOffsetSec < (v.duration || Infinity) - 1) v.currentTime = startOffsetSec
               }}
               // Recording is the upright 16:9 canvas (matches live). object-cover also
