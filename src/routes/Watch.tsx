@@ -657,8 +657,9 @@ export default function Watch() {
     </SafeBoundary>
   ) : info.video_source === 'multi' ? (
     // Multi-angle on IVS: each angle (phone + camera) is a separate stage participant the viewer
-    // switches between, delivered sub-second over WebRTC — no composite, so nothing to keep in sync
-    // with each other. Scorebug rides Realtime, held back per selected angle's latency (see below).
+    // switches between over WebRTC — no composite, so nothing to keep in sync with each other. The
+    // phone is sub-second end-to-end; the camera is ~2-3s behind (RTMP ingest), even though WebRTC
+    // delivery is sub-second for both. Scorebug rides Realtime, held back per selected angle (below).
     <SafeBoundary fallback={<ScorePanel state={board} />}>
       <MultiAngleStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} onKind={setMultiKind} />
     </SafeBoundary>

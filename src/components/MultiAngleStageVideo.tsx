@@ -14,14 +14,17 @@ import type { ScoreboardState } from '@/lib/scoreboard'
 type Angle = { pid: string; userId: string; stream: MediaStream }
 
 // Viewer-side multi-angle. Join the game's IVS stage ONCE (subscribe-only) and expose every
-// published participant as a switchable angle, each delivered sub-second over WebRTC — the same
-// path the phone viewer + setup previews use. The phone (userId 'broadcaster') and the external
-// camera (userId 'camera') are separate stage participants, so the viewer watches ONE at a time:
-// no composite grid, nothing to keep in sync with each other (which is what the side-by-side
-// composite couldn't do — the WHIP phone ran ~2-3s ahead of the RTMP camera inside one frame).
-// The selected angle's kind is reported up so Watch holds the scorebug back by that angle's
-// latency (phone ≈ 0, camera ≈ RTMP-ingest delay). The composite recording still runs server-side
-// for the replay; it's just no longer the live view.
+// published participant as a switchable angle over WebRTC — the same path the phone viewer + setup
+// previews use. The phone (userId 'broadcaster') and the external camera (userId 'camera') are
+// separate stage participants, so the viewer watches ONE at a time: no composite grid, nothing to
+// keep in sync with each other (which is what the side-by-side composite couldn't do — the phone
+// ran ~2-3s ahead of the camera inside one frame).
+//
+// Latency note: WebRTC *delivery* (stage → viewer) is sub-second for both, but glass-to-glass they
+// differ by how each got ONTO the stage — the phone (WHIP ingest) is sub-second end-to-end; the
+// camera (RTMP ingest) is ~2-3s behind real life. So the selected angle's kind is reported up and
+// Watch holds the scorebug back to match (phone ≈ 0, camera ≈ RTMP-ingest lag). The composite
+// recording still runs server-side for the replay; it's just no longer the live view.
 export function MultiAngleStageVideo({
   gameId,
   board,

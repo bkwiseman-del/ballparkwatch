@@ -92,9 +92,12 @@ the unified [docs/bandbox-plan.md](docs/bandbox-plan.md), and the IVS video arch
   stage-presence check drives the scorer's "video down" alert (phone **and** camera). Camera reconnect
   is the external encoder's job. Still to harden with real drop testing.
 - **Multi-angle** ✅ (per-angle switcher): a `'multi'` game puts the **phone + external camera** on
-  one stage as separate participants; **viewers switch between them via angle tabs**, each delivered
-  **sub-second over WebRTC** and watched one at a time (nothing to keep in sync with each other).
-  The scorebug delay tracks the selected angle (phone ≈ 0, camera ≈ its RTMP-ingest lag). The
+  one stage as separate participants; **viewers switch between them via angle tabs**, watched one at
+  a time (nothing to keep in sync with each other). Both are delivered over **WebRTC** (sub-second
+  *delivery* leg), but glass-to-glass they differ: the **phone is sub-second end-to-end** (WHIP
+  ingest), while the **camera is ~2–3s behind** because RTMP ingest adds latency (still better than
+  the old composite's ~5s HLS). The scorebug delay tracks the selected angle (phone ≈ 0, camera ≈
+  its RTMP-ingest lag, ~2.5s default). The
   **composite composition still records to S3** for the replay — it's just no longer the live view.
   Phone-only and camera-only games are unchanged. (This replaced the earlier composite/grid live
   view, which couldn't sync a sub-second WHIP phone against a ~2-3s RTMP camera inside one frame.)
