@@ -1095,10 +1095,11 @@ function FinalView({
         {/* Replay stays mounted (hidden on other tabs) so its playback position survives
             tab switches — leaving pauses it, returning resumes from where it left off. */}
         {replay && (
-          <div className={tab === 'replay' ? '' : 'hidden'}>
+          // Break out of the tab padding so the replay is edge-to-edge and flush like the live view.
+          <div className={tab === 'replay' ? '-m-4 min-[760px]:-m-6' : 'hidden'}>
             {/* Angle switcher (multi only): pick a per-angle VOD; resumes at the same moment. */}
             {angles.length > 1 && (
-              <div className="mx-auto mb-2 flex max-w-2xl gap-1 lg:max-w-none">
+              <div className="mx-auto mb-2 flex max-w-2xl gap-1 px-2 pt-2 lg:max-w-none">
                 {angles.map((a, i) => (
                   <button
                     key={a.url}
@@ -1427,18 +1428,17 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
           )}
         </div>
 
-        {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video. */}
+        {/* The live experience, time-traveled: batter/pitcher + the field, synced to the video.
+            Stacks FLUSH (no margins) like the live view — no ink gaps between the elements. */}
         {hasLineups && (
-          <div className="mt-3 lg:mt-0 lg:flex-1">
+          <div className="lg:flex-1">
             <BatterPitcherStrip lineups={rLineups} live={live} events={visible} />
-            <div className="mt-3">
-              <FieldTab lineups={rLineups} live={live} events={visible} spray={spray} />
-            </div>
+            <FieldTab lineups={rLineups} live={live} events={visible} spray={spray} />
           </div>
         )}
       </div>
 
-      <p className="mt-3 text-center font-data text-xs text-muted-green">
+      <p className="mt-2 pb-1 text-center font-data text-xs text-muted-green">
         Game replay — mirrors the live view, synced to the video. Tap play to enable sound.
       </p>
     </div>
