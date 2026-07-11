@@ -594,6 +594,7 @@ export default function Score() {
         <InPlayFlow
           batter={s.currentBatter}
           runners={s.runnersOnBase}
+          outs={live.outs}
           defense={(live.half === 'top' ? s.lineups.home : s.lineups.away).map((p) => ({
             pos: p.position ?? p.default_position,
             name: p.name,
@@ -1542,16 +1543,21 @@ const POS_ZONE: Record<number, HitZone> = {
 function InPlayFlow({
   batter,
   runners,
+  outs,
   defense,
   onCancel,
   onConfirm,
 }: {
   batter: Player | null
   runners: { first: Player | null; second: Player | null; third: Player | null }
+  outs: number
   defense: Fielder[]
   onCancel: () => void
   onConfirm: (result: EventType, payload: EventPayload) => void
 }) {
+  // Infield fly rule only applies with a force at second — runners on 1st AND 2nd (bases loaded
+  // included) — and fewer than two outs. Hide the option otherwise.
+  const infieldFlyEligible = !!runners.first && !!runners.second && outs < 2
   // No outcome chosen yet — the batter-first grid is the whole first screen.
   const [result, setResult] = useState<EventType | null>(null)
   const [zone, setZone] = useState<HitZone | null>(null)
@@ -1653,7 +1659,7 @@ function InPlayFlow({
               ))}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {RESULTS.filter((r) => r.group !== 'hit').map((r) => (
+              {RESULTS.filter((r) => r.group !== 'hit' && (r.type !== 'infield_fly' || infieldFlyEligible)).map((r) => (
                 <ResultBtn key={r.type} active={false} onClick={() => pickResult(r.type)}>
                   {r.label}
                 </ResultBtn>
