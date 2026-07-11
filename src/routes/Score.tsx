@@ -1493,6 +1493,7 @@ const RESULTS: { type: EventType; label: string; group: 'hit' | 'out' | 'other' 
   { type: 'home_run', label: 'HR', group: 'hit' },
   { type: 'groundout', label: 'GROUND OUT', group: 'out' },
   { type: 'flyout', label: 'FLY OUT', group: 'out' },
+  { type: 'infield_fly', label: 'INFIELD FLY', group: 'out' },
   { type: 'lineout', label: 'LINE OUT', group: 'out' },
   { type: 'fielders_choice', label: "FIELDER'S CHOICE", group: 'other' },
   { type: 'error', label: 'REACH ON ERROR', group: 'other' },
@@ -1500,7 +1501,7 @@ const RESULTS: { type: EventType; label: string; group: 'hit' | 'out' | 'other' 
 
 const BATTER_DEST: Partial<Record<EventType, Dest>> = {
   single: 1, double: 2, triple: 3, home_run: 4, error: 1, fielders_choice: 1,
-  groundout: 0, flyout: 0, lineout: 0,
+  groundout: 0, flyout: 0, infield_fly: 0, lineout: 0,
 }
 const RUNNER_ADVANCE: Partial<Record<EventType, number>> = {
   single: 1, error: 1, double: 2, triple: 3, home_run: 4,
@@ -1563,7 +1564,7 @@ function InPlayFlow({
     runners.third && { key: 'third' as const, from: 3, player: runners.third },
   ].filter(Boolean) as OnBase[]
 
-  const isOut = !!result && ['groundout', 'flyout', 'lineout', 'fielders_choice'].includes(result)
+  const isOut = !!result && ['groundout', 'flyout', 'infield_fly', 'lineout', 'fielders_choice'].includes(result)
   const isError = result === 'error'
   const isCleanHit = !!result && ['single', 'double', 'triple'].includes(result)
   const showCredit = isOut || isError
@@ -1626,7 +1627,7 @@ function InPlayFlow({
     }
   }
 
-  const isOutResult = !!result && ['groundout', 'lineout', 'flyout'].includes(result)
+  const isOutResult = !!result && ['groundout', 'lineout', 'flyout', 'infield_fly'].includes(result)
   const maxExtraOuts = isOutResult ? Math.min(onBase.length, 2) : 0
   const chosenLabel = result ? (RESULTS.find((r) => r.type === result)?.label ?? '') : ''
 
@@ -1750,7 +1751,7 @@ function InPlayFlow({
                 onBase={onBase}
                 extraOuts={extraOuts}
                 locked={false}
-                hideBatter={['groundout', 'flyout', 'lineout'].includes(result)}
+                hideBatter={['groundout', 'flyout', 'infield_fly', 'lineout'].includes(result)}
                 onResolve={(resolution, runs, advances) =>
                   onConfirm(result, {
                     resolution,

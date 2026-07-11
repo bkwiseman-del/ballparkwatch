@@ -158,6 +158,7 @@ export function fxCues(eventType: string): string[][] {
       return [['pitch'], ['hit']]
     case 'groundout':
     case 'flyout':
+    case 'infield_fly':
     case 'lineout':
       return [['pitch'], ['hit'], ['catch']]
     case 'stolen_base':
@@ -233,6 +234,7 @@ function voiceFor(
       break
     case 'groundout':
     case 'flyout':
+    case 'infield_fly':
     case 'lineout':
       out.push(playLine(text), ...afterPlay())
       break

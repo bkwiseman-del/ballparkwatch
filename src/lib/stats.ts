@@ -123,12 +123,12 @@ export type BattingLines = { away: BattingLine[]; home: BattingLine[] }
 
 const AB_TYPES: EventType[] = [
   'single', 'double', 'triple', 'home_run',
-  'strikeout', 'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+  'strikeout', 'groundout', 'flyout', 'infield_fly', 'lineout', 'error', 'fielders_choice',
 ]
 // A run scoring on these is an RBI for the batter (not on errors or steals).
 const RBI_TYPES = new Set<EventType>([
   'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch',
-  'groundout', 'flyout', 'lineout', 'fielders_choice',
+  'groundout', 'flyout', 'infield_fly', 'lineout', 'fielders_choice',
 ])
 
 // The player ids that scored on this event (for crediting runs / earned runs).
@@ -292,7 +292,7 @@ export function formatIp(outs: number): string {
 const PITCH_COUNTED = new Set<EventType>([
   'pitch_ball', 'pitch_strike', 'pitch_foul',
   'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch', 'strikeout',
-  'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+  'groundout', 'flyout', 'infield_fly', 'lineout', 'error', 'fielders_choice',
 ])
 
 export function pitchCounts(events: GameEventRow[]): { home: number; away: number } {
@@ -334,7 +334,7 @@ type NameOf = (id: string | null | undefined) => string | null
 // Events that belong in the play feed (pitches are excluded).
 const FEED_TYPES = new Set<EventType>([
   'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch', 'strikeout',
-  'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+  'groundout', 'flyout', 'infield_fly', 'lineout', 'error', 'fielders_choice',
   'runner_advance', 'stolen_base', 'caught_stealing', 'picked_off',
   'inning_change', 'game_start', 'game_end', 'score_adjust',
 ])
@@ -364,7 +364,7 @@ export function buildPlayByPlay(events: GameEventRow[], nameOf: NameOf): PlayLin
 
 function playKind(type: EventType, scored: boolean): PlayKind {
   if (scored || type === 'home_run') return 'scoring'
-  if (['strikeout', 'groundout', 'flyout', 'lineout', 'fielders_choice', 'caught_stealing', 'picked_off'].includes(type))
+  if (['strikeout', 'groundout', 'flyout', 'infield_fly', 'lineout', 'fielders_choice', 'caught_stealing', 'picked_off'].includes(type))
     return 'out'
   if (HIT_TYPES.includes(type) || ['walk', 'hit_by_pitch', 'error', 'stolen_base'].includes(type))
     return 'hit'
@@ -431,6 +431,8 @@ function describe(ev: GameEventRow, before: LiveGame, after: LiveGame, nameOf: N
       )
     case 'flyout':
       return withDetail(f && f.length ? `${who} flies out to ${POS_LABEL[f[0]]}` : `${who} flies out`)
+    case 'infield_fly':
+      return withDetail(f && f.length ? `${who} out on the infield fly (${POS_LABEL[f[0]]})` : `${who} out on the infield fly rule`)
     case 'lineout':
       return withDetail(f && f.length ? `${who} lines out to ${POS_LABEL[f[0]]}` : `${who} lines out`)
     case 'error':

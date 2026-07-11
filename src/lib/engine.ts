@@ -22,6 +22,7 @@ export type EventType =
   | 'strikeout'
   | 'groundout'
   | 'flyout'
+  | 'infield_fly'
   | 'lineout'
   | 'error'
   | 'fielders_choice'
@@ -162,6 +163,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   strikeout: 'Strikeout',
   groundout: 'Groundout',
   flyout: 'Flyout',
+  infield_fly: 'Infield fly',
   lineout: 'Lineout',
   error: 'Error',
   fielders_choice: "Fielder's choice",
@@ -182,7 +184,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
 export const PITCH_TYPES: EventType[] = ['pitch_ball', 'pitch_strike', 'pitch_foul', 'pitch_in_play']
 export const HIT_TYPES: EventType[] = ['single', 'double', 'triple', 'home_run']
 export const IN_PLAY_RESULTS: EventType[] = [
-  'single', 'double', 'triple', 'home_run', 'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+  'single', 'double', 'triple', 'home_run', 'groundout', 'flyout', 'infield_fly', 'lineout', 'error', 'fielders_choice',
 ]
 // Events that end a plate appearance (advance the batting order).
 export const PA_ENDING: EventType[] = [...IN_PLAY_RESULTS, 'walk', 'hit_by_pitch', 'strikeout']
@@ -197,6 +199,7 @@ const RESULT_BATTER_DEST: Partial<Record<EventType, Dest>> = {
   fielders_choice: 1,
   groundout: 0,
   flyout: 0,
+  infield_fly: 0,
   lineout: 0,
 }
 
@@ -298,6 +301,7 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
     case 'fielders_choice':
     case 'groundout':
     case 'flyout':
+    case 'infield_fly':
     case 'lineout':
       applyResolution(s, e)
       endAtBat(s)

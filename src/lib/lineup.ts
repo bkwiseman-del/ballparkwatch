@@ -89,7 +89,7 @@ export function pitchesSince(events: GameEventRow[], team: 'away' | 'home', sinc
 
 const PA_PITCHES = new Set([
   'single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch', 'strikeout',
-  'groundout', 'flyout', 'lineout', 'error', 'fielders_choice',
+  'groundout', 'flyout', 'infield_fly', 'lineout', 'error', 'fielders_choice',
 ])
 function isPitch(t: string): boolean {
   return PITCH_TYPES.includes(t as never) || PA_PITCHES.has(t)
