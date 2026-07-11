@@ -62,6 +62,9 @@ export function useScorer(gameId: string | undefined) {
   // Authoritative, synchronously-updated event list — so back-to-back taps each
   // compute a unique next seq (the React `events` state lags a render behind).
   const eventsRef = useRef<GameEventRow[]>([])
+  // True while a score/undo/edit is writing to the DB. The background resync skips these windows so
+  // it can never race an in-flight mutation (e.g. re-adopt a play the user is mid-undo of).
+  const mutatingRef = useRef(false)
 
   // Initial load + open the broadcast channel.
   useEffect(() => {
@@ -82,7 +85,7 @@ export function useScorer(gameId: string | undefined) {
         await Promise.all([
           supabase.from('teams').select('*').eq('id', g.away_team_id).single(),
           supabase.from('teams').select('*').eq('id', g.home_team_id).single(),
-          supabase.from('game_events').select('seq,event_type,payload,created_at').eq('game_id', gameId).order('seq'),
+          supabase.from('game_events').select('seq,event_type,payload,created_at,batter_id').eq('game_id', gameId).order('seq'),
           supabase.from('lineup_entries').select('*').eq('game_id', gameId).order('batting_order'),
           supabase.from('players').select('*').in('team_id', [g.away_team_id, g.home_team_id]),
         ])
@@ -267,6 +270,101 @@ export function useScorer(gameId: string | undefined) {
     [gameId],
   )
 
+  // Monotonic self-healing resync. The event log in the DB is the source of truth; the scorer's
+  // live state must never sit BEHIND it (that's the "reload dropped a run / jumped back an inning"
+  // bug — and it silently desyncs the scorer from viewers). This re-reads the log + the server
+  // snapshot and:
+  //   • adopts the server state when the scorer is behind it (heals a regressed scorer), and
+  //   • re-persists the local state when the DB snapshot is behind us (heals a behind viewer),
+  // but it NEVER moves the scorer backward. Runs on focus / tab-visible / a slow interval, so any
+  // regression corrects itself within seconds. Skips while a mutation is in flight (see mutatingRef).
+  const resync = useCallback(async () => {
+    if (!gameId || mutatingRef.current || document.hidden) return
+    const rankOf = (p: { inning: number; half: string; outs: number; homeScore: number; awayScore: number }) => [
+      p.inning,
+      p.half === 'bottom' ? 1 : 0,
+      p.outs,
+      p.homeScore + p.awayScore,
+    ]
+    const cmp = (a: number[], b: number[]) => {
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]
+      return 0
+    }
+    try {
+      const [{ data: evs }, { data: gs }] = await Promise.all([
+        supabase
+          .from('game_events')
+          .select('seq,event_type,payload,created_at,batter_id')
+          .eq('game_id', gameId)
+          .order('seq'),
+        supabase
+          .from('game_state')
+          .select('inning,half,outs,home_score,away_score')
+          .eq('game_id', gameId)
+          .maybeSingle(),
+      ])
+      if (mutatingRef.current) return // a mutation started while we were fetching — its state wins
+      const dbRows = (evs ?? []) as GameEventRow[]
+      if (!dbRows.length) return
+      // Merge any locally-scored plays the server hasn't confirmed yet (unsynced WAL tail).
+      const maxDbSeq = dbRows.at(-1)?.seq ?? 0
+      const tail = readWal(gameId)
+        .filter((w) => w.seq > maxDbSeq)
+        .sort((a, b) => a.seq - b.seq)
+      const candidate = tail.length ? [...dbRows, ...tail] : dbRows
+
+      const cur = project(eventsRef.current)
+      const cand = project(candidate)
+      // Adopt the server truth when the scorer is behind it — either a higher game rank
+      // (inning/half/outs/runs regressed) OR the server log simply extends ours (same prefix by
+      // seq, more events — catches a lost pitch/among-inning event that doesn't move the rank).
+      // Both are strictly FORWARD: we never shrink or rewind the local log here.
+      const extendsCurrent =
+        candidate.length > eventsRef.current.length && eventsRef.current.every((e, i) => candidate[i]?.seq === e.seq)
+      if (cmp(rankOf(cand), rankOf(cur)) > 0 || extendsCurrent) {
+        eventsRef.current = candidate
+        setEvents(candidate)
+        setLive(cand)
+        writeWal(gameId, candidate)
+        console.warn('[scorer] resync advanced to server state (was behind)')
+        return
+      }
+      // Local is ahead of the viewer snapshot → re-push so viewers catch up (heals a desync).
+      if (gs) {
+        const serverRank = [
+          gs.inning ?? 1,
+          gs.half === 'bottom' ? 1 : 0,
+          gs.outs ?? 0,
+          (gs.home_score ?? 0) + (gs.away_score ?? 0),
+        ]
+        if (cmp(rankOf(cur), serverRank) > 0) await persist(cur)
+      }
+    } catch {
+      /* best-effort; the mount recovery + WAL remain the primary safety net */
+    }
+  }, [gameId, persist])
+
+  // Fire the resync when the scorer app regains attention (the exact moment a stale reload would be
+  // visible) and on a slow interval as a backstop.
+  useEffect(() => {
+    if (!gameId) return
+    const onVisible = () => {
+      if (!document.hidden) void resync()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    // Kick shortly after mount so a RELOAD whose initial read came back stale (the "reload jumped
+    // back an inning" case) self-corrects in ~1.5s instead of waiting for the next focus/interval.
+    const kick = window.setTimeout(() => void resync(), 1500)
+    const id = window.setInterval(() => void resync(), 20000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.clearTimeout(kick)
+      window.clearInterval(id)
+    }
+  }, [gameId, resync])
+
   // Re-fetch rosters + lineups (after editing a player or filling a lineup).
   const reloadRoster = useCallback(async () => {
     if (!gameId) return
@@ -409,26 +507,31 @@ export function useScorer(gameId: string | undefined) {
       setLive(nextLive)
       if (event_type === 'game_start') setFirstPitchAt(new Date().toISOString()) // start the clock now
       writeWal(gameId, nextEvents) // durable BEFORE the network write — survives a force-quit
-      const { error: insErr } = await supabase.from('game_events').insert({
-        game_id: gameId,
-        seq,
-        event_type,
-        payload,
-        inning: nextLive.inning,
-        half: nextLive.half,
-        batter_id,
-      })
-      if (insErr) {
-        setError(insErr.message)
-        // roll back just this row
-        const rolled = eventsRef.current.filter((e) => e !== row)
-        eventsRef.current = rolled
-        setEvents(rolled)
-        setLive(project(rolled))
-        writeWal(gameId, rolled)
-        return
+      mutatingRef.current = true
+      try {
+        const { error: insErr } = await supabase.from('game_events').insert({
+          game_id: gameId,
+          seq,
+          event_type,
+          payload,
+          inning: nextLive.inning,
+          half: nextLive.half,
+          batter_id,
+        })
+        if (insErr) {
+          setError(insErr.message)
+          // roll back just this row
+          const rolled = eventsRef.current.filter((e) => e !== row)
+          eventsRef.current = rolled
+          setEvents(rolled)
+          setLive(project(rolled))
+          writeWal(gameId, rolled)
+          return
+        }
+        await persist(nextLive)
+      } finally {
+        mutatingRef.current = false
       }
-      await persist(nextLive)
     },
     [gameId, persist, currentBatter],
   )
@@ -444,21 +547,26 @@ export function useScorer(gameId: string | undefined) {
     setEvents(nextEvents)
     setLive(nextLive)
     writeWal(gameId, nextEvents)
-    const { error: delErr } = await supabase
-      .from('game_events')
-      .delete()
-      .eq('game_id', gameId)
-      .eq('seq', last.seq)
-    if (delErr) {
-      setError(delErr.message)
-      // restore
-      eventsRef.current = base
-      setEvents(base)
-      setLive(project(base))
-      writeWal(gameId, base)
-      return
+    mutatingRef.current = true
+    try {
+      const { error: delErr } = await supabase
+        .from('game_events')
+        .delete()
+        .eq('game_id', gameId)
+        .eq('seq', last.seq)
+      if (delErr) {
+        setError(delErr.message)
+        // restore
+        eventsRef.current = base
+        setEvents(base)
+        setLive(project(base))
+        writeWal(gameId, base)
+        return
+      }
+      await persist(nextLive)
+    } finally {
+      mutatingRef.current = false
     }
-    await persist(nextLive)
   }, [gameId, persist])
 
   // Delete ANY past play (correct a mistake found later). Removes that event, then
@@ -473,20 +581,25 @@ export function useScorer(gameId: string | undefined) {
       setEvents(nextEvents)
       setLive(nextLive)
       writeWal(gameId, nextEvents)
-      const { error: delErr } = await supabase
-        .from('game_events')
-        .delete()
-        .eq('game_id', gameId)
-        .eq('seq', seq)
-      if (delErr) {
-        setError(delErr.message)
-        eventsRef.current = base
-        setEvents(base)
-        setLive(project(base))
-        writeWal(gameId, base)
-        return
+      mutatingRef.current = true
+      try {
+        const { error: delErr } = await supabase
+          .from('game_events')
+          .delete()
+          .eq('game_id', gameId)
+          .eq('seq', seq)
+        if (delErr) {
+          setError(delErr.message)
+          eventsRef.current = base
+          setEvents(base)
+          setLive(project(base))
+          writeWal(gameId, base)
+          return
+        }
+        await persist(nextLive)
+      } finally {
+        mutatingRef.current = false
       }
-      await persist(nextLive)
     },
     [gameId, persist],
   )
