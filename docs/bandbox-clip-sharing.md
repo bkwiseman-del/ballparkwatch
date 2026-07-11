@@ -110,6 +110,34 @@ determines the stinger's transparent-reveal geometry and where the bug/end-card 
   (`game_start` / `inning_change` / 3rd-out / `game_end`), reusing the between-innings + Starting-Soon
   screens — not a server-side mixer. Live would need an opaque/CSS version of the stinger.
 
+## Monetization (decided 2026-07-11)
+
+Clips are a **paid** feature — and specifically a **personal** good, so they belong to the parent,
+not the team. This follows the "two goods / two payers" split in the pricing model
+([ballpark-watch-pricing](../../../.claude/projects/-Users-bwiseman-projects-ballpark-watch/memory/ballpark-watch-pricing.md)):
+
+- **Free = live-only** (P2P, ~5-viewer cap). **No free replay** (the earlier 24h "taste" is dropped).
+  Nothing to clip on a free game — clips require a recording, and recording is paid.
+- **Broadcast good (SHARED, per-game, bought once):** recording/replay/HD/AI. Payer = **team**
+  (~$149/season) or anyone via a **single-game pass (~$8)**. This makes the recording *exist* — once,
+  regardless of how many families want clips.
+- **Personal good (PRIVATE, per-family):** **Parent/Family premium (~$29/season)** unlocks
+  **create + share branded clips of your kid**, the personal highlight reel, keepsake downloads,
+  recruiting export. The render off an already-recorded game is pennies, so there's **no double
+  cost** — the team funds the recording; the parent pays to extract their kid's highlight.
+
+Why this is consistent with "charge the team, not the parents": watching stays **free**; the parent
+tier sells a **keepsake**, never access. It's the inverse of GameChanger's single $99.99 Premium that
+gates watching *and* clips together — we split them, keep watching free, and price each below GC.
+
+**Optional viral seed (parked growth lever):** a limited **sponsor-presented free clip** (carries a
+local sponsor's bug — markets Bandbox + the sponsor); Parent premium removes the bug and unlocks
+unlimited + the season reel.
+
+**Sequencing:** validate the **broadcast good first** (it's the wedge and it's what makes recordings
+exist), then add **Parent premium for clips** as the second monetization test (parents are the most
+motivated, highest-volume clip buyers, and it's recurring).
+
 ## Related
 
 - IVS video + recording: [ivs-migration-plan.md](ivs-migration-plan.md)
