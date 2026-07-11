@@ -272,7 +272,9 @@ function Runner({
 }
 
 function Pill({ x, y, text, bg, fg }: { x: number; y: number; text: string; bg: string; fg: string }) {
-  const w = Math.max(34, text.length * 8 + 12)
+  // Saira Condensed is narrow (~6px/char at 11px), so size the box to the text — the old 8px/char
+  // + 12 padding + 34 floor left big empty margins on either side of short last names.
+  const w = Math.max(22, text.length * 6 + 8)
   return (
     <g>
       <rect x={x - w / 2} y={y - 12} width={w} height="18" fill={bg} />

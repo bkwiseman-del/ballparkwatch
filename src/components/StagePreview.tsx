@@ -17,6 +17,7 @@ export function StagePreview({
   className,
   onLive,
   only,
+  audioOn = false,
 }: {
   token: string | null
   className?: string
@@ -26,6 +27,8 @@ export function StagePreview({
   // otherwise every remote track lands in every preview and the last publisher wins the screen.
   // Omitted (single-publisher games) = render whatever remote video arrives, as before.
   only?: string
+  // Viewer path: unmute the feed when the page's sound toggle is on. Setup previews omit it → muted.
+  audioOn?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const onLiveRef = useRef(onLive)
@@ -97,7 +100,7 @@ export function StagePreview({
 
   return (
     <div className={className}>
-      <video ref={videoRef} autoPlay playsInline muted className="aspect-video w-full bg-black object-contain" />
+      <video ref={videoRef} autoPlay playsInline muted={!audioOn} className="aspect-video w-full bg-black object-contain" />
       {!live && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-data text-sm text-cream/70">
           Waiting for camera…

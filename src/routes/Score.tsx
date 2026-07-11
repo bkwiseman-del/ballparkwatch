@@ -642,11 +642,14 @@ function BatterPitcherStrip({
           At Bat <span className="text-muted-tan">· tap to edit / sub</span>
         </p>
         <p className="font-display text-base leading-tight">
-          <span className="text-barn-red">{currentBatter.jersey_number ?? '—'}</span> {currentBatter.name}
+          <span className="text-barn-red">{currentBatter.jersey_number ?? '—'}</span>{' '}
+          {displayName(currentBatter.name) || currentBatter.name}
         </p>
         <p className="font-data text-[11px] text-muted-tan">
           {lineText}
-          {onDeck ? ` · on deck: ${onDeck.jersey_number ? `${onDeck.jersey_number} ` : ''}${onDeck.name}` : ''}
+          {onDeck
+            ? ` · on deck: ${onDeck.jersey_number ? `${onDeck.jersey_number} ` : ''}${displayName(onDeck.name) || onDeck.name}`
+            : ''}
         </p>
       </button>
       <button
@@ -660,7 +663,8 @@ function BatterPitcherStrip({
         <p className="font-display text-base leading-tight">
           {currentPitcher ? (
             <>
-              <span className="text-barn-red">{currentPitcher.jersey_number ?? '—'}</span> {currentPitcher.name}
+              <span className="text-barn-red">{currentPitcher.jersey_number ?? '—'}</span>{' '}
+              {displayName(currentPitcher.name) || currentPitcher.name}
             </>
           ) : (
             <span className="text-muted-tan">—</span>

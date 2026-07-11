@@ -30,11 +30,13 @@ export function MultiAngleStageVideo({
   board,
   attempt,
   onKind,
+  audioOn = false,
 }: {
   gameId?: string
   board: ScoreboardState
   attempt: boolean // the game is live → worth joining the stage
   onKind?: (kind: 'phone' | 'camera') => void
+  audioOn?: boolean // page sound toggle is on + audio unlocked → unmute the feed
 }) {
   const [token, setToken] = useState<string | null>(null)
   const [angles, setAngles] = useState<Angle[]>([])
@@ -181,7 +183,8 @@ export function MultiAngleStageVideo({
   return (
     <div>
       <div className="relative bg-black">
-        <video ref={videoRef} autoPlay playsInline muted className="aspect-video w-full bg-black object-contain" />
+        {/* Muted follows the page's sound toggle (commentary) so one control governs all audio. */}
+        <video ref={videoRef} autoPlay playsInline muted={!audioOn} className="aspect-video w-full bg-black object-contain" />
         {ordered.length > 1 && (
           <div className="absolute left-2 top-2 flex gap-1">
             {ordered.map((a, i) => (

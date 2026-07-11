@@ -687,12 +687,18 @@ export default function Watch() {
     // phone is sub-second end-to-end; the camera is ~2-3s behind (RTMP ingest), even though WebRTC
     // delivery is sub-second for both. Scorebug rides Realtime, held back per selected angle (below).
     <SafeBoundary fallback={<ScorePanel state={board} />}>
-      <MultiAngleStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} onKind={setMultiKind} />
+      <MultiAngleStageVideo
+        gameId={gameId}
+        board={board}
+        attempt={live.status === 'live'}
+        onKind={setMultiKind}
+        audioOn={soundOn && audioReady}
+      />
     </SafeBoundary>
   ) : info.video_source === 'phone_whip' ? (
     // Phone on IVS: sub-second stage subscribe (WebRTC). Scorebug via Realtime (naturally synced).
     <SafeBoundary fallback={<ScorePanel state={board} />}>
-      <PhoneStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} />
+      <PhoneStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} audioOn={soundOn && audioReady} />
     </SafeBoundary>
   ) : (
     <ScorePanel state={board} />

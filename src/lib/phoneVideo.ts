@@ -68,7 +68,13 @@ export type PhoneVideo = {
 // back 4:3 regardless, so we don't over-constrain — the viewer shows whatever
 // shape comes back at its natural ratio rather than letterboxing it.
 function videoConstraints(opts: { deviceId?: string } = {}): MediaTrackConstraints {
-  const base: MediaTrackConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } }
+  // Pin ~30fps: without a frameRate constraint some cameras hand back a variable/lower rate, which
+  // looks choppy once it's sampled into the 30fps canvas stream.
+  const base: MediaTrackConstraints = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30, min: 24 },
+  }
   return opts.deviceId
     ? { ...base, deviceId: { exact: opts.deviceId } }
     : { ...base, facingMode: 'environment' }
@@ -343,33 +349,28 @@ export function usePhoneVideo(gameId: string | undefined, active: boolean): Phon
       canvas.height = 720
       canvasRef.current = canvas
       const ctx = canvas.getContext('2d')!
-      // Throttle the redraw to ~30fps. requestAnimationFrame fires at the display refresh
-      // (~60fps), but the outgoing stream is 30fps — drawing every frame doubled the
-      // per-frame work for no benefit and ran the phone hot.
-      const FRAME_MS = 1000 / 30
-      let lastDraw = 0
-      const draw = (t?: number) => {
-        const now = t ?? performance.now()
-        if (now - lastDraw >= FRAME_MS) {
-          lastDraw = now
-          const v = camVideoRef.current
-          if (v && v.videoWidth) {
-            const sw = v.videoWidth
-            const sh = v.videoHeight
-            const targetAR = 16 / 9
-            let sx = 0
-            let sy = 0
-            let scw = sw
-            let sch = sh
-            if (sw / sh > targetAR) {
-              scw = sh * targetAR
-              sx = (sw - scw) / 2
-            } else {
-              sch = sw / targetAR
-              sy = (sh - sch) / 2
-            }
-            ctx.drawImage(v, sx, sy, scw, sch, 0, 0, canvas.width, canvas.height)
+      // Redraw on EVERY animation frame and let captureStream(30) sample the canvas on its own
+      // even 30fps clock. The old manual 30fps gate fired on a timer misaligned with the capture
+      // clock, so frames landed unevenly → visible judder. Drawing a 720p frame each rAF is cheap
+      // on modern phones; the source is already pinned to ~30fps above.
+      const draw = () => {
+        const v = camVideoRef.current
+        if (v && v.videoWidth) {
+          const sw = v.videoWidth
+          const sh = v.videoHeight
+          const targetAR = 16 / 9
+          let sx = 0
+          let sy = 0
+          let scw = sw
+          let sch = sh
+          if (sw / sh > targetAR) {
+            scw = sh * targetAR
+            sx = (sw - scw) / 2
+          } else {
+            sch = sw / targetAR
+            sy = (sh - sch) / 2
           }
+          ctx.drawImage(v, sx, sy, scw, sch, 0, 0, canvas.width, canvas.height)
         }
         rafRef.current = requestAnimationFrame(draw)
       }
