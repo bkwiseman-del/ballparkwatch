@@ -2271,7 +2271,9 @@ function runnersLabel(live: LiveGame): string {
 function shortName(p: Player | null | undefined): string | null {
   if (!p) return null
   const last = p.name.trim().split(/\s+/).pop() ?? p.name
-  return `${p.jersey_number ?? ''} ${last}`.trim().toUpperCase()
+  // Mixed case (not upper) so the batter + runner chips match the fielder chips, which render the
+  // surname as-is. "24 Wiseman", not "24 WISEMAN".
+  return `${p.jersey_number ?? ''} ${last}`.trim()
 }
 
 function baseLabel(n: number): string {

@@ -174,7 +174,9 @@ function FielderDot({
 }) {
   const last = name.trim().split(/\s+/).pop() ?? name
   const text = `${pos} ${last}`
-  const w = text.length * 5.6 + 10
+  // Size to the text (Saira Condensed is narrow) — same tight padding as the batter/runner pills so
+  // every chip on the field is consistent.
+  const w = text.length * 5.6 + 8
   const h = 16
   const selected = order >= 0
   return (
