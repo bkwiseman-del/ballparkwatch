@@ -1,6 +1,6 @@
 import { applyEvent, INITIAL_LIVE, occupancy, type GameEventRow, type LiveGame } from './engine'
 import { buildPlayByPlay } from './stats'
-import { displayName } from './names'
+import { speakableName } from './names'
 
 // Builds an ordered list of audio "cues" per event, GameChanger-style: the
 // sound FX first (pitch, then catch / hit / etc.), then the spoken lines —
@@ -9,7 +9,7 @@ import { displayName } from './names'
 // natural full sentence rather than a terse stat snippet.
 
 type NameOf = (id: string | null | undefined) => string | null
-type Slot = { name: string; jersey: string | null }
+type Slot = { name: string; jersey: string | null; id?: string }
 type Lineups = { away: Slot[]; home: Slot[] }
 // Spoken team names (so commentary says "Riverside leads it", not "Away leads it").
 type Teams = { away: string; home: string }
@@ -24,15 +24,16 @@ const ORD = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', 
 const ord = (n: number) => ORD[n] ?? `${n}th`
 const bw = (n: number) => (n === 0 ? 'oh' : (ONES[n] ?? String(n)))
 
-// Spoken intro for a batter — as much as we know: "number 24 Cook", "number 24",
-// "Cook", or null. Names go through the displayName chokepoint (surname only) so the
-// announcer never reads full first+last names aloud on the public broadcast — matching
-// what every on-screen surface already shows.
+// Spoken intro for a batter — as much as we know: "number 24 Carson S.", "number 24",
+// "Carson S.", or null. slot.name is already the FINAL public identity from the server (floored,
+// full if the team opted in, a kept "Player 1" label, or a "#24" number). speakableName drops the
+// "#24"/empty case so the booth never reads a bare number as a name (the jersey line covers it) and
+// never speaks more than the overlay shows.
 function announce(slot: Slot | undefined): string | null {
   if (!slot) return null
   const parts: string[] = []
   if (slot.jersey) parts.push(`number ${slot.jersey}`)
-  const name = displayName(slot.name)
+  const name = speakableName(slot.name)
   if (name) parts.push(name)
   return parts.length ? parts.join(' ') : null
 }
@@ -81,11 +82,63 @@ function situationLine(state: LiveGame): string | null {
   return `${bases}, ${outs}.`
 }
 
-// Lines for a new batter stepping in: who's up, then the situation.
-function plateLines(state: LiveGame, lineups: Lineups): { text: string; kind: VoiceKind }[] {
+// A batter's running line for THIS game — accumulated as freshCues replays the log — so the
+// announcer can add "he's oh for one today" when a hitter comes up for a 2nd+ plate appearance.
+type DayStat = { ab: number; h: number; bb: number; hbp: number; doubles: number; triples: number; hr: number; k: number }
+// A batter is charged an official AB on these (reaching on error / fielder's choice included; walk +
+// HBP are plate appearances but NOT at-bats — mirrors stats.ts AB_TYPES).
+const AB_EVENTS = new Set<string>([
+  'single', 'double', 'triple', 'home_run', 'strikeout', 'groundout', 'flyout', 'infield_fly',
+  'lineout', 'error', 'fielders_choice',
+])
+const HIT_EVENTS = new Set<string>(['single', 'double', 'triple', 'home_run'])
+// Words for the "H for AB" line — spoken, never bare digits ("oh for two", not "0 for 2").
+const FORW = ['oh', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight']
+const forW = (n: number) => FORW[n] ?? String(n)
+const timesW = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${forW(n)} times`)
+
+function tallyDay(d: DayStat, type: string): DayStat {
+  if (AB_EVENTS.has(type)) d.ab += 1
+  if (HIT_EVENTS.has(type)) d.h += 1
+  if (type === 'double') d.doubles += 1
+  else if (type === 'triple') d.triples += 1
+  else if (type === 'home_run') d.hr += 1
+  else if (type === 'strikeout') d.k += 1
+  else if (type === 'walk') d.bb += 1
+  else if (type === 'hit_by_pitch') d.hbp += 1
+  return d
+}
+
+// "Carson S. is one for two today, with a double." — null on a batter's FIRST time up (no line yet).
+function dayLineText(name: string | null, d: DayStat | undefined): string | null {
+  if (!d) return null
+  const who = name || 'He'
+  if (d.ab === 0) {
+    const on = d.bb + d.hbp
+    if (on === 0) return null
+    if (d.bb && !d.hbp) return `${who} has walked ${timesW(d.bb)} today.`
+    return `${who} has reached base ${timesW(on)} today.`
+  }
+  let s = `${who} is ${forW(d.h)} for ${forW(d.ab)} today`
+  if (d.hr) s += ', with a home run'
+  else if (d.triples) s += ', with a triple'
+  else if (d.doubles) s += ', with a double'
+  return `${s}.`
+}
+
+// Lines for a new batter stepping in: who's up, their day line (2nd+ PA), then the situation.
+function plateLines(
+  state: LiveGame,
+  lineups: Lineups,
+  dayLineFor?: (slot: Slot | undefined) => string | null,
+): { text: string; kind: VoiceKind }[] {
   const lines: { text: string; kind: VoiceKind }[] = []
   const b = batterUp(state, lineups)
   if (b) lines.push({ text: b, kind: 'info' })
+  if (b && dayLineFor) {
+    const dl = dayLineFor(nextBatterSlot(state, lineups))
+    if (dl) lines.push({ text: dl, kind: 'info' })
+  }
   const s = situationLine(state)
   if (s) lines.push({ text: s, kind: 'info' })
   return lines
@@ -180,16 +233,17 @@ function voiceFor(
   play: Map<number, string>,
   lineups: Lineups,
   teams: Teams,
+  dayLineFor?: (slot: Slot | undefined) => string | null,
 ): Line[] {
   const text = play.get(ev.seq)
   const out: (Line | null)[] = []
   const playLine = (t: string | undefined): Line | null => (t ? { text: t, kind: 'play' } : null)
-  const plate = () => plateLines(after, lineups)
+  const plate = () => plateLines(after, lineups, dayLineFor)
   const scored = after.awayScore + after.homeScore > before.awayScore + before.homeScore
   // After a play that scored, announce the score, then the next batter.
   const afterPlay = (): Line[] => [
     ...(scored ? [{ text: scoreSummary(after, teams), kind: 'info' as VoiceKind }] : []),
-    ...plateLines(after, lineups),
+    ...plateLines(after, lineups, dayLineFor),
   ]
 
   switch (ev.event_type) {
@@ -302,6 +356,14 @@ export function freshCues(
   let state: LiveGame = { ...INITIAL_LIVE }
   let halfAway = 0 // score at the start of the current half-inning
   let halfHome = 0
+  // Per-batter running line for this game (keyed by player id). Accumulated for EVERY event below
+  // (even ones before sinceSeq) so a hitter's day line is complete when they come up again.
+  const day = new Map<string, DayStat>()
+  const dayLineFor = (slot: Slot | undefined): string | null => {
+    if (!slot?.id) return null // no identity → can't look up the line (e.g. legacy/ghost slot)
+    return dayLineText(nameOf(slot.id) || null, day.get(slot.id))
+  }
+  const isPA = (t: string) => AB_EVENTS.has(t) || t === 'walk' || t === 'hit_by_pitch'
   for (const ev of sorted) {
     const before = state
     const after = applyEvent(before, ev)
@@ -316,12 +378,17 @@ export function freshCues(
       : 0
 
     if (ev.seq > sinceSeq) {
-      voiceFor(ev, before, after, play, lineups, teams).forEach((l, i) => {
+      voiceFor(ev, before, after, play, lineups, teams, dayLineFor).forEach((l, i) => {
         cues.push({ key: i === 0 ? String(ev.seq) : `${ev.seq}.${i}`, text: l.text, kind: l.kind })
       })
       if (halfEnded) {
         cues.push({ key: `${ev.seq}-sum`, text: inningRecap(after, runsThisHalf, lineups, teams), kind: 'summary' })
       }
+    }
+    // Tally AFTER emitting, so the coming-up batter's day line reflects only PRIOR plate appearances.
+    if (ev.batter_id && isPA(ev.event_type)) {
+      const d = day.get(ev.batter_id) ?? { ab: 0, h: 0, bb: 0, hbp: 0, doubles: 0, triples: 0, hr: 0, k: 0 }
+      day.set(ev.batter_id, tallyDay(d, ev.event_type))
     }
     if (halfEnded) {
       halfAway = after.awayScore

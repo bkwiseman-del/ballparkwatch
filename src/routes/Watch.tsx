@@ -33,7 +33,7 @@ import { Bunting } from '@/components/Bunting'
 import { ShareSheet } from '@/components/ShareSheet'
 import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon } from '@/components/Icons'
 import { audio } from '@/lib/audio'
-import { displayName } from '@/lib/names'
+import { speakableName } from '@/lib/names'
 import { freshCues, fxCues } from '@/lib/commentary'
 import type { Recap } from '@/lib/types'
 
@@ -91,7 +91,7 @@ function buildViz(payload: ViewerEvent['payload'], seq: number): SprayViz | null
 }
 
 type ViewerEvent = GameEventRow & {
-  batter_name: string | null
+  batter_name: string | null // already the public identity (floored, "#24", or "Player 1") from the server
   created_at?: string
   wall_clock_ts?: string
 }
@@ -400,10 +400,10 @@ export default function Watch() {
       if (freshAll.some((e) => e.event_type === 'inning_change' || e.event_type === 'game_start')) audio.enqueueOrgan()
       if (gameId) {
         const nameOf = (id: string | null | undefined) =>
-          id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null
+          id ? speakableName(info?.players?.[id]?.name) : null
         const lns = {
-          away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-          home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+          away: (info?.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey, id: s.id })),
+          home: (info?.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey, id: s.id })),
         }
         const teamNames = { away: info?.away?.name ?? 'Away', home: info?.home?.name ?? 'Home' }
         const cues = freshCues(reached, baseline, nameOf, lns, teamNames)
@@ -605,14 +605,14 @@ export default function Watch() {
           gameId: info.id,
           events,
           lineups: {
-            away: (info.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
-            home: (info.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey })),
+            away: (info.lineups?.away ?? []).map((s) => ({ name: s.name, jersey: s.jersey, id: s.id })),
+            home: (info.lineups?.home ?? []).map((s) => ({ name: s.name, jersey: s.jersey, id: s.id })),
           },
           teams: {
             away: { name: info.away.name, code: board.away.code },
             home: { name: info.home.name, code: board.home.code },
           },
-          cueNameOf: (id) => (id && info?.players?.[id]?.name ? displayName(info.players[id].name) : null),
+          cueNameOf: (id) => (id ? speakableName(info?.players?.[id]?.name) : null),
           // Enough to re-render the LIVE field + batter/pitcher, projected to the video's
           // position, so the replay mirrors what viewers saw.
           lineupsRaw: { away: info.lineups?.away ?? [], home: info.lineups?.home ?? [] },
@@ -641,7 +641,7 @@ export default function Watch() {
     return projectSlots(initial, subs, key).map((s) => {
       const pl = info!.players?.[s.playerId]
       // Last name when present; fall back to the jersey for a number-only player.
-      const nm = displayName(pl?.name) || (pl?.jersey ? `#${pl.jersey}` : '—')
+      const nm = pl?.name || (pl?.jersey ? `#${pl.jersey}` : '—')
       return { id: s.playerId, name: nm, jersey: pl?.jersey ?? null, pos: s.position }
     })
   }
@@ -651,7 +651,7 @@ export default function Watch() {
   // the box score / pitching tables.
   const nameById = (id: string): string => {
     const pl = info?.players?.[id]
-    return displayName(pl?.name) || (pl?.jersey ? `#${pl.jersey}` : '—')
+    return pl?.name || (pl?.jersey ? `#${pl.jersey}` : '—')
   }
   const startPositions: StartPositions = {
     away: Object.fromEntries((info?.lineups?.away ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
@@ -1159,7 +1159,7 @@ type ReplayProps = {
   startedAtMs: number
   gameId: string
   events: ViewerEvent[]
-  lineups: { away: { name: string; jersey: string | null }[]; home: { name: string; jersey: string | null }[] }
+  lineups: { away: { name: string; jersey: string | null; id?: string }[]; home: { name: string; jersey: string | null; id?: string }[] }
   teams: { away: { name: string; code: string }; home: { name: string; code: string } }
   cueNameOf: (id: string | null | undefined) => string | null
   lineupsRaw: { away: LineupSlot[]; home: LineupSlot[] }
@@ -1339,7 +1339,7 @@ function ReplayView({ url, startedAtMs, gameId, events, lineups, teams, cueNameO
       .map((s) => ({ playerId: s.id, position: s.pos }))
     return projectSlots(initial, subs, key).map((s) => {
       const pl = players[s.playerId]
-      const nm = displayName(pl?.name) || (pl?.jersey ? `#${pl.jersey}` : '—')
+      const nm = pl?.name || (pl?.jersey ? `#${pl.jersey}` : '—')
       return { id: s.playerId, name: nm, jersey: pl?.jersey ?? null, pos: s.position }
     })
   }
@@ -1711,7 +1711,9 @@ function ordinalNum(n: number): string {
 
 function nameMap(events: ViewerEvent[]) {
   const m = new Map<string, string>()
-  for (const e of events) if (e.batter_id && e.batter_name) m.set(e.batter_id, displayName(e.batter_name))
+  // batter_name is already the final public identity from the server (floored, full if opted in, a
+  // kept generic label like "Player 1", or "#24") — render it verbatim.
+  for (const e of events) if (e.batter_id && e.batter_name) m.set(e.batter_id, e.batter_name)
   return m
 }
 
