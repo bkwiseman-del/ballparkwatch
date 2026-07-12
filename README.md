@@ -133,16 +133,10 @@ per-viewer (~$0.072/participant-hr), bounded by the dormant 5-viewer free cap. ~
 
 ## Deploy
 
-The PWA is deployed to **Vercel** manually via the CLI — **pushing to `main` does NOT auto-deploy**
-(there's no GitHub→Vercel Git integration on this project; the repo is CLI-linked via `.vercel/`).
-Deploy production with:
-
-```bash
-npx vercel --prod --yes    # builds + deploys the current tree, aliases bandbox.tv
-```
-
-(To make pushes auto-deploy instead, connect the GitHub repo in the Vercel dashboard, or run
-`npx vercel git connect`.) Supabase Edge Functions deploy separately:
+The PWA **auto-deploys to Vercel on push to `main`** — the repo has a Vercel GitHub integration
+(production branch `main`), so every push builds and deploys to production (aliased to bandbox.tv).
+No manual step. A manual production deploy, if ever needed, is `npx vercel --prod --yes`.
+Supabase Edge Functions deploy separately:
 
 ```bash
 SUPABASE_ACCESS_TOKEN=… npx supabase functions deploy <name> --no-verify-jwt \
