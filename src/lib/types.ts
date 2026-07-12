@@ -44,6 +44,66 @@ export type Team = {
   discovery: TeamDiscovery
   broadcast_audience: BroadcastAudience
   claim_status: string
+  // Opt-in: show players' FULL names to this team's viewers (default false = the first-name +
+  // last-initial privacy floor). The other team + ghost/opponent side are unaffected.
+  show_full_names: boolean
+  // Part B / B0: nullable link to an Organization. NULL = standalone owner-owned team
+  // (the original, unchanged behavior); set = the team belongs to a league/club/etc.
+  org_id: string | null
+  // Part B / B0.2: nullable placement in a league division (implies its org_season).
+  division_id: string | null
+}
+
+// Part B / B0 — the league spine above teams (doc 2 §2). Additive; standalone teams ignore it.
+export type OrgType = 'league' | 'club' | 'tournament' | 'facility'
+export type OrgRole = 'org_admin' | 'division_coordinator'
+
+export type Organization = {
+  id: string
+  type: OrgType
+  name: string
+  slug: string | null
+  branding: Record<string, unknown>
+  stripe_account_id: string | null
+  created_by: string
+  created_at: string
+}
+
+export type OrgMember = {
+  org_id: string
+  user_id: string
+  role: OrgRole
+  status: string // active | removed
+  invited_by: string | null
+  created_at: string
+}
+
+// Part B / B0.2 — org-owned season + division tree (doc 2 §2). The global `Season` type below is the
+// shared calendar reference; OrgSeason is the org's own, richer season.
+export type SeasonFormat = 'league' | 'tournament'
+export type OrgSeasonStatus = 'setup' | 'active' | 'complete'
+
+export type OrgSeason = {
+  id: string
+  org_id: string
+  name: string
+  format: SeasonFormat
+  sport: TeamSport
+  starts_on: string | null
+  ends_on: string | null
+  status: OrgSeasonStatus
+  ruleset: Record<string, unknown>
+  created_at: string
+}
+
+export type Division = {
+  id: string
+  season_id: string
+  org_id: string
+  name: string
+  rule_profile: Record<string, unknown>
+  sort: number
+  created_at: string
 }
 
 export type Season = { id: string; year: number; term: string; label: string }
@@ -72,6 +132,21 @@ export type Player = {
   created_at: string
   // Soft-delete: archived players stay in past games but drop out of new lineups.
   archived_at?: string | null
+  // Part B / B0.3: birthdate → derived league age (division auto-suggest); per-player privacy flags.
+  dob?: string | null
+  privacy?: Record<string, unknown>
+}
+
+// Part B / B0.3 — the guardian link (doc 2 PlayerGuardian), backed by the extended member_players
+// table. Many guardians per player; is_primary marks the primary contact.
+export type PlayerGuardian = {
+  team_id: string
+  user_id: string
+  player_id: string
+  relationship: string | null
+  is_primary: boolean
+  notify_prefs: Record<string, unknown>
+  created_at: string
 }
 
 export type LineupEntry = {

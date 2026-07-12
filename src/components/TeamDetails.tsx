@@ -66,7 +66,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   // Pre-checked only if the team already exposes something publicly (consent previously
   // given); a move into any public exposure starts unchecked so it's a deliberate act.
   const [confirmed, setConfirmed] = useState(
-    team.discovery !== 'private' || team.broadcast_audience === 'public',
+    team.discovery !== 'private' || team.broadcast_audience === 'public' || team.show_full_names,
   )
   const [sport, setSport] = useState<TeamSport>(team.sport ?? 'baseball')
   const [city, setCity] = useState(team.city ?? '')
@@ -81,6 +81,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
     team.discovery === 'private' ? 'private' : 'discoverable',
   )
   const [audience, setAudience] = useState<BroadcastAudience>(team.broadcast_audience ?? 'link')
+  const [showFullNames, setShowFullNames] = useState(team.show_full_names ?? false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // Add-your-own season (Fall Ball, cross-year travel, a league's calendar).
@@ -127,7 +128,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   }, [])
 
   // Any public exposure (a searchable page, or replays on the public page) needs consent.
-  const needsConsent = discovery === 'discoverable' || audience === 'public'
+  const needsConsent = discovery === 'discoverable' || audience === 'public' || showFullNames
 
   async function save() {
     if (needsConsent && !confirmed) {
@@ -146,6 +147,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
       season_id: seasonId || null,
       discovery,
       broadcast_audience: audience,
+      show_full_names: showFullNames,
     }
     // Stamp the attestation (who/when) as the audit trail on any public exposure.
     if (needsConsent) {
@@ -358,10 +360,37 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
             </div>
 
             <p className="mt-2 font-data text-[11px] text-muted-tan">
-              Team members always see full names; the public page shows first name + last initial.{' '}
+              Team members always see full names; public surfaces use the names setting below.{' '}
               {discovery === 'discoverable'
                 ? `Published at ${window.location.host}/t/${team.slug ?? ''}.`
                 : 'The public page is off.'}
+            </p>
+          </div>
+
+          {/* ③ Full-name opt-in — the privacy floor is the default; a team may opt into full names. */}
+          <div>
+            <span className={labelCls}>Player names on the viewer</span>
+            <button
+              type="button"
+              onClick={() => setShowFullNames((v) => !v)}
+              className={`flex w-full items-center justify-between gap-3 border-2 px-3 py-2 text-left ${
+                showFullNames ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
+              }`}
+            >
+              <span className="flex flex-col gap-0.5">
+                <span className="font-display">Show full names to our viewers</span>
+                <span className={`font-data text-xs ${showFullNames ? 'text-muted-green' : 'text-muted-tan'}`}>
+                  {showFullNames
+                    ? 'Your stream, replays, and team page show full names.'
+                    : 'Default: first name + last initial (e.g. “Carson S.”).'}
+                </span>
+              </span>
+              <span className={`shrink-0 font-athletic text-xs font-bold uppercase ${showFullNames ? 'text-gold' : 'text-muted-tan'}`}>
+                {showFullNames ? 'On' : 'Off'}
+              </span>
+            </button>
+            <p className="mt-2 font-data text-[11px] text-muted-tan">
+              The opposing team controls its own side, and unclaimed “ghost” opponents always stay number-only.
             </p>
           </div>
 

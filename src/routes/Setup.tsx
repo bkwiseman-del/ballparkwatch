@@ -732,11 +732,15 @@ function CreateGameCard({
   const [video, setVideo] = useState<VideoSource>('none')
   const [busy, setBusy] = useState(false)
 
-  // Create a team/opponent inline from a picker; returns its id to auto-select.
+  // A team typed inline here is a GHOST opponent — a joinable placeholder, never a real linked
+  // team (doc 1: "search for the real opponent first; type a ghost as the fallback"). Ghost =
+  // claim_status 'ghost': its players render number-only on public surfaces, and it can be claimed
+  // and converted to a real team later. Your own real teams come from the picker search or the
+  // separate "+ New team" flow, so they're never accidentally created as ghosts here.
   async function createTeam(name: string): Promise<string | null> {
     const { data, error } = await supabase
       .from('teams')
-      .insert({ name: name.trim(), owner_id: userId, is_favorite: false })
+      .insert({ name: name.trim(), owner_id: userId, is_favorite: false, claim_status: 'ghost' })
       .select('*')
       .single()
     if (error) {
@@ -951,9 +955,16 @@ function TeamPicker({
               onMouseDown={(e) => e.preventDefault()}
               onClick={add}
               disabled={busy}
-              className="block w-full border-t-2 border-ink/15 bg-board-green px-3 py-2 text-left font-display text-sm text-cream disabled:opacity-60"
+              className="block w-full border-t-2 border-ink/15 bg-board-green px-3 py-2 text-left text-cream disabled:opacity-60"
             >
-              {busy ? 'Adding…' : `+ Add “${query.trim()}”`}
+              <span className="block font-display text-sm">
+                {busy ? 'Adding…' : `+ New opponent “${query.trim()}”`}
+              </span>
+              {!busy && (
+                <span className="block font-data text-[11px] text-cream/70">
+                  Placeholder — link their real team anytime later
+                </span>
+              )}
             </button>
           )}
           {list.length === 0 && !q && (
