@@ -16,43 +16,47 @@ const LEVELS: { value: string; label: string }[] = [
 ]
 // Two independent axes (plan §8), each spelling out EXACTLY what it exposes — minors'
 // data, so every level is a deliberate choice.
-// ① Who can WATCH the video.
-const AUDIENCE: { value: BroadcastAudience; label: string; hint: string }[] = [
+// ONE "how far does this team travel" ladder. It's the user-facing simplification of the two
+// stored axes (discovery = public page, broadcast_audience = who can watch). Names are a SEPARATE
+// control (show_full_names) so "reach" and "identity" don't get tangled together.
+type Visibility = 'private' | 'link' | 'public'
+const VISIBILITY: { value: Visibility; label: string; hint: string }[] = [
   {
-    value: 'members',
-    label: 'Members only',
-    hint: 'Only signed-in team members (the family you invite) can watch. The share link won’t stream to anyone else.',
+    value: 'private',
+    label: 'Private',
+    hint: 'Only signed-in members you invite can watch. No public page, and the share link won’t stream to anyone else.',
   },
   {
     value: 'link',
-    label: 'Anyone with the link',
-    hint: 'The default. Anyone you send the watch link to can view the live game + replays — no account needed. Not listed on any public page.',
+    label: 'Link only',
+    hint: 'The default. Anyone you send the watch link to sees the live game + replays — no account. Not listed anywhere public.',
   },
   {
     value: 'public',
     label: 'Public',
-    hint: 'Everyone with the link, plus replays embedded on your public team page (needs the page set to Discoverable below).',
+    hint: 'A searchable team page — schedule, scores, season stats, roster — with replays embedded. Anyone can find it.',
   },
 ]
-// ② The public stats/schedule PAGE.
-const DISCOVERY: { value: 'private' | 'discoverable'; label: string; hint: string }[] = [
-  { value: 'private', label: 'Private', hint: 'No public page — your team isn’t searchable.' },
-  {
-    value: 'discoverable',
-    label: 'Discoverable',
-    hint: 'A public, searchable page: schedule, scores, season stats, and roster (first name + last initial).',
-  },
-]
+// The ladder maps onto the two stored columns; saving normalizes any legacy odd combos.
+const VIS_TO_COLS: Record<Visibility, { audience: BroadcastAudience; discovery: 'private' | 'discoverable' }> = {
+  private: { audience: 'members', discovery: 'private' },
+  link: { audience: 'link', discovery: 'private' },
+  public: { audience: 'public', discovery: 'discoverable' },
+}
+function visibilityOf(team: Team): Visibility {
+  if (team.discovery === 'discoverable' || team.broadcast_audience === 'public') return 'public'
+  if (team.broadcast_audience === 'members') return 'private'
+  return 'link'
+}
 
-// The exact thing the admin is attesting to when exposing anything publicly.
-function attestation(discoverable: boolean, publicVideo: boolean): string {
-  const base =
-    "I confirm I have permission from the players' families to make this team's schedule, scores, season stats, and roster (first name + last initial) publicly visible and searchable"
-  return discoverable && publicVideo
-    ? `${base}, and to publish game video replays.`
-    : publicVideo
-      ? "I confirm I have permission from the players' families to publish this team's game video replays publicly."
-      : `${base}.`
+// The exact thing the admin attests to when exposing anything publicly — reflects BOTH the
+// visibility (public page + replays) and the chosen name level, so the consent is accurate.
+function attestation(isPublic: boolean, fullNames: boolean): string {
+  const names = fullNames ? 'full names' : 'first name + last initial'
+  if (isPublic) {
+    return `I confirm I have permission from the players' families to make this team's schedule, scores, season stats, roster (${names}), and game video replays publicly visible and searchable.`
+  }
+  return `I confirm I have permission from the players' families to show players' full names to everyone I share this team's watch link with.`
 }
 
 // Edit a team's durable identity + discovery metadata (plan §2/§8). The structured
@@ -65,9 +69,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   const [saved, setSaved] = useState(false)
   // Pre-checked only if the team already exposes something publicly (consent previously
   // given); a move into any public exposure starts unchecked so it's a deliberate act.
-  const [confirmed, setConfirmed] = useState(
-    team.discovery !== 'private' || team.broadcast_audience === 'public' || team.show_full_names,
-  )
+  const [confirmed, setConfirmed] = useState(visibilityOf(team) === 'public' || team.show_full_names)
   const [sport, setSport] = useState<TeamSport>(team.sport ?? 'baseball')
   const [city, setCity] = useState(team.city ?? '')
   const [state, setState] = useState(team.state ?? '')
@@ -75,12 +77,8 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   const [level, setLevel] = useState(team.level ?? '')
   const [birthYear, setBirthYear] = useState(team.birth_year ? String(team.birth_year) : '')
   const [seasonId, setSeasonId] = useState(team.season_id ?? '')
-  // Two axes: the public page (discovery) and who can watch video (audience). Legacy
-  // 'public' discovery is shown as 'discoverable' (video moved to the audience axis).
-  const [discovery, setDiscovery] = useState<'private' | 'discoverable'>(
-    team.discovery === 'private' ? 'private' : 'discoverable',
-  )
-  const [audience, setAudience] = useState<BroadcastAudience>(team.broadcast_audience ?? 'link')
+  // One visibility ladder over the two stored axes (public page + video audience).
+  const [visibility, setVisibility] = useState<Visibility>(visibilityOf(team))
   const [showFullNames, setShowFullNames] = useState(team.show_full_names ?? false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -128,7 +126,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
   }, [])
 
   // Any public exposure (a searchable page, or replays on the public page) needs consent.
-  const needsConsent = discovery === 'discoverable' || audience === 'public' || showFullNames
+  const needsConsent = visibility === 'public' || showFullNames
 
   async function save() {
     if (needsConsent && !confirmed) {
@@ -145,8 +143,8 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
       level: level || null,
       birth_year: by && by > 1900 && by < 2100 ? by : null,
       season_id: seasonId || null,
-      discovery,
-      broadcast_audience: audience,
+      discovery: VIS_TO_COLS[visibility].discovery,
+      broadcast_audience: VIS_TO_COLS[visibility].audience,
       show_full_names: showFullNames,
     }
     // Stamp the attestation (who/when) as the audit trail on any public exposure.
@@ -318,58 +316,36 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
             </div>
           )}
 
-          {/* ① Video audience */}
+          {/* ① Visibility — one ladder over the video audience + public page. */}
           <div>
-            <span className={labelCls}>Who can watch the video</span>
+            <span className={labelCls}>Who can see this team</span>
             <div className="flex flex-col gap-1.5">
-              {AUDIENCE.map((a) => (
+              {VISIBILITY.map((v) => (
                 <button
-                  key={a.value}
-                  onClick={() => setAudience(a.value)}
+                  key={v.value}
+                  onClick={() => setVisibility(v.value)}
                   className={`flex flex-col items-start gap-0.5 border-2 px-3 py-2 text-left ${
-                    audience === a.value ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
+                    visibility === v.value ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
                   }`}
                 >
-                  <span className="font-display">{a.label}</span>
-                  <span className={`font-data text-xs ${audience === a.value ? 'text-muted-green' : 'text-muted-tan'}`}>
-                    {a.hint}
+                  <span className="font-display">{v.label}</span>
+                  <span className={`font-data text-xs ${visibility === v.value ? 'text-muted-green' : 'text-muted-tan'}`}>
+                    {v.hint}
                   </span>
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* ② Public page discovery */}
-          <div>
-            <span className={labelCls}>Public stats page</span>
-            <div className="flex flex-col gap-1.5">
-              {DISCOVERY.map((d) => (
-                <button
-                  key={d.value}
-                  onClick={() => setDiscovery(d.value)}
-                  className={`flex flex-col items-start gap-0.5 border-2 px-3 py-2 text-left ${
-                    discovery === d.value ? 'border-gold bg-board-green text-cream' : 'border-ink bg-white text-ink'
-                  }`}
-                >
-                  <span className="font-display">{d.label}</span>
-                  <span className={`font-data text-xs ${discovery === d.value ? 'text-muted-green' : 'text-muted-tan'}`}>
-                    {d.hint}
-                  </span>
-                </button>
-              ))}
-            </div>
-
             <p className="mt-2 font-data text-[11px] text-muted-tan">
-              Team members always see full names; public surfaces use the names setting below.{' '}
-              {discovery === 'discoverable'
-                ? `Published at ${window.location.host}/t/${team.slug ?? ''}.`
-                : 'The public page is off.'}
+              Team members always see full names.{' '}
+              {visibility === 'public'
+                ? `Your public page is at ${window.location.host}/t/${team.slug ?? ''}.`
+                : 'No public page.'}
             </p>
           </div>
 
-          {/* ③ Full-name opt-in — the privacy floor is the default; a team may opt into full names. */}
+          {/* ② Names — a separate axis (identity, not reach). Floor by default; opt into full names. */}
           <div>
-            <span className={labelCls}>Player names on the viewer</span>
+            <span className={labelCls}>Player names on public surfaces</span>
             <button
               type="button"
               onClick={() => setShowFullNames((v) => !v)}
@@ -404,7 +380,7 @@ export function TeamDetails({ team, onSaved }: { team: Team; onSaved: () => void
                 className="mt-0.5 h-4 w-4 shrink-0 accent-barn-red"
               />
               <span className="font-data text-xs leading-snug text-ink">
-                {attestation(discovery === 'discoverable', audience === 'public')}
+                {attestation(visibility === 'public', showFullNames)}
               </span>
             </label>
           )}
