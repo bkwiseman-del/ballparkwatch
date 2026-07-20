@@ -156,10 +156,13 @@ export default function Score() {
     else act('pitch_strike', { kind })
   }
 
-  // Scoreboard mode: a generic out (no batter) just bumps the out count —
-  // no "grounded out" play-by-play, no spoken commentary.
+  // Scoreboard mode is a PURE scoreboard — balls, strikes, outs, runs, hits. NO baserunners, NO
+  // batting order. So the count buttons never emit walk/strikeout (which the engine would turn into
+  // a runner + a lineup advance); instead the 4th ball just clears the count (count_reset) and the
+  // 3rd strike is simply an out (manual_out).
   const onSimpleOut = () => act('manual_out')
-  const onStrikeSimple = () => (live.strikes >= 2 ? act('strikeout', {}) : act('pitch_strike', {}))
+  const onBallSimple = () => (live.balls >= 3 ? act('count_reset') : act('pitch_ball'))
+  const onStrikeSimple = () => (live.strikes >= 2 ? act('manual_out') : act('pitch_strike', {}))
 
   return (
     <div className="mx-auto flex h-[100dvh] max-w-[430px] flex-col overflow-hidden bg-night-green text-cream">
@@ -471,7 +474,7 @@ export default function Score() {
               </button>
             </div>
             <div className="grid grid-cols-3 gap-2.5">
-              <ActionBtn className="h-[64px] bg-board-green text-xl" onClick={onBall}>BALL</ActionBtn>
+              <ActionBtn className="h-[64px] bg-board-green text-xl" onClick={onBallSimple}>BALL</ActionBtn>
               <ActionBtn className="h-[64px] bg-barn-red text-xl" onClick={onStrikeSimple}>STRIKE</ActionBtn>
               <ActionBtn className="h-[64px] border-2 border-gold text-xl text-gold" onClick={() => act('pitch_foul')}>FOUL</ActionBtn>
             </div>

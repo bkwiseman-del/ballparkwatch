@@ -39,6 +39,9 @@ export type EventType =
   | 'manual_run'
   | 'manual_hit'
   | 'manual_out'
+  // scoreboard mode: clear the current balls/strikes (a walk / new batter) — NO baserunner,
+  // NO batting order. Scoreboard mode never tracks bases or a lineup.
+  | 'count_reset'
   // scorer correction: nudge a team's score by ±N (logged as a "scorer edit")
   | 'score_adjust'
   // scorer correction: jump the batting order to a specific lineup slot (used when the
@@ -176,6 +179,7 @@ export const EVENT_LABELS: Record<EventType, string> = {
   manual_run: 'Run',
   manual_hit: 'Hit',
   manual_out: 'Out',
+  count_reset: 'New batter',
   score_adjust: 'Score edit',
   set_batter: 'Set batter',
 }
@@ -234,12 +238,22 @@ export function applyEvent(prev: LiveGame, e: GameEventRow): LiveGame {
       clearBases(s)
       break
     case 'manual_run':
-      // Scoreboard mode: bump a team's score directly.
+      // Scoreboard mode: bump a team's score directly + clear the count (the batter's done).
       if (e.payload?.team === 'home') s.homeScore += 1
       else s.awayScore += 1
+      s.balls = 0
+      s.strikes = 0
       break
     case 'manual_hit':
-      break // scoreboard hit — counted in the box score, no live-state change
+      // Scoreboard hit — counted in the box score; clear the count (a new batter is up).
+      s.balls = 0
+      s.strikes = 0
+      break
+    case 'count_reset':
+      // Scoreboard walk / new batter — clear the count. No baserunner, no batting order.
+      s.balls = 0
+      s.strikes = 0
+      break
     case 'manual_out':
       // Scoreboard mode: a plain out — bumps the count, no batter/play-by-play.
       recordOut(s)

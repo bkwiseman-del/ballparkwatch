@@ -657,10 +657,19 @@ export default function Watch() {
     away: Object.fromEntries((info?.lineups?.away ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
     home: Object.fromEntries((info?.lineups?.home ?? []).filter((s) => s.id).map((s) => [s.id!, s.pos])),
   }
-  // Scoreboard-mode games have no lineup (full games always do — generic if needed),
-  // so there are no baserunners/players: skip the field, just show the line score.
+  // Scoreboard-mode games have no lineup/baserunners: skip the field, just show the line score.
+  // Detect it two ways so a scoreboard game with a stray lineup still renders as a scoreboard:
+  // (a) no lineup at all (the usual case), or (b) it used scoreboard-only events (manual run/hit/
+  // out / count reset), which a full play-by-play game never emits.
+  const usedScoreboardEvents = events.some((e) =>
+    e.event_type === 'manual_run' ||
+    e.event_type === 'manual_hit' ||
+    e.event_type === 'manual_out' ||
+    e.event_type === 'count_reset',
+  )
   const isScoreboard =
-    live.status !== 'scheduled' && !(info.lineups?.away?.length || info.lineups?.home?.length)
+    live.status !== 'scheduled' &&
+    (!(info.lineups?.away?.length || info.lineups?.home?.length) || usedScoreboardEvents)
 
   // External-camera games stream to YouTube; embed it if we have a usable link.
   const ytId =
@@ -931,10 +940,12 @@ function StartingSoon({
     const id = window.setInterval(() => setNowMs(Date.now()), 1000)
     return () => window.clearInterval(id)
   }, [d?.getTime()]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Once the scheduled time passes, switch from a countdown ("First pitch in 5m") to a
+  // grammatical "First pitch is starting…" instead of "First pitch in Starting any moment".
+  const firstPitchStarting = !!d && d.getTime() - nowMs <= 0
   const countdown = (() => {
-    if (!d) return null
+    if (!d || firstPitchStarting) return null
     const ms = d.getTime() - nowMs
-    if (ms <= 0) return 'Starting any moment'
     const total = Math.floor(ms / 1000)
     const h = Math.floor(total / 3600)
     const m = Math.floor((total % 3600) / 60)
@@ -965,11 +976,15 @@ function StartingSoon({
           <div>
             <p className="font-display text-4xl text-cream">{time}</p>
             {sub && <p className="mt-1.5 font-data text-sm text-muted-green">{sub}</p>}
-            {countdown && (
+            {countdown ? (
               <p className="mt-2 font-athletic text-sm font-semibold uppercase tracking-[.16em] text-gold">
                 First pitch in {countdown}
               </p>
-            )}
+            ) : firstPitchStarting ? (
+              <p className="mt-2 font-athletic text-sm font-semibold uppercase tracking-[.16em] text-gold">
+                First pitch is starting…
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
@@ -1795,14 +1810,24 @@ function PlaysTab({
   return (
     // Two balanced columns on desktop so a long game doesn't become one tall strip.
     <ul className="divide-y divide-cream/10 lg:columns-2 lg:gap-8 lg:divide-y-0">
-      {plays.map((p) => {
+      {plays.map((p, i) => {
         const ts = tsBySeq.get(p.seq)
-        // Land a few seconds BEFORE the logged play: the event timestamp is when the
-        // scorer tapped it in (a beat after the pitch/contact), and the replay suppresses
-        // commentary for a seek's destination — so playing INTO the moment shows the play
-        // develop and lets its call fire naturally.
-        const PLAY_LEAD_SEC = 5
-        const sec = canSeek && ts ? Math.max(0, (ts - (startedAtMs as number)) / 1000 - PLAY_LEAD_SEC) : null
+        // Land BEFORE the logged play: the event timestamp is when the scorer tapped it in (a beat
+        // after the pitch/contact, and complex plays take longer to enter), and the replay suppresses
+        // commentary at a seek destination — so playing INTO the moment shows the play develop and
+        // lets its call fire naturally. Go back up to 10s, but never past the PREVIOUS play (else we
+        // replay the last play / dead time): start = later of {prev play + 1s, this play − 10s}.
+        const PLAY_LEAD_SEC = 10
+        const prevTs = i > 0 ? tsBySeq.get(plays[i - 1].seq) : undefined
+        const sec =
+          canSeek && ts
+            ? (() => {
+                const start = (startedAtMs as number)
+                const thisSec = (ts - start) / 1000
+                const floor = prevTs != null ? (prevTs - start) / 1000 + 1 : 0 // right after the prev play
+                return Math.max(0, Math.max(floor, thisSec - PLAY_LEAD_SEC))
+              })()
+            : null
         const inning = (
           <span className={`w-12 shrink-0 font-athletic text-xs font-semibold uppercase ${KIND_COLOR[p.kind]}`}>
             {p.half === 'top' ? '▲' : '▼'}
