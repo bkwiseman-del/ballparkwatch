@@ -1750,11 +1750,19 @@ function FieldTab({
   // runner chips: the already-privatized name ("First L.")
   const runnerName = (id: string) => map.get(id) ?? null
 
-  // defense + current batter from the projected lineups (names already privatized).
-  // Field chips are tight, so show just the first name there.
+  // defense + current batter from the projected lineups (names already privatized server-side).
+  // Field chips are tight, so show ONE token: the surname when there is one ("Cam Smith" → "Smith",
+  // box-score style), but fall back to the first name when the name is floored to an initial
+  // ("Cam S." → "Cam") or is a generic label ("Player 1" → "Player") — a lone "S." is useless.
+  const shortFieldName = (n: string) => {
+    const parts = n.trim().split(/\s+/)
+    if (parts.length <= 1) return parts[0] ?? n
+    const last = parts[parts.length - 1]
+    return /^[A-Za-z]\.?$/.test(last) || /^\d+$/.test(last) ? parts[0] : last
+  }
   const fieldingKey = live.half === 'top' ? 'home' : 'away'
   const battingKey = live.half === 'top' ? 'away' : 'home'
-  const fielders = lineups[fieldingKey].map((p) => ({ pos: p.pos, name: p.name.split(' ')[0] }))
+  const fielders = lineups[fieldingKey].map((p) => ({ pos: p.pos, name: shortFieldName(p.name) }))
   const order = lineups[battingKey]
   const idx = battingKey === 'away' ? live.awayBatterIdx : live.homeBatterIdx
   const batter = order.length ? order[idx % order.length] : null
