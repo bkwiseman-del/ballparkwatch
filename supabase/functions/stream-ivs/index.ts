@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   if (!ENCODER_ARN || !STORAGE_ARN || !S3_BUCKET) return json({ error: 'IVS not configured.' }, 500)
 
-  let body: { token?: string; gameId?: string; action?: string; metadata?: unknown }
+  let body: { token?: string; gameId?: string; action?: string; metadata?: unknown; role?: string }
   try {
     body = await req.json()
   } catch {
@@ -152,18 +152,39 @@ Deno.serve(async (req) => {
   }
   const { token, gameId, action = 'start' } = body
 
-  // ---- viewer-token: a public viewer joins a phone game's stage over WebRTC (sub-second). No
-  // broadcast token — resolve the stage by gameId and mint a SUBSCRIBE token. (Cap gate deferred;
-  // the live_viewers infra is in place to enable per-game concurrent-viewer limits later.)
+  // ---- viewer-token: a public viewer joins the game's stage over WebRTC (sub-second). No broadcast
+  // token — resolve the stage by gameId and mint a SUBSCRIBE token.
+  //   role 'viewer' (default) → a paying-cost live viewer; subject to the FREE 5-viewer cap.
+  //   role 'health'/'preview' → the scorer's own probes (video-health check, setup preview); NOT a
+  //     viewer, so never counted toward or blocked by the cap.
+  // Hard cap: WebRTC subscribers bill per-participant, so cap the FREE tier at 5 concurrent viewers.
+  // HLS (camera_rtmp) viewers aren't stage participants and are cheap CDN, so they're never capped.
   if (action === 'viewer-token') {
     if (!gameId) return json({ error: 'Missing gameId.' }, 400)
+    const role = typeof body.role === 'string' && ['health', 'preview'].includes(body.role) ? body.role : 'viewer'
     const { data: stageArn } = await db.rpc('stream_ivs_stage_by_game', { p_game_id: gameId })
     if (!stageArn) return json({ error: 'No stage for game.' }, 404)
     try {
+      if (role === 'viewer') {
+        const FREE_VIEWER_CAP = 5
+        const sess = (await rt('ListStageSessions', { stageArn, maxResults: 1 }).catch(() => null)) as {
+          stageSessions?: { sessionId?: string }[]
+        } | null
+        const sid = sess?.stageSessions?.[0]?.sessionId
+        if (sid) {
+          const parts = (await rt('ListParticipants', { stageArn, sessionId: sid }).catch(() => null)) as {
+            participants?: { userId?: string; state?: string }[]
+          } | null
+          const liveViewers = (parts?.participants ?? []).filter(
+            (p) => p.userId === 'viewer' && p.state === 'CONNECTED',
+          ).length
+          if (liveViewers >= FREE_VIEWER_CAP) return json({ token: null, full: true, cap: FREE_VIEWER_CAP }, 200)
+        }
+      }
       const tk = (await rt('CreateParticipantToken', {
         stageArn,
         capabilities: ['SUBSCRIBE'],
-        userId: 'viewer',
+        userId: role,
         duration: 240,
       })) as { participantToken?: { token?: string } }
       return json({ token: tk.participantToken?.token ?? null }, 200)

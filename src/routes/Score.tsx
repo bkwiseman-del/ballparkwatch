@@ -10,6 +10,7 @@ import { useViewerCount } from '@/hooks/useViewerCount'
 import { buildRecapSummary, generateRecap } from '@/lib/recap'
 import { displayName } from '@/lib/names'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
+import { useCameraVideoHealth } from '@/hooks/useCameraVideoHealth'
 import { supabase } from '@/lib/supabase'
 import { resolveCode } from '@/lib/scoreboard'
 import { buildPlayByPlay, computeBattingLines, computeBoxScore } from '@/lib/stats'
@@ -120,6 +121,9 @@ export default function Score() {
   // header dot + "feed lost" banner for both sources (phone keeps its heartbeat-based status).
   const camStatus = useIvsStreamStatus(gameId, isChannelGame && live.status === 'live')
   const vstatus = isChannelGame ? camStatus : bstatus
+  // TRUE video health for an external camera: is the camera's video actually reaching the stream, or
+  // is it "connected" (audio) but black (uplink starved)? Only meaningful for channel/multi games.
+  const camHealth = useCameraVideoHealth(gameId, isChannelGame && live.status === 'live')
   const [endedDismissed, setEndedDismissed] = useState(false)
   // A newly (re)started broadcast clears the dismissed "ended" notice.
   useEffect(() => {
@@ -245,6 +249,26 @@ export default function Score() {
           </span>
           <span className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/90">
             {isChannelGame ? 'Check camera ▸' : 'Check phone ▸'}
+          </span>
+        </button>
+      )}
+
+      {/* Camera is CONNECTED but no video is getting through (audio flows, video starved — classic
+          thin-uplink / cellular-hotspot symptom). Distinct from "feed lost": the feed IS up, but
+          it's black. Only when not already flagged down. */}
+      {isChannelGame && !vstatus.down && camHealth === 'starved' && (
+        <button
+          onClick={() => setShowVideo(true)}
+          className="flex w-full shrink-0 items-center justify-between gap-2 bg-barn-red px-3 py-2 text-left"
+        >
+          <span className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-cream" />
+            <span className="font-athletic text-sm font-bold uppercase tracking-wide text-cream">
+              Camera connected, but no video is reaching the stream — check the camera's connection
+            </span>
+          </span>
+          <span className="font-athletic text-xs font-semibold uppercase tracking-wide text-cream/90">
+            Check camera ▸
           </span>
         </button>
       )}
