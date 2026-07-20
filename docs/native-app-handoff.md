@@ -75,6 +75,74 @@ Storage + Edge Functions) · **Amazon IVS** (video) · ElevenLabs (TTS commentar
 
 ---
 
+## 3a. FULL PRODUCT SCOPE & ROADMAP — the native app must encompass ALL of this
+
+§3 is only what's *built*. Bandbox is a much bigger product; the native plan must account for these
+planned layers (each has an authoritative doc — read them). **Governing principle throughout:
+everything degrades gracefully without a league and gets better with one; streaming is the payload,
+management is the door.**
+
+- **League & Field Management** — [bandbox-league-field-build-plan.md](bandbox-league-field-build-plan.md)
+  (v2, deep) + [deep-dive](bandbox-league-field-management-deep-dive.md). An **Organization above
+  teams**: seasons, divisions, standings/leaderboards (rolled up from the event-sourcing spine),
+  **Stripe-Connect registration** + season rollover, **multi-guardian** notifications, a
+  **field-aware scheduling engine** (games/practices/rentals/maintenance on ONE field calendar, no
+  double-booking, right diamond for the age group), **tournaments** (pool→bracket of ghost opponents
+  resolving as games finish), a **live pre-season draft** room (reuses live-scoring realtime), and a
+  **public league site that writes itself** (schedule/standings/teams/field map/registration/live
+  games). This is the top-down pre-loader that fills the whole model. Later phase; big surface,
+  different buyer. Timing: **Sports Connect sunset in 2027** forces 15k+ orgs to re-shop.
+- **Game & Broadcast Workflow** — [bandbox-game-broadcast-workflow-build-plan.md](bandbox-game-broadcast-workflow-build-plan.md)
+  (canonical). A **game is a "room"**; **ghost opponents / ghost-first playability** (a backyard game
+  works with no league — pairing code, manual entry); **Field QR = the front door** (scan to
+  watch/claim); **camera angles are a shared pool** attached to the matchup with per-audience defaults
+  (this is the "add-as-you-go multi-angle / `broadcasts` model" — field/opponent owners
+  forward-compatible); **free vs paid is per-seat/per-audience**; a **privacy model across every
+  scenario**; and the league layer pre-fills matchups/fields/rosters/consent.
+- **Simulcast to third-party platforms (FB/YouTube/etc.)** — [competition-ip-simulcast brief](bandbox-build-brief-competition-ip-simulcast.md).
+  Three output tiers (owned viewer = full/interactive; public simulcast = **burned-in** scorebug +
+  CTA/QR, single angle; stats-only). **COPYRIGHT-CRITICAL:** on public simulcasts the **camera mic is
+  OFF**; audio = **AI commentary + owned/royalty-free crowd SFX**, because FB/YT **Content ID
+  auto-flags copyrighted PA/walk-up music** (present at nearly every game) and can mute/block/strike
+  the stream. Competitors tell users to "add an announcer"; **Bandbox ships the announcer** — a real
+  wedge. Funnel = auto-deep-link + burned-in QR back to Bandbox.
+- **Walk-up songs** (engagement feature, user-requested) — play a batter's chosen walk-up song when
+  they come to bat. **Copyright nuance is the whole design:** fine on the **owned/family viewer**
+  (private) with a **licensed/royalty-free library or user-provided audio**; must be **OFF or
+  synthetic on public simulcasts** (Content ID). Native is actually a better home for this
+  (background audio, a bundled/streamed music library). **Decision needed:** licensed library vs
+  user-upload vs both. Ties into the AI-commentary audio bus.
+- **Clips / keepsakes** — [bandbox-clip-sharing.md](bandbox-clip-sharing.md). Offline-rendered branded
+  play clips (alpha stinger + auto-data lower-third from the event log + end card), **Parent/Family
+  premium**. Auto-surfaced highlights + season reels. Native camera roll / share-sheet integration is
+  a plus.
+- **Family / followers** — the family/follower user type (email invites, follow-a-team, member = the
+  private full view). See the `bandbox-family-epic` memory. **Push notifications** ("your kid's game
+  is live / a highlight is ready") are a native-unlock retention lever GC leans on.
+- **Privacy & consent model** — server-enforced (see §6). Registration is where **guardian media
+  releases** are collected (the legal spine) and where the `displayName()` floor defaults are set.
+- **Growth loops & reliability moat** — [growth-and-reliability notes](bandbox-growth-and-reliability-build-notes.md).
+  Positioning: **"never dies, not never drops"** — reconnect-not-fatal, stats/video orthogonality,
+  **upload-side adaptive bitrate** (this is exactly the camera-bandwidth issue in §5 — native/phone
+  paths adapt), multi-angle failover.
+
+### ⚠️ Critical build constraints the native app MUST honor
+- **IP / patent design-around** ([competitive-and-IP memo](bandbox-competitive-and-ip-memo.md)): do
+  **NOT** implement "tap a rendered field diagram to mark hit location" as a scoring input (GameChanger
+  patents active to ~2029-2030). Capture location via a **fielder + trajectory** model (tap the
+  fielder + hit-type + depth + direction). **Spray-chart OUTPUT is fine.** The web app already follows
+  this — keep it in native. Not legal advice.
+- **Copyright-safe audio on any public/simulcast surface** (above): synthetic/owned audio only.
+- **Reliability**: assume the connection *will* drop; buffer + auto-resume; never let a video failure
+  kill the scoreboard.
+
+### Superseded / stale docs — DO NOT plan from these
+`docs/product-strategy.md` (superseded by [bandbox-plan.md](bandbox-plan.md)) and
+`docs/bandbox-server-recorder-spec.md` (the Railway/GStreamer recorder — **deleted**, replaced by IVS).
+Treat any Cloudflare-Stream references in older docs as historical (we're on **Amazon IVS** now).
+
+---
+
 ## 4. Video architecture (Amazon IVS) — READ CAREFULLY
 
 One **IVS Real-Time stage per game**. Two ingest paths onto the stage:
@@ -210,16 +278,28 @@ entitlements synced to the app). Full model in the `ballpark-watch-pricing` memo
 
 ## 10. Suggested first steps for the planning session
 
-1. Read: this brief, [README.md](../README.md), [bandbox-plan.md](bandbox-plan.md),
-   [ivs-migration-plan.md](ivs-migration-plan.md), and the auto-memory files.
+1. Read: this brief (esp. **§3a full scope**), [README.md](../README.md),
+   [bandbox-plan.md](bandbox-plan.md), [ivs-migration-plan.md](ivs-migration-plan.md), and the full-scope
+   docs — [game-broadcast-workflow](bandbox-game-broadcast-workflow-build-plan.md),
+   [league-field build plan](bandbox-league-field-build-plan.md) + [deep-dive](bandbox-league-field-management-deep-dive.md),
+   [competition-ip-simulcast](bandbox-build-brief-competition-ip-simulcast.md),
+   [competitive-and-IP memo](bandbox-competitive-and-ip-memo.md),
+   [growth-and-reliability](bandbox-growth-and-reliability-build-notes.md),
+   [clip-sharing](bandbox-clip-sharing.md) — plus the auto-memory files. (Ignore the superseded docs
+   named in §3a.)
 2. **Spike the risk:** IVS Real-Time in React Native on a physical device (publish + subscribe +
    player + PiP). Decide RN vs alternatives from the result.
 3. Extract the engine/stats/commentary into a shared TS package; prove it runs unchanged in an RN
    context.
 4. Draft the native app's screen map from the web routes (`/setup`, `/score/:id`, `/watch/:id`,
-   team/following, replay/final) — but rethink the video + notifications for native.
-5. Produce a phased native build plan (mirror the web phases: scaffolding → scoring+scorebug → video →
-   AI → clips/keepsakes) with acceptance tests, and a coexistence plan with the live PWA.
+   team/following, replay/final) **plus the planned surfaces** (league/org admin, schedule + field
+   calendar, standings, registration, public league site, tournament brackets, draft room, family/
+   follow feed, clips/keepsakes, walk-up-song setup) — and rethink video + notifications for native.
+5. Produce a phased native build plan that covers **all layers, not just scoring/video**: mirror the
+   web core (scaffolding → scoring+scorebug → video → AI → clips), then layer in family/followers +
+   notifications, simulcast (copyright-safe audio), walk-up songs, and — as a later, larger phase —
+   league/field management + registration. Include acceptance tests and a coexistence plan with the
+   live PWA (same Supabase backend, no data migration).
 
 ---
 
