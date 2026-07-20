@@ -57,7 +57,11 @@ Built and in real-game use (scored live youth games as of June 2026):
   baserunners, substitutions, in-play resolver, undo/edit any past play), live scorebug
   + box score (batting R/H/RBI, pitching IP/H/R/ER/BB/K) projected from the event log,
   realtime push to the public viewer, share links, write-ahead log for crash safety.
-  Plus a lightweight **Scoreboard mode** (runs/hits/outs/count only, no lineup).
+  In-play resolver includes the **infield-fly rule** (auto-gated to when it can apply).
+  Plus a **Scoreboard mode** that is a *pure* scoreboard — runs/hits/outs/count only, **no
+  baserunners, no batting order, no lineup** (the count buttons just manage balls/strikes; a walk
+  clears the count, a strikeout is an out). The public viewer forces the scoreboard layout for these
+  games.
 - **Phase 2 — Video layer** ✅ — runs on **Amazon IVS** (migrated off Cloudflare Stream; see
   [docs/ivs-migration-plan.md](docs/ivs-migration-plan.md)). One **IVS Real-Time stage per game**
   takes both a **phone** (WebRTC/WHIP, sub-second, via the IVS Web Broadcast SDK) and an **external
@@ -71,7 +75,8 @@ Built and in real-game use (scored live youth games as of June 2026):
   camera. YouTube is legacy-only.
 - **Phase 3 — AI voice commentary** ✅ — GameChanger-style audio: synced sound FX,
   ElevenLabs play-by-play (content-hash cached to cut cost), stadium reverb, crowd bed,
-  organ/charge stingers.
+  organ/charge stingers, plus a **per-batter day line** on 2nd+ plate appearances ("Carson S. is
+  one for two today, with a double"). Video audio is **independent** of commentary (see below).
 - **Phase 4 — AI lineup scan + recap** ✅ — Claude OCR of a lineup photo; Claude-written
   game recap on the final screen, built from the saved event log.
 - **Phase 5 — Voice scoring** ⬜ — stretch; not started.
@@ -84,10 +89,29 @@ the unified [docs/bandbox-plan.md](docs/bandbox-plan.md), and the IVS video arch
 
 **Streaming / recording (Amazon IVS) — live and validated:**
 
-- **Camera + phone both live on IVS**, validated end-to-end with real hardware: sub-second phone
-  publish + view, external-camera HLS + synced scorebug, composition→S3 recording, CloudFront replay
-  with a branded player (baseball scrub handle, mute/volume). The old Cloudflare Stream path + the
-  DIY GStreamer recorder (Railway) are **deleted**.
+- **Camera + phone both live on IVS**: sub-second phone publish + view, external-camera HLS + synced
+  scorebug, composition→S3 recording, CloudFront replay with a branded player. The old Cloudflare
+  Stream path + the DIY GStreamer recorder (Railway) are **deleted**. Recording/channel encoder is
+  now **720p @ 5 Mbps** (was 2.5 — the old bitrate looked soft).
+- **Live-video controls** (`LiveVideoControls`) on the phone + multi-angle WebRTC viewers:
+  **mute / fullscreen / picture-in-picture**. The video's audio is **independent of the AI-commentary
+  toggle** — mute commentary and keep game audio, or either, or neither. (Casting/Chromecast/AirPlay
+  is intentionally omitted — not reliable for live WebRTC MediaStreams.)
+- **Live viewer count** ("👁 N", flat icon) on the scorer + public page during live games, via
+  **Supabase Realtime presence** (works for all game types incl. stats-only). This replaced the old
+  peer-to-peer count, which died in the IVS migration (viewers connect to Amazon now, not the
+  broadcaster). NOTE: this is DISPLAY only — the hard 5-viewer free cap must be enforced server-side
+  at `viewer-token` mint (count real IVS stage subscribers); that enforcement is **not yet wired**.
+- **External camera (RTMP) reality — important:** the scorer's setup **preview** is a WebRTC subscribe
+  to the stage; the **live stream + recording** come from the server-side **composition**. These are
+  different paths, so *a good preview does not prove the stream works.* RTMP is fixed-bitrate and can't
+  adapt, so on a thin uplink (e.g. the scoring phone's **cellular hotspot** at a crowded park) the
+  video starves → **black stream/recording while audio keeps flowing** (audio is tiny) and the
+  connection stays "up." This is a universal RTMP/uplink constraint (GameChanger hits it too and just
+  tells users to lower bitrate / use a better connection). **Gap to close:** our "camera live" health
+  signal only knows the participant is *publishing* (audio keeps it published), so it can falsely show
+  green. A true **ingest-video health check** (read IVS ingest video bitrate/framerate → warn "camera
+  connected, but no video is reaching the stream") is planned — it'd put us ahead of GC here.
 - **Broadcaster resilience:** the phone auto-reconnects on a network drop; a source-agnostic
   stage-presence check drives the scorer's "video down" alert (phone **and** camera). Camera reconnect
   is the external encoder's job. Still to harden with real drop testing.
@@ -111,16 +135,23 @@ the unified [docs/bandbox-plan.md](docs/bandbox-plan.md), and the IVS video arch
 - **IAM:** scope `bandbox-edge` down from AdministratorAccess (used during debugging) to the
   `BandboxEdgePolicy` (IVS + recordings bucket only).
 
-**Scorer reliability — recently fixed:** reload/app-switch no longer loses plays (recovery keyed
-on the `game_start` event + a `game_state` reconcile covering inning/outs, not just score); the
-inning-break "End game" button is reachable (scrollable); set-any-lineup-player-as-batter
-(`set_batter` event) for guessed opposing orders.
+**Scorer reliability — recently fixed:** the "reload/app-switch dropped a run or jumped back an
+inning" bug is fixed with a **monotonic self-healing resync** — on focus / tab-visible / a slow
+interval / ~1.5s after load, the scorer reconciles against the immutable event log, **adopts** the
+server state when it's behind, **re-persists** when it's ahead of the viewer snapshot, and **never
+moves backward** (a stale read can't cause a regression, and any regression self-corrects in
+seconds). A mutation guard keeps it from racing an in-flight score/undo. Earlier fixes remain:
+recovery keyed on `game_start` + `game_state` reconcile, reachable inning-break "End game",
+`set_batter` for guessed opposing orders.
 
-**Privacy / name-safety — planned, not built:** `get_public_game` returns player names to anyone,
-so today's name shortening is cosmetic, **not** privacy. Next: make name resolution
-**membership-aware and server-enforced** (public → first name + last initial / jersey number;
-logged-in team members → full names), gated through the single `displayName()` chokepoint. Ties
-into the family/follower epic.
+**Privacy / name-safety — now server-enforced** (built as part of the org/privacy rework): the public
+game RPCs floor names **on the server** via `bpw.public_player_name` — ghost/opponent players →
+jersey number (or a kept generic label, else suppressed); a team that opts in (`teams.show_full_names`)
+→ full names to its viewers; otherwise the floor is **first name + last initial** ("Carson S.").
+Client renders the server string verbatim (no client re-flooring). Open item: a requested per-team
+convention of **first-initial + last name** ("C. Siefferman") for a team's own players — a new format
+not yet in the chokepoint. (Field-diamond chips were separately fixed to show the **surname**, not the
+first name.)
 
 **Also up next:** pitch-count alerts, offline resilience, season stats, viewer notifications, and
 migrating `bpw` to its own Supabase project once validated.
