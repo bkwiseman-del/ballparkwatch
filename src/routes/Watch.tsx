@@ -31,7 +31,8 @@ import { SafeBoundary } from '@/components/SafeBoundary'
 import { BrandedVideoControls } from '@/components/BrandedVideoControls'
 import { Bunting } from '@/components/Bunting'
 import { ShareSheet } from '@/components/ShareSheet'
-import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon } from '@/components/Icons'
+import { SoundOnIcon, SoundOffIcon, ArrowUpRightIcon, EyeIcon } from '@/components/Icons'
+import { useViewerCount } from '@/hooks/useViewerCount'
 import { audio } from '@/lib/audio'
 import { speakableName } from '@/lib/names'
 import { freshCues, fxCues } from '@/lib/commentary'
@@ -124,6 +125,7 @@ export default function Watch() {
   const canGoBack = location.key !== 'default'
   const [info, setInfo] = useState<PublicGame | null>(null)
   const [live, setLive] = useState<LiveGame>(INITIAL_LIVE)
+  const viewerCount = useViewerCount(gameId, true) // this page IS a viewer → track + read the count
   const [events, setEvents] = useState<ViewerEvent[]>([])
   const [tab, setTab] = useState<Tab>('field')
   const [error, setError] = useState<string | null>(null)
@@ -696,18 +698,12 @@ export default function Watch() {
     // phone is sub-second end-to-end; the camera is ~2-3s behind (RTMP ingest), even though WebRTC
     // delivery is sub-second for both. Scorebug rides Realtime, held back per selected angle (below).
     <SafeBoundary fallback={<ScorePanel state={board} />}>
-      <MultiAngleStageVideo
-        gameId={gameId}
-        board={board}
-        attempt={live.status === 'live'}
-        onKind={setMultiKind}
-        audioOn={soundOn && audioReady}
-      />
+      <MultiAngleStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} onKind={setMultiKind} />
     </SafeBoundary>
   ) : info.video_source === 'phone_whip' ? (
     // Phone on IVS: sub-second stage subscribe (WebRTC). Scorebug via Realtime (naturally synced).
     <SafeBoundary fallback={<ScorePanel state={board} />}>
-      <PhoneStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} audioOn={soundOn && audioReady} />
+      <PhoneStageVideo gameId={gameId} board={board} attempt={live.status === 'live'} />
     </SafeBoundary>
   ) : (
     <ScorePanel state={board} />
@@ -794,6 +790,15 @@ export default function Watch() {
                 </button>
               )
             })()}
+          {live.status === 'live' && viewerCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 font-athletic text-[11px] font-semibold uppercase tracking-wide text-cream/70"
+              aria-label={`${viewerCount} watching`}
+            >
+              <EyeIcon className="h-3.5 w-3.5" />
+              {viewerCount}
+            </span>
+          )}
           {live.status === 'live' ? (
             <span className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-barn-red" />

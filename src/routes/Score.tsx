@@ -5,7 +5,8 @@ import { ScorePanel } from '@/components/ScorePanel'
 import { ShareSheet } from '@/components/ShareSheet'
 import { VideoSetup } from '@/components/VideoSetup'
 import { FieldDiamond, FIELDER_POS, POS_BY_NUM, type BaseName, type Fielder } from '@/components/FieldDiamond'
-import { ArrowUpRightIcon } from '@/components/Icons'
+import { ArrowUpRightIcon, EyeIcon } from '@/components/Icons'
+import { useViewerCount } from '@/hooks/useViewerCount'
 import { buildRecapSummary, generateRecap } from '@/lib/recap'
 import { displayName } from '@/lib/names'
 import { useBroadcastStatus } from '@/lib/phoneVideo'
@@ -67,6 +68,7 @@ function useIvsStreamStatus(gameId: string | undefined, active: boolean) {
 export default function Score() {
   const { gameId } = useParams()
   const s = useScorer(gameId)
+  const viewerCount = useViewerCount(gameId, false) // scorer reads the count, isn't itself a viewer
   const { game, teams, lineups, live, events, firstPitchAt, loading, error, act, undo } = s
   // Camera games run on Amazon IVS (see docs/ivs-migration-plan.md). The scorebug is pushed
   // into the video as timed metadata so viewers' bug/commentary fire frame-synced to the
@@ -191,6 +193,15 @@ export default function Score() {
           {live.status === 'live' && firstPitchAt && <GameClock startIso={firstPitchAt} />}
         </div>
         <div className="flex items-center gap-3">
+          {live.status === 'live' && viewerCount > 0 && (
+            <span
+              className="inline-flex items-center gap-1 font-athletic text-sm font-semibold text-cream/70"
+              aria-label={`${viewerCount} watching`}
+            >
+              <EyeIcon className="h-4 w-4" />
+              {viewerCount}
+            </span>
+          )}
           {game && game.video_source !== 'none' && (
             <button
               onClick={() => setShowVideo(true)}

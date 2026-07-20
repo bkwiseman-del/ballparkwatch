@@ -14,12 +14,10 @@ export function PhoneStageVideo({
   gameId,
   board,
   attempt,
-  audioOn = false,
 }: {
   gameId?: string
   board: ScoreboardState
   attempt: boolean // the game is live → worth joining the stage
-  audioOn?: boolean // page sound toggle on + audio unlocked → unmute the feed
 }) {
   const [token, setToken] = useState<string | null>(null)
   const [live, setLive] = useState(false)
@@ -52,7 +50,7 @@ export function PhoneStageVideo({
       {/* keep the subscriber mounted (hidden) so it can attach + detect frames, like the phone WHEP flow */}
       <div className={live ? '' : 'hidden'}>
         <SafeBoundary fallback={null}>
-          <StagePreview token={token} onLive={setLive} audioOn={audioOn} className="relative bg-black" />
+          <StagePreview token={token} onLive={setLive} controls className="relative bg-black" />
         </SafeBoundary>
       </div>
       {live ? <ScorebugBar state={board} /> : <ScorePanel state={board} />}

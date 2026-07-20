@@ -23,6 +23,37 @@ export function CameraIcon({ className = 'h-4 w-4' }: IconProps) {
   )
 }
 
+// Flat "watching" eye — the live viewer count sits next to it.
+export function EyeIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  )
+}
+
+export function FullscreenIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M4 9V4h5" />
+      <path d="M20 9V4h-5" />
+      <path d="M4 15v5h5" />
+      <path d="M20 15v5h-5" />
+    </svg>
+  )
+}
+
+// Picture-in-picture: a frame with a small inset in the corner.
+export function PipIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" />
+      <rect x="12" y="12" width="7" height="5" />
+    </svg>
+  )
+}
+
 export function UploadIcon({ className = 'h-4 w-4' }: IconProps) {
   return (
     <svg {...base} className={className} aria-hidden="true">

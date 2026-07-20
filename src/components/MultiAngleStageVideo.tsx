@@ -8,6 +8,7 @@ import {
 } from 'amazon-ivs-web-broadcast'
 import { supabase } from '@/lib/supabase'
 import { ScorebugBar } from '@/components/Scorebug'
+import { LiveVideoControls } from '@/components/LiveVideoControls'
 import { ScorePanel } from '@/components/ScorePanel'
 import type { ScoreboardState } from '@/lib/scoreboard'
 
@@ -30,15 +31,16 @@ export function MultiAngleStageVideo({
   board,
   attempt,
   onKind,
-  audioOn = false,
 }: {
   gameId?: string
   board: ScoreboardState
   attempt: boolean // the game is live → worth joining the stage
   onKind?: (kind: 'phone' | 'camera') => void
-  audioOn?: boolean // page sound toggle is on + audio unlocked → unmute the feed
 }) {
   const [token, setToken] = useState<string | null>(null)
+  // Video audio is INDEPENDENT of the AI-commentary toggle (starts muted for autoplay; the viewer
+  // unmutes via the on-video control). So you can run commentary + game audio, either, or neither.
+  const [muted, setMuted] = useState(true)
   const [angles, setAngles] = useState<Angle[]>([])
   const [selPid, setSelPid] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -183,8 +185,7 @@ export function MultiAngleStageVideo({
   return (
     <div>
       <div className="relative bg-black">
-        {/* Muted follows the page's sound toggle (commentary) so one control governs all audio. */}
-        <video ref={videoRef} autoPlay playsInline muted={!audioOn} className="aspect-video w-full bg-black object-contain" />
+        <video ref={videoRef} autoPlay playsInline muted={muted} className="aspect-video w-full bg-black object-contain" />
         {ordered.length > 1 && (
           <div className="absolute left-2 top-2 flex gap-1">
             {ordered.map((a, i) => (
@@ -202,6 +203,7 @@ export function MultiAngleStageVideo({
             ))}
           </div>
         )}
+        <LiveVideoControls videoRef={videoRef} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
       </div>
       <ScorebugBar state={board} />
     </div>

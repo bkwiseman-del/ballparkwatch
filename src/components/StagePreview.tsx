@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { LiveVideoControls } from '@/components/LiveVideoControls'
 import {
   Stage,
   SubscribeType,
@@ -17,7 +18,7 @@ export function StagePreview({
   className,
   onLive,
   only,
-  audioOn = false,
+  controls = false,
 }: {
   token: string | null
   className?: string
@@ -27,13 +28,15 @@ export function StagePreview({
   // otherwise every remote track lands in every preview and the last publisher wins the screen.
   // Omitted (single-publisher games) = render whatever remote video arrives, as before.
   only?: string
-  // Viewer path: unmute the feed when the page's sound toggle is on. Setup previews omit it → muted.
-  audioOn?: boolean
+  // Viewer path (not a setup preview): show the on-video controls (mute/fullscreen/PiP) and let the
+  // viewer control the feed's OWN audio, independent of AI commentary. Setup previews omit it → muted.
+  controls?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const onLiveRef = useRef(onLive)
   onLiveRef.current = onLive
   const [live, setLive] = useState(false)
+  const [muted, setMuted] = useState(true) // starts muted (autoplay); the viewer unmutes via controls
 
   useEffect(() => {
     if (!token) return
@@ -100,11 +103,20 @@ export function StagePreview({
 
   return (
     <div className={className}>
-      <video ref={videoRef} autoPlay playsInline muted={!audioOn} className="aspect-video w-full bg-black object-contain" />
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={controls ? muted : true}
+        className="aspect-video w-full bg-black object-contain"
+      />
       {!live && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-data text-sm text-cream/70">
           Waiting for camera…
         </div>
+      )}
+      {controls && live && (
+        <LiveVideoControls videoRef={videoRef} muted={muted} onToggleMute={() => setMuted((m) => !m)} />
       )}
     </div>
   )
